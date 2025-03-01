@@ -1,11 +1,7 @@
-import { Button } from "@/components/ui/button"
+import LoginPage from "@/LoginPage.jsx";
 
 function App() {
-    return(
-    <div>
-        <Button>Click me</Button>
-    </div>
-)
+    return <LoginPage />;
 }
 
-export default App
+export default App;
