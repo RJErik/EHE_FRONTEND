@@ -5,8 +5,8 @@ import Login from "./pages/Login";
 import Account from "./pages/Account";
 import StockMarket from "./pages/StockMarket";
 import PaperTrading from "./pages/PaperTrading";
-import Alerts from "./pages/Alerts";
-import AutomaticTransactions from "./pages/AutomaticTransactions";
+import Alerts from "./pages/Alerts.jsx";
+import AutomaticTransactions from "./pages/AutomaticTransactions.jsx";
 import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 

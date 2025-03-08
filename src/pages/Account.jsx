@@ -1,6 +1,6 @@
 import Header from "../components/Header";
-import AccountProfile from "../components/AccountProfile";
-import ApiKeyManager from "../components/ApiKeyManager";
+import AccountProfile from "../components/account/AccountProfile.jsx";
+import ApiKeyManager from "../components/account/ApiKeyManager.jsx";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 
 const Account = ({ navigate }) => {

@@ -1,5 +1,5 @@
 import Header from "../components/Header";
-import RegisterForm from "../components/RegisterForm";
+import RegisterForm from "../components/register/RegisterForm.jsx";
 
 const Register = ({ navigate }) => {
     return (

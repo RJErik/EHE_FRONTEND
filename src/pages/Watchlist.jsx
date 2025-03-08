@@ -1,7 +1,7 @@
 import Header from "../components/Header";
-import SearchWatchlist from "../components/SearchWatchlist";
-import AddWatchlist from "../components/AddWatchlist";
-import WatchlistDisplay from "../components/WatchlistDisplay";
+import SearchWatchlist from "../components/watchlist/SearchWatchlist.jsx";
+import AddWatchlist from "../components/watchlist/AddWatchlist.jsx";
+import WatchlistDisplay from "../components/watchlist/WatchlistDisplay.jsx";
 
 const Watchlist = ({ navigate }) => {
     return (

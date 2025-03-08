@@ -1,8 +1,8 @@
 import Header from "../components/Header";
-import PortfolioDetailHeader from "../components/PortfolioDetailHeader";
-import PortfolioCompositionChart from "../components/PortfolioCompositionChart";
-import PortfolioCompositionList from "../components/PortfolioCompositionList";
-import PortfolioHistoryChart from "../components/PortfolioHistoryChart";
+import PortfolioDetailHeader from "../components/portfolioDetail/PortfolioDetailHeader.jsx";
+import PortfolioCompositionChart from "../components/portfolioDetail/PortfolioCompositionChart.jsx";
+import PortfolioCompositionList from "../components/portfolioDetail/PortfolioCompositionList.jsx";
+import PortfolioHistoryChart from "../components/portfolioDetail/PortfolioHistoryChart.jsx";
 
 const PortfolioDetail = ({ navigate, portfolioId }) => {
     // In a real app, you would fetch the portfolio data based on the portfolioId

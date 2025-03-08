@@ -1,7 +1,7 @@
 import Header from "../components/Header";
-import SearchPaperTrading from "../components/SearchPaperTrading";
-import CreatePaperTrading from "../components/CreatePaperTrading";
-import PaperTradingList from "../components/PaperTradingList";
+import SearchPaperTrading from "../components/paperTrading/SearchPaperTrading.jsx";
+import CreatePaperTrading from "../components/paperTrading/CreatePaperTrading.jsx";
+import PaperTradingList from "../components/paperTrading/PaperTradingList.jsx";
 
 const PaperTrading = ({ navigate }) => {
     return (

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import Header from "../components/Header";
-import SearchPortfolio from "../components/SearchPortfolio";
-import AddPortfolio from "../components/AddPortfolio";
-import PortfoliosDisplay from "../components/PortfoliosDisplay";
+import SearchPortfolio from "../components/portfolio/SearchPortfolio.jsx";
+import AddPortfolio from "../components/portfolio/AddPortfolio.jsx";
+import PortfoliosDisplay from "../components/portfolio/PortfoliosDisplay.jsx";
 import PortfolioDetail from "./PortfolioDetail";
 import { Button } from "../components/ui/button";
 

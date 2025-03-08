@@ -1,7 +1,7 @@
 import Header from "../components/Header";
-import SearchAutomaticTransactions from "../components/SearchAutomaticTransactions";
-import CreateAutomaticTransaction from "../components/CreateAutomaticTransaction";
-import AutomaticTransactionsList from "../components/AutomaticTransactionsList";
+import SearchAutomaticTransactions from "@/components/automaticTransaction/SearchAutomaticTransactions.jsx";
+import CreateAutomaticTransaction from "@/components/automaticTransaction/CreateAutomaticTransaction.jsx";
+import AutomaticTransactionList from "@/components/automaticTransaction/AutomaticTransactionList.jsx";
 import { Button } from "../components/ui/button";
 
 const AutomaticTransactions = ({ navigate }) => {
@@ -25,7 +25,7 @@ const AutomaticTransactions = ({ navigate }) => {
 
                         {/* Right section - List of automatic transactions */}
                         <div className="w-full md:w-3/4">
-                            <AutomaticTransactionsList />
+                            <AutomaticTransactionList />
                         </div>
                     </div>
                 </div>

@@ -1,7 +1,7 @@
 import Header from "../components/Header";
-import SearchAlerts from "../components/SearchAlerts";
-import CreateAlert from "../components/CreateAlert";
-import AlertsList from "../components/AlertsList";
+import SearchAlerts from "../components/alert/SearchAlerts.jsx";
+import CreateAlert from "../components/alert/CreateAlert.jsx";
+import AlertsList from "../components/alert/AlertsList.jsx";
 
 const Alerts = ({ navigate }) => {
     return (

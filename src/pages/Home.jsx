@@ -1,6 +1,6 @@
 import Header from "../components/Header";
-import HeroSection from "../components/HeroSection";
-import InfoCard from "../components/InfoCard";
+import HeroSection from "../components/home/HeroSection.jsx";
+import InfoCard from "../components/home/InfoCard.jsx";
 
 const Home = ({ navigate }) => {
     return (

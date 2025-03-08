@@ -1,11 +1,11 @@
 import Header from "../components/Header";
-import StockSelectors from "../components/StockSelectors";
-import TimeIntervalButtons from "../components/TimeIntervalButtons";
-import CandleChart from "../components/CandleChart";
-import IndicatorCharts from "../components/IndicatorCharts";
-import PortfolioList from "../components/PortfolioList";
-import PortfolioGraph from "../components/PortfolioGraph";
-import TradePanel from "../components/TradePanel";
+import StockSelectors from "../components/stockMarket/StockSelectors.jsx";
+import TimeIntervalButtons from "../components/stockMarket/TimeIntervalButtons.jsx";
+import CandleChart from "../components/stockMarket/CandleChart.jsx";
+import IndicatorCharts from "../components/stockMarket/IndicatorCharts.jsx";
+import PortfolioList from "../components/stockMarket/PortfolioList.jsx";
+import PortfolioGraph from "../components/stockMarket/PortfolioGraph.jsx";
+import TradePanel from "../components/stockMarket/TradePanel.jsx";
 
 const StockMarket = ({ navigate }) => {
     return (
