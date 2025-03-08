@@ -1,30 +1,69 @@
 import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { Avatar, AvatarFallback } from "../ui/avatar.jsx";
 import { Input } from "../ui/input.jsx";
 import { Button } from "../ui/button.jsx";
 import { Label } from "../ui/label.jsx";
+import { Alert, AlertTitle, AlertDescription } from "../Alert.jsx";
 
 const LoginForm = ({ navigate }) => {
+    const { login } = useAuth();
     const [formData, setFormData] = useState({
         email: "",
         password: ""
     });
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        // Handle login submission here
-        console.log("Login submitted:", formData);
+        setIsLoading(true);
+        setError(null);
+        setSuccess(null);
+
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData),
+                credentials: 'include' // Important for cookies
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Update auth context
+                login({ userName: data.userName });
+
+                // Show success message briefly
+                setSuccess("Login successful! Redirecting...");
+
+                // Redirect after a short delay
+                setTimeout(() => {
+                    navigate("stockMarket");
+                }, 1000);
+            } else {
+                // Show error message
+                setError(data.message || "Login failed. Please check your credentials.");
+            }
+        } catch (err) {
+            setError("An error occurred. Please try again later.");
+            console.error("Login error:", err);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleCancel = () => {
-        if (navigate) {
-            navigate("home");
-        }
+        navigate("home");
     };
 
     return (
@@ -49,6 +88,20 @@ const LoginForm = ({ navigate }) => {
 
             <h1 className="text-4xl font-semibold text-gray-600 mb-8">Log In</h1>
 
+            {error && (
+                <Alert variant="destructive">
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+            )}
+
+            {success && (
+                <Alert variant="success">
+                    <AlertTitle>Success!</AlertTitle>
+                    <AlertDescription>{success}</AlertDescription>
+                </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="w-full space-y-6">
                 <div className="space-y-2">
                     <Label htmlFor="email">E-mail</Label>
@@ -59,6 +112,7 @@ const LoginForm = ({ navigate }) => {
                         placeholder="your@email.com"
                         value={formData.email}
                         onChange={handleChange}
+                        disabled={isLoading}
                         required
                     />
                 </div>
@@ -72,6 +126,7 @@ const LoginForm = ({ navigate }) => {
                         placeholder="••••••"
                         value={formData.password}
                         onChange={handleChange}
+                        disabled={isLoading}
                         required
                     />
                 </div>
@@ -81,14 +136,16 @@ const LoginForm = ({ navigate }) => {
                         type="button"
                         variant="outline"
                         onClick={handleCancel}
+                        disabled={isLoading}
                     >
                         Cancel
                     </Button>
                     <Button
                         type="submit"
                         className="bg-gray-500 hover:bg-gray-600"
+                        disabled={isLoading}
                     >
-                        Log In
+                        {isLoading ? "Logging in..." : "Log In"}
                     </Button>
                 </div>
             </form>

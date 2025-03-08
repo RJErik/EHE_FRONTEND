@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AuthProvider } from "./context/AuthContext";
 import Home from "./pages/Home";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
@@ -19,35 +20,28 @@ function App() {
         setCurrentPage(page);
     };
 
-    // Render the appropriate page based on currentPage state
+    // Render the appropriate page
     const renderPage = () => {
         switch (currentPage) {
-            case "home":
-                return <Home navigate={navigate} />;
-            case "register":
-                return <Register navigate={navigate} />;
-            case "login":
-                return <Login navigate={navigate} />;
-            case "account":
-                return <Account navigate={navigate} />;
-            case "stockMarket":
-                return <StockMarket navigate={navigate} />;
-            case "paperTrading":
-                return <PaperTrading navigate={navigate} />;
-            case "alerts":
-                return <Alerts navigate={navigate} />;
-            case "automaticTransactions":
-                return <AutomaticTransactions navigate={navigate} />;
-            case "portfolio":
-                return <Portfolio navigate={navigate} />;
-            case "watchlist":
-                return <Watchlist navigate={navigate} />;
-            default:
-                return <Home navigate={navigate} />;
+            case "home": return <Home navigate={navigate} />;
+            case "register": return <Register navigate={navigate} />;
+            case "login": return <Login navigate={navigate} />;
+            case "account": return <Account navigate={navigate} />;
+            case "stockMarket": return <StockMarket navigate={navigate} />;
+            case "paperTrading": return <PaperTrading navigate={navigate} />;
+            case "alerts": return <Alerts navigate={navigate} />;
+            case "automaticTransactions": return <AutomaticTransactions navigate={navigate} />;
+            case "portfolio": return <Portfolio navigate={navigate} />;
+            case "watchlist": return <Watchlist navigate={navigate} />;
+            default: return <Home navigate={navigate} />;
         }
     };
 
-    return renderPage();
+    return (
+        <AuthProvider>
+            {renderPage()}
+        </AuthProvider>
+    );
 }
 
 export default App;
