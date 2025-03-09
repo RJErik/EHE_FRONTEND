@@ -1,32 +1,50 @@
 // src/components/ui/alert.jsx
-import * as React from "react";
+import * as React from "react"
+import { cva } from "class-variance-authority"
+import { cn } from "../lib/utils"
 
-const Alert = ({ children, variant = "default", className = "" }) => {
-    const baseClass = "relative w-full rounded-lg border p-4 mb-4";
+const alertVariants = cva(
+    "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground",
+    {
+        variants: {
+            variant: {
+                default: "bg-background text-foreground",
+                destructive:
+                    "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+            },
+        },
+        defaultVariants: {
+            variant: "default",
+        },
+    }
+)
 
-    const variantClasses = {
-        default: "bg-gray-100 border-gray-200 text-gray-800",
-        destructive: "bg-red-50 border-red-200 text-red-800",
-        success: "bg-green-50 border-green-200 text-green-800"
-    };
+const Alert = React.forwardRef(({ className, variant, ...props }, ref) => (
+    <div
+        ref={ref}
+        role="alert"
+        className={cn(alertVariants({ variant }), className)}
+        {...props}
+    />
+))
+Alert.displayName = "Alert"
 
-    return (
-        <div className={`${baseClass} ${variantClasses[variant]} ${className}`} role="alert">
-            {children}
-        </div>
-    );
-};
+const AlertTitle = React.forwardRef(({ className, ...props }, ref) => (
+    <h5
+        ref={ref}
+        className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+        {...props}
+    />
+))
+AlertTitle.displayName = "AlertTitle"
 
-const AlertTitle = ({ children, className = "" }) => (
-    <h5 className={`text-lg font-medium mb-1 ${className}`}>
-        {children}
-    </h5>
-);
+const AlertDescription = React.forwardRef(({ className, ...props }, ref) => (
+    <div
+        ref={ref}
+        className={cn("text-sm [&_p]:leading-relaxed", className)}
+        {...props}
+    />
+))
+AlertDescription.displayName = "AlertDescription"
 
-const AlertDescription = ({ children, className = "" }) => (
-    <div className={`text-sm ${className}`}>
-        {children}
-    </div>
-);
-
-export { Alert, AlertTitle, AlertDescription };
+export { Alert, AlertTitle, AlertDescription }

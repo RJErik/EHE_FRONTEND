@@ -1,3 +1,4 @@
+// src/components/Header.jsx
 import { Button } from "./ui/button";
 import { useAuth } from "../context/AuthContext";
 
@@ -32,10 +33,10 @@ const Header = ({ navigate, currentPage }) => {
                         </span>
                         <Button
                             variant="ghost"
-                            className={`text-white ${currentPage === 'stockMarket' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("stockMarket")}
+                            className={`text-white ${currentPage === 'account' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("account")}
                         >
-                            Stock Market
+                            My Account
                         </Button>
                         <Button
                             variant="ghost"
@@ -46,10 +47,38 @@ const Header = ({ navigate, currentPage }) => {
                         </Button>
                         <Button
                             variant="ghost"
-                            className={`text-white ${currentPage === 'account' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("account")}
+                            className={`text-white ${currentPage === 'stockMarket' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("stockMarket")}
                         >
-                            My Account
+                            Stock Market
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            className={`text-white ${currentPage === 'paperTrading' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("paperTrading")}
+                        >
+                            Paper Trading
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            className={`text-white ${currentPage === 'alerts' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("alerts")}
+                        >
+                            Alerts
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            className={`text-white ${currentPage === 'automaticTransactions' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("automaticTransactions")}
+                        >
+                            Automatic Transactions
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            className={`text-white ${currentPage === 'watchlist' ? 'bg-gray-600' : ''}`}
+                            onClick={() => handleNavigation("watchlist")}
+                        >
+                            Watchlist
                         </Button>
                         <Button
                             variant="ghost"
@@ -63,14 +92,14 @@ const Header = ({ navigate, currentPage }) => {
                     <>
                         <Button
                             variant="ghost"
-                            className="text-white"
+                            className={`text-white ${currentPage === 'login' ? 'bg-gray-600' : ''}`}
                             onClick={() => handleNavigation("login")}
                         >
                             Login
                         </Button>
                         <Button
                             variant="ghost"
-                            className="text-white"
+                            className={`text-white ${currentPage === 'register' ? 'bg-gray-600' : ''}`}
                             onClick={() => handleNavigation("register")}
                         >
                             Register
