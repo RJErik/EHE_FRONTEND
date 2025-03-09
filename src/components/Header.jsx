@@ -1,4 +1,3 @@
-// src/components/Header.jsx
 import { Button } from "./ui/button";
 import { useAuth } from "../context/AuthContext";
 
@@ -13,7 +12,8 @@ const Header = ({ navigate, currentPage }) => {
 
     const handleLogout = async () => {
         await logout();
-        navigate("home");
+        // Redirect to the unauthenticated app
+        window.location.href = import.meta.env.VITE_UNAUTHENTICATED_APP_URL || '/';
     };
 
     return (
@@ -26,86 +26,31 @@ const Header = ({ navigate, currentPage }) => {
             </div>
 
             <nav className="flex space-x-6">
-                {user ? (
-                    <>
-                        <span className="flex items-center mr-4">
-                            Welcome, {user.userName}!
-                        </span>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'account' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("account")}
-                        >
-                            My Account
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'portfolio' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("portfolio")}
-                        >
-                            Portfolio
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'stockMarket' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("stockMarket")}
-                        >
-                            Stock Market
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'paperTrading' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("paperTrading")}
-                        >
-                            Paper Trading
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'alerts' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("alerts")}
-                        >
-                            Alerts
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'automaticTransactions' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("automaticTransactions")}
-                        >
-                            Automatic Transactions
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'watchlist' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("watchlist")}
-                        >
-                            Watchlist
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className="text-white hover:bg-red-700"
-                            onClick={handleLogout}
-                        >
-                            Logout
-                        </Button>
-                    </>
-                ) : (
-                    <>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'login' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("login")}
-                        >
-                            Login
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'register' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("register")}
-                        >
-                            Register
-                        </Button>
-                    </>
-                )}
+                <span className="flex items-center mr-4">
+                    Welcome, {user?.userName}!
+                </span>
+                <Button
+                    variant="ghost"
+                    className={`text-white ${currentPage === 'account' ? 'bg-gray-600' : ''}`}
+                    onClick={() => handleNavigation("account")}
+                >
+                    My Account
+                </Button>
+                <Button
+                    variant="ghost"
+                    className={`text-white ${currentPage === 'portfolio' ? 'bg-gray-600' : ''}`}
+                    onClick={() => handleNavigation("portfolio")}
+                >
+                    Portfolio
+                </Button>
+                {/* All other navigation buttons */}
+                <Button
+                    variant="ghost"
+                    className="text-white hover:bg-red-700"
+                    onClick={handleLogout}
+                >
+                    Logout
+                </Button>
             </nav>
         </header>
     );
