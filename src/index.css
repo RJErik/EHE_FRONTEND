@@ -1,10 +1,8 @@
-/* @import "tailwindcss"; */
-/* @plugin "tailwindcss-animate"; */
-@custom-variant dark (&:is(.dark *));
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
   --background: oklch(1 0 0);
