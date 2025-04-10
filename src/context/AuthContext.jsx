@@ -18,17 +18,10 @@ export const AuthProvider = ({ children }) => {
                     const data = await response.json();
                     if (data.authenticated) {
                         setUser({ userName: data.userName });
-                    } else {
-                        // Redirect to unauthenticated app if not logged in
-                        window.location.href = import.meta.env.VITE_UNAUTHENTICATED_APP_URL || '/';
                     }
-                } else {
-                    // Redirect on API failure
-                    window.location.href = import.meta.env.VITE_UNAUTHENTICATED_APP_URL || '/';
                 }
             } catch (error) {
                 console.error("Auth check failed:", error);
-                window.location.href = import.meta.env.VITE_UNAUTHENTICATED_APP_URL || '/';
             } finally {
                 setLoading(false);
             }
@@ -36,6 +29,11 @@ export const AuthProvider = ({ children }) => {
 
         checkAuth();
     }, []);
+
+    // Login function
+    const login = (userData) => {
+        setUser(userData);
+    };
 
     // Logout function
     const logout = async () => {
@@ -50,12 +48,8 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    if (loading) {
-        return <div className="flex items-center justify-center h-screen">Loading...</div>;
-    }
-
     return (
-        <AuthContext.Provider value={{ user, loading, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, logout }}>
             {children}
         </AuthContext.Provider>
     );
