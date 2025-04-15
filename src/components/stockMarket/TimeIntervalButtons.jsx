@@ -22,10 +22,7 @@ const TimeIntervalButtons = () => {
                 <Button
                     key={interval.value}
                     variant={activeInterval === interval.value ? "default" : "outline"}
-                    className={`
-            px-3 py-1 h-8 text-xs
-            ${activeInterval === interval.value ? "bg-gray-500 hover:bg-gray-600" : ""}
-          `}
+                    className="px-3 py-1 h-8 text-xs"
                     onClick={() => setActiveInterval(interval.value)}
                 >
                     {interval.label}

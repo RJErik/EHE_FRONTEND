@@ -8,15 +8,15 @@ const SearchWatchlist = () => {
     const stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"];
 
     return (
-        <Card className="bg-gray-200 w-full">
+        <Card className="w-full">
             <CardHeader className="text-center pb-2">
-                <h3 className="text-gray-500 text-lg">Search</h3>
+                <h3 className="text-lg">Search</h3>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Platform</p>
+                    <p className="text-xs mb-1">Platform</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -28,9 +28,9 @@ const SearchWatchlist = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Stock</p>
+                    <p className="text-xs mb-1">Stock</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -41,7 +41,7 @@ const SearchWatchlist = () => {
                     </Select>
                 </div>
 
-                <Button className="w-full bg-gray-500 hover:bg-gray-600">
+                <Button className="w-full">
                     Search
                 </Button>
             </CardContent>

@@ -9,13 +9,13 @@ const TradePanel = () => {
     const [price, setPrice] = useState(50);
 
     return (
-        <Card className="bg-gray-200 w-full">
+        <Card className="w-full">
             <CardHeader className="text-center pb-2">
-                <h3 className="text-gray-500 text-lg">Buy / Sale</h3>
+                <h3 className="text-muted-foreground text-lg">Buy / Sale</h3>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <p className="text-sm text-gray-500 mb-1">How many</p>
+                    <p className="text-sm text-muted-foreground mb-1">How many</p>
                     <Slider
                         value={[quantity]}
                         onValueChange={(values) => setQuantity(values[0])}
@@ -32,7 +32,7 @@ const TradePanel = () => {
                 </div>
 
                 <div>
-                    <p className="text-sm text-gray-500 mb-1">For how much</p>
+                    <p className="text-sm text-muted-foreground mb-1">For how much</p>
                     <Slider
                         value={[price]}
                         onValueChange={(values) => setPrice(values[0])}
@@ -49,10 +49,10 @@ const TradePanel = () => {
                 </div>
 
                 <div className="flex gap-4 pt-2">
-                    <Button className="flex-1 bg-gray-500 hover:bg-gray-600">
+                    <Button variant="destructive" className="flex-1">
                         Sell
                     </Button>
-                    <Button className="flex-1 bg-gray-500 hover:bg-gray-600">
+                    <Button variant="default" className="flex-1">
                         Buy
                     </Button>
                 </div>

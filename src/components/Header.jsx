@@ -1,9 +1,14 @@
 // src/components/Header.jsx
+import { useState } from "react";
 import { Button } from "./ui/button";
-import { useAuth } from "../context/AuthContext";
+import { ModeToggle } from "@/components/Mode-toggle.jsx";
+import { Menubar } from "./ui/menubar";
+import LogoutDialog from "./LogoutDialog";
+import { useLogout } from "../hooks/useLogout";
 
-const Header = ({ navigate, currentPage }) => {
-    const { user, logout } = useAuth();
+const Header = ({ navigate, currentPage, userName = "User" }) => {
+    const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+    const { logout, isLoading } = useLogout();
 
     const handleNavigation = (page) => {
         if (navigate) {
@@ -11,103 +16,102 @@ const Header = ({ navigate, currentPage }) => {
         }
     };
 
-    const handleLogout = async () => {
+    const handleLogoutClick = () => {
+        setLogoutDialogOpen(true);
+    };
+
+    const handleLogoutConfirm = async () => {
         await logout();
-        navigate("home");
     };
 
     return (
-        <header className="bg-gray-700 text-white p-4 flex items-center justify-between">
-            <div
-                className="bg-gray-300 text-gray-700 p-3 rounded cursor-pointer"
-                onClick={() => handleNavigation("home")}
-            >
-                Logo
-            </div>
+        <>
+            <Menubar className="py-7 px-7 flex items-center justify-between">
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="cursor-pointer h-10 w-10"
+                    onClick={() => handleNavigation("home")}
+                >
+                    Logo
+                </Button>
 
-            <nav className="flex space-x-6">
-                {user ? (
-                    <>
-                        <span className="flex items-center mr-4">
-                            Welcome, {user.userName}!
-                        </span>
+                <div className="flex items-center space-x-4">
+                    <nav className="flex space-x-6">
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'account' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'home' ? 'bg-muted' : ''}
+                            onClick={() => handleNavigation("home")}
+                        >
+                            Home
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className={currentPage === 'account' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("account")}
                         >
                             My Account
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'portfolio' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'portfolio' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("portfolio")}
                         >
                             Portfolio
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'stockMarket' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'stockMarket' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("stockMarket")}
                         >
                             Stock Market
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'paperTrading' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'paperTrading' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("paperTrading")}
                         >
                             Paper Trading
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'alerts' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'alerts' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("alerts")}
                         >
                             Alerts
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'automaticTransactions' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'automaticTransactions' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("automaticTransactions")}
                         >
                             Automatic Transactions
                         </Button>
                         <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'watchlist' ? 'bg-gray-600' : ''}`}
+                            variant="outline"
+                            className={currentPage === 'watchlist' ? 'bg-muted' : ''}
                             onClick={() => handleNavigation("watchlist")}
                         >
                             Watchlist
                         </Button>
                         <Button
-                            variant="ghost"
-                            className="text-white hover:bg-red-700"
-                            onClick={handleLogout}
+                            variant="outline"
+                            onClick={handleLogoutClick}
                         >
                             Logout
                         </Button>
-                    </>
-                ) : (
-                    <>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'login' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("login")}
-                        >
-                            Login
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            className={`text-white ${currentPage === 'register' ? 'bg-gray-600' : ''}`}
-                            onClick={() => handleNavigation("register")}
-                        >
-                            Register
-                        </Button>
-                    </>
-                )}
-            </nav>
-        </header>
+                        <ModeToggle />
+                    </nav>
+                </div>
+            </Menubar>
+
+            <LogoutDialog
+                open={logoutDialogOpen}
+                onOpenChange={setLogoutDialogOpen}
+                onConfirm={handleLogoutConfirm}
+                isLoading={isLoading}
+            />
+        </>
     );
 };
 

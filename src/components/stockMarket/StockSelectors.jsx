@@ -9,7 +9,7 @@ const StockSelectors = () => {
     return (
         <div className="flex flex-col sm:flex-row gap-4 items-start">
             <div className="w-full sm:w-auto flex-1">
-                <p className="text-sm text-gray-500 mb-1">Platform</p>
+                <p className="text-sm text-muted-foreground mb-1">Platform</p>
                 <Select>
                     <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select" />
@@ -23,7 +23,7 @@ const StockSelectors = () => {
             </div>
 
             <div className="w-full sm:w-auto flex-1">
-                <p className="text-sm text-gray-500 mb-1">Stock</p>
+                <p className="text-sm text-muted-foreground mb-1">Stock</p>
                 <Select>
                     <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select" />
@@ -37,7 +37,7 @@ const StockSelectors = () => {
             </div>
 
             <div className="flex items-end">
-                <Button className="bg-gray-500 hover:bg-gray-600">
+                <Button>
                     Add API Key
                 </Button>
             </div>

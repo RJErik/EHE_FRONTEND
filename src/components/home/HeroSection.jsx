@@ -1,15 +1,30 @@
+// src/components/home/HeroSection.jsx
+import { useState } from "react";
 import { Button } from "../ui/button.jsx";
 import { Avatar, AvatarFallback } from "../ui/avatar.jsx";
+import LogoutDialog from "../LogoutDialog";
+import { useLogout } from "../../hooks/useLogout";
 
 const HeroSection = ({ navigate }) => {
+    const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+    const { logout, isLoading } = useLogout();
+
+    const handleLogoutClick = () => {
+        setLogoutDialogOpen(true);
+    };
+
+    const handleLogoutConfirm = async () => {
+        await logout();
+    };
+
     return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] py-12">
-            <h1 className="text-4xl font-semibold text-gray-600 mb-2">Event Horizon Exchange</h1>
-            <p className="text-xl text-gray-500 mb-12">A powerful stocktrading platform</p>
+            <h1 className="text-4xl font-semibold mb-2">Event Horizon Exchange</h1>
+            <p className="text-xl mb-12">A powerful stocktrading platform</p>
 
             <div className="flex flex-col items-center mb-8">
                 <Avatar className="h-16 w-16 mb-4">
-                    <AvatarFallback className="bg-gray-200">
+                    <AvatarFallback>
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -29,19 +44,19 @@ const HeroSection = ({ navigate }) => {
 
             <div className="flex space-x-4">
                 <Button
-                    variant="outline"
                     className="min-w-[120px]"
-                    onClick={() => navigate && navigate("login")}
+                    onClick={handleLogoutClick}
                 >
-                    Log In
-                </Button>
-                <Button
-                    className="bg-gray-500 hover:bg-gray-600 min-w-[120px]"
-                    onClick={() => navigate && navigate("register")}
-                >
-                    Register
+                    Log Out
                 </Button>
             </div>
+
+            <LogoutDialog
+                open={logoutDialogOpen}
+                onOpenChange={setLogoutDialogOpen}
+                onConfirm={handleLogoutConfirm}
+                isLoading={isLoading}
+            />
         </div>
     );
 };

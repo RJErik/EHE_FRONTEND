@@ -1,14 +1,28 @@
+// src/components/account/ApiKeyManager.jsx
+import { useState } from "react";
 import { Button } from "../ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../ui/card.jsx";
+import DeactivateAccountDialog from "./DeactivateAccountDialog.jsx";
+import { useDeactivateAccount } from "../../hooks/useDeactivateAccount.js";
 
 const ApiKeyManager = () => {
     // Placeholder for API keys - this would be populated with real data in a production app
     const apiKeys = [];
+    const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+    const { deactivateAccount, isLoading } = useDeactivateAccount();
+
+    const handleDeactivateClick = () => {
+        setDeactivateDialogOpen(true);
+    };
+
+    const handleDeactivateConfirm = async () => {
+        await deactivateAccount();
+    };
 
     return (
         <div className="flex flex-col h-full">
-            <Card className="bg-gray-200 flex-1 mb-4">
-                <CardHeader className="text-center text-gray-500">
+            <Card className="flex-1 mb-4">
+                <CardHeader className="text-center">
                     <h3>List of current API keys</h3>
                 </CardHeader>
                 <CardContent>
@@ -20,7 +34,7 @@ const ApiKeyManager = () => {
                         </ul>
                     ) : (
                         <div className="flex items-center justify-center h-64">
-                            {/* Empty state - no API keys */}
+                            <p className="text-muted-foreground">No API keys found</p>
                         </div>
                     )}
                 </CardContent>
@@ -30,14 +44,25 @@ const ApiKeyManager = () => {
                 <Button variant="outline" className="flex-1">
                     Delete
                 </Button>
-                <Button className="flex-1 bg-gray-500 hover:bg-gray-600">
+                <Button className="flex-1">
                     Add
                 </Button>
             </div>
 
-            <Button className="bg-gray-500 hover:bg-gray-600">
-                Deactivate
+            <Button
+                variant="destructive"
+                onClick={handleDeactivateClick}
+                className="w-full"
+            >
+                Deactivate Account
             </Button>
+
+            <DeactivateAccountDialog
+                open={deactivateDialogOpen}
+                onOpenChange={setDeactivateDialogOpen}
+                onConfirm={handleDeactivateConfirm}
+                isLoading={isLoading}
+            />
         </div>
     );
 };

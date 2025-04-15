@@ -26,18 +26,18 @@ const Portfolio = ({ navigate }) => {
     // Updated PortfoliosDisplay to handle selection
     const EnhancedPortfoliosDisplay = () => (
         <div className="w-full md:w-3/4">
-            <div className="bg-gray-200 w-full h-full rounded-md p-6 min-h-[600px]">
-                <h3 className="text-xl text-gray-500 text-center mb-6">List of current portfolios</h3>
+            <div className="w-full h-full rounded-md p-6 min-h-[600px]">
+                <h3 className="text-xl text-center mb-6">List of current portfolios</h3>
                 <div className="space-y-4">
                     {portfolios.map(portfolio => (
                         <div
                             key={portfolio.id}
-                            className="p-4 bg-white rounded-md shadow-sm cursor-pointer hover:bg-gray-50"
+                            className="p-4 rounded-md shadow-sm cursor-pointer"
                             onClick={() => handlePortfolioSelect(portfolio.id)}
                         >
                             <p className="font-medium">{portfolio.name}</p>
-                            <p className="text-sm text-gray-500">Value: {portfolio.value}</p>
-                            <p className="text-sm text-gray-500">Platform: {portfolio.platform}</p>
+                            <p className="text-sm">Value: {portfolio.value}</p>
+                            <p className="text-sm">Platform: {portfolio.platform}</p>
                         </div>
                     ))}
                 </div>
@@ -77,12 +77,12 @@ const Portfolio = ({ navigate }) => {
             <Header navigate={navigate} currentPage="portfolio" />
 
             <main className="flex-1 p-4">
-                <h1 className="text-4xl font-semibold text-gray-600 text-center mb-8">Portfolio</h1>
+                <h1 className="text-4xl font-semibold text-center mb-8">Portfolio</h1>
 
                 <div className="container mx-auto">
                     <div className="flex flex-col md:flex-row gap-6">
                         <div className="w-full md:w-1/4">
-                            <Button className="w-full bg-gray-500 hover:bg-gray-600 mb-4">
+                            <Button className="w-full mb-4">
                                 Add API Key
                             </Button>
                             <SearchPortfolio />

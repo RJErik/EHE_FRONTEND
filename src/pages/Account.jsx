@@ -4,20 +4,14 @@ import ApiKeyManager from "../components/account/ApiKeyManager.jsx";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 
 const Account = ({ navigate }) => {
-    // Mock user data - in a real app, this would come from your auth/user state
-    const userData = {
-        name: "Your_Name",
-        email: "Your_Email"
-    };
-
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} />
+            <Header navigate={navigate} currentPage="account" />
 
             <main className="flex-1 p-4">
                 <div className="flex flex-col items-center mb-8">
                     <Avatar className="h-16 w-16 mb-4">
-                        <AvatarFallback className="bg-gray-200">
+                        <AvatarFallback>
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 viewBox="0 0 24 24"
@@ -34,15 +28,15 @@ const Account = ({ navigate }) => {
                         </AvatarFallback>
                     </Avatar>
 
-                    <h1 className="text-4xl font-semibold text-gray-600 mb-8">My Account</h1>
+                    <h1 className="text-4xl font-semibold mb-8">My Account</h1>
                 </div>
 
                 <div className="container mx-auto flex flex-col md:flex-row">
                     <div className="w-full md:w-1/2 md:pr-8 mb-8 md:mb-0">
-                        <AccountProfile userData={userData} navigate={navigate} />
+                        <AccountProfile navigate={navigate} />
                     </div>
 
-                    <div className="w-full md:w-1/2 md:pl-8 border-t md:border-t-0 md:border-l pt-8 md:pt-0 md:pl-8">
+                    <div className="w-full md:w-1/2 md:border-t md:border-t-0 md:border-l pt-8 md:pt-0 md:pl-8">
                         <ApiKeyManager />
                     </div>
                 </div>

@@ -5,15 +5,12 @@ const PortfoliosDisplay = () => {
     const portfolios = [];
 
     return (
-        <Card className="bg-gray-200 w-full h-full">
+        <Card className="w-full h-full">
             <CardContent className="flex items-center justify-center h-full min-h-[600px]">
-                <p className="text-xl text-gray-500">List of current portfolios</p>
+                <p className="text-xl text-muted-foreground">List of current portfolios</p>
             </CardContent>
         </Card>
     );
 };
 
-export default
-
-
-PortfoliosDisplay;
+export default PortfoliosDisplay;

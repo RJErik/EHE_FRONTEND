@@ -5,7 +5,7 @@ import InfoCard from "../components/home/InfoCard.jsx";
 const Home = ({ navigate }) => {
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} />
+            <Header navigate={navigate} currentPage="home"/>
             <main className="flex-1">
                 <HeroSection navigate={navigate} />
 

@@ -4,34 +4,34 @@ import { Card, CardContent, CardHeader } from "../ui/card.jsx";
 
 const SearchPaperTrading = () => {
     return (
-        <Card className="bg-gray-200 w-full">
+        <Card className="w-full">
             <CardHeader className="text-center pb-2">
-                <h3 className="text-gray-500 text-lg">Search</h3>
+                <h3 className="text-lg">Search</h3>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Starting Amount From</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Starting Amount From</p>
+                        <Input placeholder="Amount" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Starting Amount To</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Starting Amount To</p>
+                        <Input placeholder="Amount" />
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Current Amount From</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Current Amount From</p>
+                        <Input placeholder="Amount" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Current Amount To</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Current Amount To</p>
+                        <Input placeholder="Amount" />
                     </div>
                 </div>
 
-                <Button className="w-full bg-gray-500 hover:bg-gray-600">
+                <Button className="w-full">
                     Search
                 </Button>
             </CardContent>

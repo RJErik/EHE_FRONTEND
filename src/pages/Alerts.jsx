@@ -9,7 +9,7 @@ const Alerts = ({ navigate }) => {
             <Header navigate={navigate} currentPage="alerts" />
 
             <main className="flex-1 p-4">
-                <h1 className="text-4xl font-semibold text-gray-600 text-center mb-8">Alerts</h1>
+                <h1 className="text-4xl font-semibold  text-center mb-8">Alerts</h1>
 
                 <div className="container mx-auto">
                     <div className="flex flex-col md:flex-row gap-6">

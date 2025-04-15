@@ -10,15 +10,15 @@ const CreateAlert = () => {
     const comparisons = ["Greater than", "Lower than"];
 
     return (
-        <Card className="bg-gray-200 w-full mt-4">
+        <Card className="w-full mt-4">
             <CardHeader className="text-center pb-2">
-                <h3 className="text-gray-500 text-lg">Create</h3>
+                <h3 className="text-lg text-muted-foreground">Create</h3>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Platform</p>
+                    <p className="text-xs text-muted-foreground mb-1">Platform</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -30,9 +30,9 @@ const CreateAlert = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Stock</p>
+                    <p className="text-xs text-muted-foreground mb-1">Stock</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -44,9 +44,9 @@ const CreateAlert = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Greater or Lower</p>
+                    <p className="text-xs text-muted-foreground mb-1">Greater or Lower</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -58,11 +58,11 @@ const CreateAlert = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Amount to be crossed</p>
-                    <Input placeholder="Amount" className="bg-white" />
+                    <p className="text-xs text-muted-foreground mb-1">Amount to be crossed</p>
+                    <Input placeholder="Amount" />
                 </div>
 
-                <Button className="w-full bg-gray-500 hover:bg-gray-600">
+                <Button className="w-full">
                     Create
                 </Button>
             </CardContent>

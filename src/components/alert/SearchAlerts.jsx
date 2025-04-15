@@ -10,15 +10,15 @@ const SearchAlerts = () => {
     const comparisons = ["Greater than", "Lower than"];
 
     return (
-        <Card className="bg-gray-200 w-full">
+        <Card className="w-full">
             <CardHeader className="text-center pb-2">
-                <h3 className="text-gray-500 text-lg">Search</h3>
+                <h3 className="text-lg text-muted-foreground">Search</h3>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Platform</p>
+                    <p className="text-xs text-muted-foreground mb-1">Platform</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -30,9 +30,9 @@ const SearchAlerts = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Stock</p>
+                    <p className="text-xs text-muted-foreground mb-1">Stock</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -44,9 +44,9 @@ const SearchAlerts = () => {
                 </div>
 
                 <div>
-                    <p className="text-xs text-gray-500 mb-1">Greater or Lower</p>
+                    <p className="text-xs text-muted-foreground mb-1">Greater or Lower</p>
                     <Select>
-                        <SelectTrigger className="w-full bg-white">
+                        <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
                         </SelectTrigger>
                         <SelectContent>
@@ -59,16 +59,16 @@ const SearchAlerts = () => {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Amount to be crossed from</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Amount to be crossed from</p>
+                        <Input placeholder="Amount" />
                     </div>
                     <div>
-                        <p className="text-xs text-gray-500 mb-1">Amount to be crossed to</p>
-                        <Input placeholder="Amount" className="bg-white" />
+                        <p className="text-xs text-muted-foreground mb-1">Amount to be crossed to</p>
+                        <Input placeholder="Amount" />
                     </div>
                 </div>
 
-                <Button className="w-full bg-gray-500 hover:bg-gray-600">
+                <Button className="w-full">
                     Search
                 </Button>
             </CardContent>

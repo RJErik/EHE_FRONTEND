@@ -5,9 +5,9 @@ const PaperTradingList = () => {
     const simulations = [];
 
     return (
-        <Card className="bg-gray-200 w-full h-full">
+        <Card className="w-full h-full">
             <CardContent className="flex items-center justify-center h-full min-h-[600px]">
-                <p className="text-xl text-gray-500">List of paper trading simulations</p>
+                <p className="text-xl text-muted-foreground">List of paper trading simulations</p>
             </CardContent>
         </Card>
     );

@@ -19,7 +19,7 @@ const PortfolioDetail = ({ navigate, portfolioId }) => {
             <Header navigate={navigate} currentPage="portfolio" />
 
             <main className="flex-1 p-4">
-                <h1 className="text-4xl font-semibold text-gray-600 text-center mb-8">Portfolio</h1>
+                <h1 className="text-4xl font-semibold text-center mb-8">Portfolio</h1>
 
                 <div className="container mx-auto">
                     <PortfolioDetailHeader portfolioData={portfolioData} />
