@@ -4,6 +4,7 @@ export function renderCandleChart({
                                       chartRef,
                                       data,
                                       isLogarithmic,
+                                      isDragging,
                                       setHoveredCandle,
                                       setCurrentMouseY,
                                       setActiveTimestamp,
@@ -78,6 +79,9 @@ export function renderCandleChart({
 
     // Helper function to update the crosshair and labels
     const updateCrosshair = (d, mouseY) => {
+        // Don't update crosshair if dragging
+        if (isDragging) return;
+
         updateCrosshairPosition(
             d, mouseY, crosshair, verticalLine, horizontalLine,
             priceLabel, dateLabel, xScale, yScale, width, height
@@ -86,23 +90,42 @@ export function renderCandleChart({
 
     // Create hover zones
     createHoverZones(
-        svg, data, xScale, width, height,
+        svg, data, xScale, width, height, isDragging,
         setActiveTimestamp, setHoveredCandle, setCurrentMouseY, updateCrosshair
     );
 
-    // Add mouseleave handler
-    svg.on("mouseleave", () => {
-        d3.selectAll(".candle-body").attr("stroke", "none");
-        crosshair.style("display", "none");
-        setHoveredCandle(null);
-        setCurrentMouseY(null);
-        setActiveTimestamp(null);
+    svg.on("mousemove", function(event) {
+        // Always update current mouse Y position regardless of dragging state
+        const [, mouseY] = d3.pointer(event);
+        setCurrentMouseY(mouseY);
     });
 
-    // Restore crosshair position if we have active data
-    restoreCrosshairPosition(
-        activeTimestamp, currentMouseY, data, updateCrosshair
-    );
+    // Add mouseleave handler
+    svg.on("mouseleave", () => {
+        // Only clear crosshair if not dragging
+        if (!isDragging) {
+            d3.selectAll(".candle-body").attr("stroke", "none");
+            crosshair.style("display", "none");
+            setHoveredCandle(null);
+            setCurrentMouseY(null);
+            setActiveTimestamp(null);
+        }
+    });
+
+    // Restore crosshair position if we have active data and we're not dragging
+    if (!isDragging && activeTimestamp && currentMouseY !== null) {
+        const activeCandle = data.find(d => d.timestamp === activeTimestamp);
+        if (activeCandle) {
+            updateCrosshair(activeCandle, currentMouseY);
+        }
+    }
+
+    // Return useful information for the dragging implementation
+    return {
+        candleWidth,
+        width,
+        height
+    };
 }
 
 // Helper functions
@@ -343,7 +366,7 @@ function updateCrosshairPosition(
 }
 
 function createHoverZones(
-    svg, data, xScale, width, height,
+    svg, data, xScale, width, height, isDragging,
     setActiveTimestamp, setHoveredCandle, setCurrentMouseY, updateCrosshair
 ) {
     // Calculate the x-positions of each candle
@@ -381,25 +404,24 @@ function createHoverZones(
             .attr("height", height)
             .attr("fill", "transparent")
             .on("mouseenter", () => {
+                // Always update the active timestamp regardless of dragging state
                 setActiveTimestamp(d.timestamp);
-                setHoveredCandle(d);
+
+                // Only update hovered candle if not dragging
+                if (!isDragging) {
+                    setHoveredCandle(d);
+                }
             })
             .on("mousemove", function(event) {
-                // Get mouse y-position relative to chart
-                const [, mouseY] = d3.pointer(event);
-                setCurrentMouseY(mouseY);
+                // Only update if not dragging
+                if (!isDragging) {
+                    // Get mouse y-position relative to chart
+                    const [, mouseY] = d3.pointer(event);
+                    setCurrentMouseY(mouseY);
 
-                // Update the crosshair
-                updateCrosshair(d, mouseY);
+                    // Update the crosshair
+                    updateCrosshair(d, mouseY);
+                }
             });
     });
-}
-
-function restoreCrosshairPosition(activeTimestamp, currentMouseY, data, updateCrosshair) {
-    if (activeTimestamp && currentMouseY !== null) {
-        const activeCandle = data.find(d => d.timestamp === activeTimestamp);
-        if (activeCandle) {
-            updateCrosshair(activeCandle, currentMouseY);
-        }
-    }
 }
