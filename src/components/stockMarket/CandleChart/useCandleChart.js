@@ -15,8 +15,13 @@ export function useCandleChart(chartRef) {
     const [isDragging, setIsDragging] = useState(false);
 
     // Configuration constants
-    const MAX_DISPLAY_CANDLES = 100;
+    const MIN_DISPLAY_CANDLES = 20;     // Minimum candles when fully zoomed in
+    const MAX_DISPLAY_CANDLES = 200;    // Maximum candles when fully zoomed out
     const MAX_HISTORY_CANDLES = 500;
+    const DEFAULT_DISPLAY_CANDLES = 100;        // Default zoom level
+
+    // Add zoom level state
+    const [displayedCandles, setDisplayedCandles] = useState(100); // Default zoom level
 
     // Reset crosshair when mouse moves quickly out of the chart
     useEffect(() => {
@@ -53,18 +58,18 @@ export function useCandleChart(chartRef) {
             // Ensure we don't go out of bounds
             const safeStartIndex = Math.max(
                 0,
-                Math.min(viewStartIndex, historicalBuffer.length - MAX_DISPLAY_CANDLES)
+                Math.min(viewStartIndex, historicalBuffer.length - displayedCandles)
             );
 
             // Create a window of data to display
             const visibleData = historicalBuffer.slice(
                 safeStartIndex,
-                safeStartIndex + MAX_DISPLAY_CANDLES
+                safeStartIndex + displayedCandles
             );
 
             setData(visibleData);
         }
-    }, [historicalBuffer, viewStartIndex]);
+    }, [historicalBuffer, viewStartIndex, displayedCandles]);
 
     // Update data with new candles periodically
     useEffect(() => {
@@ -82,10 +87,10 @@ export function useCandleChart(chartRef) {
                 // and not actively dragging
                 if (!isDragging) {
                     setViewStartIndex(prevIndex => {
-                        const isAtEnd = prevIndex + MAX_DISPLAY_CANDLES >= historicalBuffer.length;
+                        const isAtEnd = prevIndex + displayedCandles >= historicalBuffer.length;
                         if (isAtEnd) {
                             // Move forward to keep showing most recent data
-                            return Math.max(0, (historicalBuffer.length + 1) - MAX_DISPLAY_CANDLES);
+                            return Math.max(0, (historicalBuffer.length + 1) - displayedCandles);
                         }
                         return prevIndex;
                     });
@@ -94,7 +99,7 @@ export function useCandleChart(chartRef) {
         }, 5000); // Update every 5 seconds
 
         return () => clearInterval(interval);
-    }, [historicalBuffer, isDragging]);
+    }, [historicalBuffer, isDragging, displayedCandles]);
 
     // Initialize with mock data
     useEffect(() => {
@@ -117,6 +122,11 @@ export function useCandleChart(chartRef) {
         currentMouseY,
         setCurrentMouseY,
         activeTimestamp,
-        setActiveTimestamp
+        setActiveTimestamp,
+        displayedCandles,
+        setDisplayedCandles,
+        MIN_DISPLAY_CANDLES,
+        MAX_DISPLAY_CANDLES,
+        DEFAULT_DISPLAY_CANDLES
     };
 }

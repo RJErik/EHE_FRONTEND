@@ -1,3 +1,4 @@
+// src/pages/StockMarket.jsx (update)
 import Header from "../components/Header";
 import StockSelectors from "../components/stockMarket/StockSelectors.jsx";
 import TimeIntervalButtons from "../components/stockMarket/TimeIntervalButtons.jsx";
@@ -6,6 +7,7 @@ import IndicatorCharts from "../components/stockMarket/IndicatorCharts.jsx";
 import PortfolioList from "../components/stockMarket/PortfolioList.jsx";
 import PortfolioGraph from "../components/stockMarket/PortfolioGraph.jsx";
 import TradePanel from "../components/stockMarket/TradePanel.jsx";
+import { ChartProvider } from "../components/stockMarket/ChartContext.jsx";
 
 const StockMarket = ({ navigate }) => {
     return (
@@ -16,31 +18,33 @@ const StockMarket = ({ navigate }) => {
                 <h1 className="text-4xl font-semibold text-center mb-8">Stock Market</h1>
 
                 <div className="container mx-auto">
-                    <div className="flex flex-col md:flex-row gap-6">
-                        {/* Left section - Charts and controls */}
-                        <div className="w-full md:w-2/3 space-y-4">
-                            <StockSelectors />
-                            <TimeIntervalButtons />
+                    <ChartProvider>
+                        <div className="flex flex-col md:flex-row gap-6">
+                            {/* Left section - Charts and controls */}
+                            <div className="w-full md:w-2/3 space-y-4">
+                                <StockSelectors />
+                                <TimeIntervalButtons />
 
-                            <div className="mt-6 space-y-4">
-                                <CandleChart />
-                                <IndicatorCharts />
+                                <div className="mt-6 space-y-4">
+                                    <CandleChart />
+                                    <IndicatorCharts />
+                                </div>
+                            </div>
+
+                            {/* Right section - Portfolio and Trading */}
+                            <div className="w-full md:w-1/3 space-y-4">
+                                <div className="h-64">
+                                    <PortfolioList />
+                                </div>
+
+                                <div className="h-52">
+                                    <PortfolioGraph />
+                                </div>
+
+                                <TradePanel />
                             </div>
                         </div>
-
-                        {/* Right section - Portfolio and Trading */}
-                        <div className="w-full md:w-1/3 space-y-4">
-                            <div className="h-64">
-                                <PortfolioList />
-                            </div>
-
-                            <div className="h-52">
-                                <PortfolioGraph />
-                            </div>
-
-                            <TradePanel />
-                        </div>
-                    </div>
+                    </ChartProvider>
                 </div>
             </main>
         </div>

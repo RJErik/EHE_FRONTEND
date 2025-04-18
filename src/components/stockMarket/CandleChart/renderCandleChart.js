@@ -9,7 +9,8 @@ export function renderCandleChart({
                                       setCurrentMouseY,
                                       setActiveTimestamp,
                                       activeTimestamp,
-                                      currentMouseY
+                                      currentMouseY,
+                                      displayedCandles
                                   }) {
     if (!data.length || !chartRef.current) return;
 
@@ -128,8 +129,7 @@ export function renderCandleChart({
     };
 }
 
-// Helper functions
-
+// Helper functions remain the same as in the original file
 function calculateAverageTimeInterval(timestamps) {
     if (timestamps.length <= 1) {
         return 24 * 60 * 60 * 1000; // Default to 1 day if not enough data
