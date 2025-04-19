@@ -24,8 +24,8 @@ const IndicatorCharts = () => {
     // Filter indicators by category
     const subIndicators = indicators.filter(ind => ind.category === "sub");
 
-    console.log("Indicators in IndicatorCharts:", indicators);
-    console.log("Filtered subIndicators:", subIndicators);
+    // console.log("Indicators in IndicatorCharts:", indicators);
+    // console.log("Filtered subIndicators:", subIndicators);
 
     return (
         <Card className="w-full">

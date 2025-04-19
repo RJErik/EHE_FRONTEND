@@ -65,7 +65,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
     });
 
     const [colorOption, setColorOption] = useState("default"); // "default", "predefined", or "custom"
-    console.log("Dialog open state:", isOpen);
 
     // Only set a random color when an indicator is selected, not on initial load
     useEffect(() => {

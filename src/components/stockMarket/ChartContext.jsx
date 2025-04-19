@@ -14,7 +14,6 @@ export function ChartProvider({ children }) {
     const [viewStartIndex, setViewStartIndex] = useState(0);
     const [displayedCandles, setDisplayedCandles] = useState(100);
     const [isDragging, setIsDragging] = useState(false);
-    const [isFollowingLatest, setIsFollowingLatest] = useState(true);
 
     // Cursor/hover state
     const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -68,31 +67,101 @@ export function ChartProvider({ children }) {
         }
     }, [hoveredIndex, candleData]);
 
-    // Simulation of real-time updates
     useEffect(() => {
-        // Skip setting up the interval if data generation is disabled
-        if (!isDataGenerationEnabled) return;
+        console.log("[ChartContext] Real-time update effect setup. isDataGenerationEnabled:", isDataGenerationEnabled);
 
+        if (!isDataGenerationEnabled) {
+            console.log("[ChartContext] Data generation is disabled, interval not started.");
+            return; // Exit if data generation is off
+        }
+
+        console.log("[ChartContext] Starting data generation interval (5 seconds).");
         const interval = setInterval(() => {
-            if (historicalBuffer.length > 0) {
-                const newCandle = generateNewCandle(historicalBuffer[historicalBuffer.length - 1]);
+            console.log("--------------------");
+            console.log("[ChartContext] Interval Tick - Attempting to generate new candle.");
 
-                setHistoricalBuffer(prevBuffer => {
-                    const newBuffer = [...prevBuffer, newCandle].slice(-MAX_HISTORY_CANDLES);
-                    return newBuffer;
-                });
-
-                // Only auto-scroll if we're following the latest data
-                if (isFollowingLatest && !isDragging) {
-                    setViewStartIndex(prevIndex => {
-                        return Math.max(0, (historicalBuffer.length + 1) - displayedCandles);
-                    });
-                }
+            if (historicalBuffer.length === 0) {
+                console.log("[ChartContext] Interval Tick - Historical buffer is empty, skipping generation.");
+                return; // Don't generate if buffer is empty
             }
-        }, 5000);
 
-        return () => clearInterval(interval);
-    }, [historicalBuffer, isDragging, displayedCandles, isDataGenerationEnabled, isFollowingLatest]);
+            const currentBufferLength = historicalBuffer.length;
+            const isBufferFull = currentBufferLength >= MAX_HISTORY_CANDLES;
+            const lastCandle = historicalBuffer[historicalBuffer.length - 1];
+            const newCandle = generateNewCandle(lastCandle);
+
+            console.log(`[ChartContext] Interval Tick - Before Update: Buffer Length=${currentBufferLength}, Is Full=${isBufferFull}, Last Candle Timestamp=${lastCandle?.timestamp}`);
+            console.log("[ChartContext] Interval Tick - Generated New Candle:", newCandle);
+
+            // Update historical buffer
+            setHistoricalBuffer(prevBuffer => {
+                const updatedBuffer = [...prevBuffer, newCandle].slice(-MAX_HISTORY_CANDLES);
+                console.log(`[ChartContext] Interval Tick - Updated Buffer: New Length=${updatedBuffer.length}`);
+                return updatedBuffer;
+            });
+
+            // Update viewStartIndex (Fixed Auto-scroll logic)
+            if (!isDragging) {
+                console.log("[ChartContext] Interval Tick - Not dragging, proceeding with auto-scroll check.");
+
+                setViewStartIndex(prevIndex => {
+                    console.log(`[ChartContext] AutoScroll Check - Prev Index: ${prevIndex}, Displayed: ${displayedCandles}, Buffer Length (Before Add): ${currentBufferLength}`);
+
+                    // Check if we're currently viewing the end of the chart
+                    const isViewingEnd = prevIndex + displayedCandles >= currentBufferLength;
+                    console.log(`[ChartContext] AutoScroll Check - Is Viewing End? ${isViewingEnd}`);
+
+                    let newIndex;
+
+                    if (isViewingEnd) {
+                        // If viewing the end, keep showing the newest data
+                        // Advance the view to include the new candle
+                        newIndex = Math.max(0, (currentBufferLength + 1) - displayedCandles);
+                        console.log(`[ChartContext] AutoScroll Action - Viewing End: Scrolling to include new candle. New Index: ${newIndex}`);
+                    }
+                    else if (isBufferFull) {
+                        // If buffer is full but NOT viewing the end,
+                        // Shift by exactly 1 to maintain the same relative position
+                        // This compensates for the oldest candle being removed
+                        newIndex = prevIndex + 1;
+                        console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Full: Shifting +1 to maintain position. New Index: ${newIndex}`);
+                    }
+                    else {
+                        // Not viewing end and buffer isn't full
+                        // Keep the view position exactly the same
+                        newIndex = prevIndex;
+                        console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Not Full: Keeping same position. New Index: ${prevIndex}`);
+                    }
+
+                    // Ensure index is within valid bounds just in case
+                    const finalBoundedIndex = Math.max(0, Math.min(newIndex, (currentBufferLength + 1) - displayedCandles));
+                    if (finalBoundedIndex !== newIndex) {
+                        console.warn(`[ChartContext] AutoScroll Warning - Calculated index ${newIndex} was out of bounds, corrected to ${finalBoundedIndex}`);
+                    }
+
+                    console.log(`[ChartContext] AutoScroll Final - Setting viewStartIndex to: ${finalBoundedIndex}`);
+                    return finalBoundedIndex;
+                });
+            } else {
+                console.log("[ChartContext] Interval Tick - Currently dragging, skipping auto-scroll.");
+            }
+            console.log("--------------------");
+
+        }, 5000); // Generate every 5 seconds
+
+        // Cleanup function
+        return () => {
+            console.log("[ChartContext] Cleaning up data generation interval.");
+            clearInterval(interval);
+        };
+    }, [
+        historicalBuffer, // Recalculate if buffer changes (needed for length checks)
+        isDragging,       // Recalculate if dragging state changes
+        displayedCandles, // Recalculate if displayed candles count changes
+        isDataGenerationEnabled, // Re-run effect if generation is toggled
+        // MAX_HISTORY_CANDLES is a constant, doesn't need to be a dependency
+        // setHistoricalBuffer, setViewStartIndex are stable refs from useState
+    ]);
 
     // Calculate indicator values when candle data changes
     useEffect(() => {
@@ -154,8 +223,6 @@ export function ChartProvider({ children }) {
             setDisplayedCandles,
             isDragging,
             setIsDragging,
-            isFollowingLatest,
-            setIsFollowingLatest,
 
             // Hover state
             hoveredIndex,

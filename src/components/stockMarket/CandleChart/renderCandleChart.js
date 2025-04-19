@@ -76,13 +76,13 @@ export function renderCandleChart({
 
     // Draw main indicators if present
     if (mainIndicators && mainIndicators.length > 0) {
-        console.log("Drawing main indicators on chart:", mainIndicators);
+        //console.log("Drawing main indicators on chart:", mainIndicators);
 
 // In renderCandleChart.js - modify the mainIndicators.forEach loop:
 
         mainIndicators.forEach(indicator => {
             if (!indicator.values) {
-                console.warn("Indicator missing values:", indicator.name);
+                //console.warn("Indicator missing values:", indicator.name);
                 return;
             }
 
@@ -462,7 +462,7 @@ function createHoverZones(
                 setActiveTimestamp(d.timestamp);
 
                 // Only update hovered candle if not dragging
-                    setHoveredCandle(d);
+                setHoveredCandle(d);
             })
             .on("mousemove", function(event) {
                 // Get mouse y-position relative to chart

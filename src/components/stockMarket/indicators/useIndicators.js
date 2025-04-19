@@ -16,7 +16,6 @@ export function useIndicators() {
 
     // Configure an indicator
     const configureIndicator = (id) => {
-        console.log("Configuring indicator with ID:", id);
         const indicator = indicators.find(ind => ind.id === id);
         if (indicator) {
             setConfiguringIndicator(indicator);
@@ -25,9 +24,9 @@ export function useIndicators() {
         }
     };
 
-    // Debugging log to see what's being returned
-    console.log("useIndicators hook returning indicators:",
-        indicators?.map(i => ({id: i.id, name: i.name, category: i.category})));
+    // // Debugging log to see what's being returned
+    // console.log("useIndicators hook returning indicators:",
+    //     indicators?.map(i => ({id: i.id, name: i.name, category: i.category})));
 
     return {
         indicators,
