@@ -96,7 +96,7 @@ export function useCandleChart(chartRef) {
                     });
                 }
             }
-        }, 5000); // Update every 5 seconds
+        }, 50000); // Update every 5 seconds
 
         return () => clearInterval(interval);
     }, [historicalBuffer, isDragging, displayedCandles]);

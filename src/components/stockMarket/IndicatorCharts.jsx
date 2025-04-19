@@ -16,11 +16,16 @@ const IndicatorCharts = () => {
         configureIndicator
     } = useIndicators();
 
+
+
     const MAX_INDICATORS = 15;
     const showAddButton = indicators.length < MAX_INDICATORS;
 
     // Filter indicators by category
     const subIndicators = indicators.filter(ind => ind.category === "sub");
+
+    console.log("Indicators in IndicatorCharts:", indicators);
+    console.log("Filtered subIndicators:", subIndicators);
 
     return (
         <Card className="w-full">
@@ -37,7 +42,10 @@ const IndicatorCharts = () => {
                             ))}
 
                             {showAddButton && (
-                                <AddIndicatorCard onClick={() => setIsDialogOpen(true)}/>
+                                <AddIndicatorCard onClick={() => {
+                                    console.log("Add indicator card clicked");
+                                    setIsDialogOpen(true);
+                                }}/>
                             )}
                         </div>
                 </ScrollArea>
@@ -47,6 +55,7 @@ const IndicatorCharts = () => {
                 isOpen={isDialogOpen}
                 onClose={() => setIsDialogOpen(false)}
                 onAdd={addIndicator}
+
             />
         </Card>
     );

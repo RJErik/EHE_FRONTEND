@@ -10,6 +10,7 @@ import { useIndicators } from "../indicators/useIndicators.js";
 const CandleChart = () => {
     const chartRef = useRef(null);
     const dragStartXRef = useRef(null);
+    const dragStartViewIndexRef = useRef(null); // Store viewStartIndex at drag start
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
 
     // Use the shared chart context instead of local state
@@ -33,7 +34,9 @@ const CandleChart = () => {
         MIN_DISPLAY_CANDLES,
         MAX_DISPLAY_CANDLES,
         hoveredIndex,
-        setHoveredIndex
+        setHoveredIndex,
+        isDataGenerationEnabled,
+        setIsDataGenerationEnabled
     } = useContext(ChartContext);
 
     const DEFAULT_DISPLAY_CANDLES = 100; // Define constant here for reset function
@@ -41,12 +44,20 @@ const CandleChart = () => {
     // Get main indicators that should be displayed on the candle chart
     const { indicators } = useIndicators();
     const mainIndicators = indicators?.filter(ind => ind.category === "main") || [];
+    // console.log("Indicator with category check:", indicators.map(ind => ({id: ind.id, category: ind.category, isMain: ind.category === "main"})));
 
     // D3 chart rendering
     useEffect(() => {
-        if (!data || data.length === 0) return;
+        if (!data || data.length === 0 || !chartRef.current) return;
 
-        const chartInfo = renderCandleChart({
+        // console.log("About to render chart with indicators:", {
+        //     count: mainIndicators.length,
+        //     first: mainIndicators[0],
+        //     hasValues: mainIndicators[0]?.values ? 'yes' : 'no'
+        // });
+
+
+        renderCandleChart({
             chartRef,
             data,
             isLogarithmic,
@@ -59,11 +70,13 @@ const CandleChart = () => {
             displayedCandles,
             mainIndicators, // Pass main indicators for rendering
             hoveredIndex,
-            setHoveredIndex
+            setHoveredIndex,
+            viewStartIndex // Pass the current viewStartIndex
         });
 
         // Add window resize handler
         const handleResize = () => {
+            // Re-render on resize
             renderCandleChart({
                 chartRef,
                 data,
@@ -77,22 +90,34 @@ const CandleChart = () => {
                 displayedCandles,
                 mainIndicators,
                 hoveredIndex,
-                setHoveredIndex
+                setHoveredIndex,
+                viewStartIndex // Pass the current viewStartIndex
             });
         };
 
         window.addEventListener('resize', handleResize);
         return () => {
             window.removeEventListener('resize', handleResize);
+            // Optional: Clear SVG on unmount or when dependencies change significantly
+            if (chartRef.current) {
+                const svg = chartRef.current.querySelector('svg');
+                if (svg) {
+                    svg.remove();
+                }
+            }
         };
-    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex]);
+        // Ensure all dependencies that affect rendering are included
+    }, [
+        data, isLogarithmic, currentMouseY, activeTimestamp, isDragging,
+        displayedCandles, mainIndicators, hoveredIndex, viewStartIndex,
+        setHoveredCandle, setCurrentMouseY, setActiveTimestamp, setHoveredIndex
+    ]);
 
-    // Zoom control handlers
+    // Zoom control handlers (No changes needed here)
     const handleZoomIn = () => {
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP);
 
-        // Center the zoom on the middle of the current view
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
 
@@ -107,7 +132,6 @@ const CandleChart = () => {
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
 
-        // Center the zoom on the middle of the current view
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
 
@@ -120,113 +144,139 @@ const CandleChart = () => {
 
     const handleResetZoom = () => {
         const newDisplayedCandles = DEFAULT_DISPLAY_CANDLES;
-
-        // Center the zoom on the middle of the current view
+        // Recenter based on the *current* middle, then apply default zoom
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
+
 
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
+            // Ensure the reset index is valid with the new candle count
             Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
         ));
     };
 
-    // Handle zoom functionality
+    // Handle zoom functionality (No changes needed here)
     const handleWheel = (e) => {
         e.preventDefault(); // Prevent page scrolling
 
-        // Determine zoom direction
         const isZoomIn = e.deltaY < 0;
-
-        // Calculate the candle index at mouse position
         const chartRect = chartRef.current.getBoundingClientRect();
-        const mouseX = e.clientX - chartRect.left - 60; // Adjust for left margin
-        const mouseXRatio = mouseX / (chartRect.width - 120); // Adjust for margins
+        const marginLeft = 60;
+        const marginRight = 60;
+        const chartWidth = chartRect.width - marginLeft - marginRight;
 
-        // Find which candle is under the cursor (clamping to valid range)
-        const candleIndexAtMouse = Math.max(0, Math.min(
-            Math.floor(mouseXRatio * data.length),
-            data.length - 1
-        ));
+        const mouseX = e.clientX - chartRect.left - marginLeft;
+        const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth)); // Clamp ratio [0, 1]
 
-        const absoluteIndexAtMouse = viewStartIndex + candleIndexAtMouse;
+        const candleIndexUnderMouse = Math.floor(mouseXRatio * displayedCandles);
+        const absoluteIndexUnderMouse = viewStartIndex + candleIndexUnderMouse;
 
-        // Calculate new zoom level
-        const ZOOM_STEP = 5; // How many candles to add/remove per zoom action
+        const ZOOM_STEP = 5;
         const newDisplayedCandles = isZoomIn
             ? Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP)
             : Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
 
-        // Calculate new start index to keep the same candle under mouse cursor
-        const newCandleIndexAtMouse = Math.floor(mouseXRatio * newDisplayedCandles);
-        let newViewStartIndex = absoluteIndexAtMouse - newCandleIndexAtMouse;
+        // If the number of candles didn't change, do nothing
+        if (newDisplayedCandles === displayedCandles) return;
 
-        // Update state (bounded to valid ranges)
-        setDisplayedCandles(newDisplayedCandles);
-        setViewStartIndex(Math.max(
+        // Calculate the new index ratio under the mouse for the new zoom level
+        const newCandleIndexUnderMouse = Math.floor(mouseXRatio * newDisplayedCandles);
+        let newViewStartIndex = absoluteIndexUnderMouse - newCandleIndexUnderMouse;
+
+        // Adjust start index to stay within bounds
+        newViewStartIndex = Math.max(
             0,
             Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
-        ));
+        );
+
+        setDisplayedCandles(newDisplayedCandles);
+        setViewStartIndex(newViewStartIndex);
     };
+
 
     // Setup dragging events
     useEffect(() => {
         const getCandleWidth = () => {
-            // Calculate candle width based on current zoom level
-            if (chartRef.current) {
-                const chartWidth = chartRef.current.clientWidth - 120; // Adjust for margins
-                return chartWidth / displayedCandles;
+            if (chartRef.current && displayedCandles > 0) {
+                const chartWidth = chartRef.current.clientWidth;
+                // Use the actual chart drawing area width
+                const drawingWidth = chartWidth - 120; // Adjust for margins (60 left + 60 right)
+                return drawingWidth / displayedCandles;
             }
-            return 10;
+            return 10; // Fallback width
         };
 
         const handleMouseDown = (e) => {
-            // Only start drag with left mouse button
-            if (e.button === 0) {
-                setIsDragging(true);
-                dragStartXRef.current = e.clientX;
-                if (chartRef.current) {
-                    chartRef.current.style.cursor = 'grabbing';
+            if (e.button === 0) { // Only left mouse button
+                const chartRect = chartRef.current.getBoundingClientRect();
+                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+
+                const isInChartArea =
+                    e.clientX >= chartRect.left + marginLeft &&
+                    e.clientX <= chartRect.right - marginRight &&
+                    e.clientY >= chartRect.top + marginTop &&
+                    e.clientY <= chartRect.bottom - marginBottom;
+
+                if (isInChartArea) {
+                    setIsDragging(true);
+                    dragStartXRef.current = e.clientX;
+                    dragStartViewIndexRef.current = viewStartIndex; // *** Store the starting index ***
+                    if (chartRef.current) {
+                        chartRef.current.style.cursor = 'grabbing';
+                    }
+                    e.preventDefault();
                 }
-                e.preventDefault(); // Prevent text selection
             }
         };
 
         const handleMouseMove = (e) => {
-            // Always update Y position for crosshair, even during drag
-            if (chartRef.current && isMouseOverChart) {
+            // Update Y position for crosshair if mouse is over the chart area AND not dragging
+            if (chartRef.current && isMouseOverChart && !isDragging) {
                 const chartRect = chartRef.current.getBoundingClientRect();
-                const yRelative = e.clientY - chartRect.top - 20; // Adjust for top margin
+                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+                const relativeX = e.clientX - chartRect.left;
+                const relativeY = e.clientY - chartRect.top;
 
-                // Only update if mouse is within chart bounds
-                if (yRelative >= 0 && yRelative <= chartRect.height - 60) { // Adjust for margins
-                    setCurrentMouseY(yRelative);
+                const isInChartArea =
+                    relativeX >= marginLeft &&
+                    relativeX <= (chartRect.width - marginRight) &&
+                    relativeY >= marginTop &&
+                    relativeY <= (chartRect.height - marginBottom);
+
+                if (isInChartArea) {
+                    const yRelative = relativeY - marginTop;
+                    setCurrentMouseY(yRelative); // Update Y for crosshair
                 }
             }
 
-            if (isDragging && dragStartXRef.current !== null) {
-                const deltaX = e.clientX - dragStartXRef.current;
+            // Handle dragging logic
+            if (isDragging && dragStartXRef.current !== null && dragStartViewIndexRef.current !== null) {
+                const currentX = e.clientX;
+                const deltaX = currentX - dragStartXRef.current; // Total pixel distance dragged
                 const candleWidth = getCandleWidth();
 
-                // Calculate candles to move (negative means show older data)
-                const candlesToMove = Math.round(deltaX / candleWidth);
+                if (candleWidth > 0) {
+                    // Calculate the total number of candles to shift based on total drag distance
+                    const totalCandlesToShift = deltaX / candleWidth;
 
-                if (candlesToMove !== 0) {
-                    setViewStartIndex(prevIndex => {
-                        // Calculate new index
-                        const newIndex = prevIndex - candlesToMove;
+                    // Calculate the target new index based on the index when drag started
+                    const targetViewStartIndex = dragStartViewIndexRef.current - totalCandlesToShift;
 
-                        // Bounds checking
-                        return Math.max(
-                            0,
-                            Math.min(newIndex, historicalBuffer.length - displayedCandles)
-                        );
-                    });
+                    // Apply bounds and rounding
+                    const newIndex = Math.round(targetViewStartIndex);
+                    const boundedIndex = Math.max(
+                        0,
+                        Math.min(newIndex, historicalBuffer.length - displayedCandles)
+                    );
 
-                    // Reset drag start position for continuous dragging
-                    dragStartXRef.current = e.clientX;
+                    // Update state only if the index actually changes to avoid unnecessary re-renders
+                    if (boundedIndex !== viewStartIndex) {
+                        setViewStartIndex(boundedIndex);
+                    }
                 }
+                // *** DO NOT reset dragStartXRef.current here ***
             }
         };
 
@@ -234,55 +284,102 @@ const CandleChart = () => {
             if (isDragging) {
                 setIsDragging(false);
                 dragStartXRef.current = null;
-                if (chartRef.current) {
-                    chartRef.current.style.cursor = 'crosshair';
-                }
+                dragStartViewIndexRef.current = null; // *** Clear the starting index ***
 
-                // Ensure we have the current Y position at the exact spot we release
-                if (chartRef.current && isMouseOverChart) {
+                // Update cursor based on whether the mouse is still over the chart
+                if (chartRef.current) {
                     const chartRect = chartRef.current.getBoundingClientRect();
-                    const yRelative = e.clientY - chartRect.top - 20; // Adjust for top margin
-                    if (yRelative >= 0 && yRelative <= chartRect.height - 60) {
+                    const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+                    const relativeX = e.clientX - chartRect.left;
+                    const relativeY = e.clientY - chartRect.top;
+                    const isInChartArea =
+                        relativeX >= marginLeft &&
+                        relativeX <= (chartRect.width - marginRight) &&
+                        relativeY >= marginTop &&
+                        relativeY <= (chartRect.height - marginBottom);
+
+                    setIsMouseOverChart(isInChartArea); // Update mouse over state on mouse up
+
+                    if (!isInChartArea) {
+                        // If mouse released outside, clear hover state
+                        setHoveredCandle(null);
+                        setCurrentMouseY(null);
+                        setActiveTimestamp(null);
+                        setHoveredIndex(null);
+                    } else {
+                        // Ensure Y position is updated on release if still inside
+                        const yRelative = relativeY - marginTop;
                         setCurrentMouseY(yRelative);
                     }
                 }
             }
         };
 
-        const handleMouseEnter = () => {
-            setIsMouseOverChart(true);
-        };
+        // --- Mouse Enter/Leave/Wheel Logic --- (Mostly unchanged, added bounds checks)
+        const handleMouseEnter = (e) => {
+            const chartRect = chartRef.current.getBoundingClientRect();
+            const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+            const relativeX = e.clientX - chartRect.left;
+            const relativeY = e.clientY - chartRect.top;
+            const isInChartArea =
+                relativeX >= marginLeft &&
+                relativeX <= (chartRect.width - marginRight) &&
+                relativeY >= marginTop &&
+                relativeY <= (chartRect.height - marginBottom);
 
-        const handleMouseLeave = () => {
-            setIsMouseOverChart(false);
-            if (isDragging) {
-                setIsDragging(false);
-                dragStartXRef.current = null;
-                if (chartRef.current) {
-                    chartRef.current.style.cursor = 'crosshair';
-                }
+            if (isInChartArea) {
+                setIsMouseOverChart(true);
             }
-
-            // Clear crosshair state when mouse leaves
-            setHoveredCandle(null);
-            setCurrentMouseY(null);
-            setActiveTimestamp(null);
-            setHoveredIndex(null);
         };
 
-        const handleWheelEvent = (e) => handleWheel(e);
+        const handleMouseLeave = (e) => {
+            // Check if the mouse is truly leaving the chart element boundary
+            if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
+                setIsMouseOverChart(false);
+                if (isDragging) {
+                    // If dragging stops because mouse left, treat it like mouse up
+                    setIsDragging(false);
+                    dragStartXRef.current = null;
+                    dragStartViewIndexRef.current = null; // Clear start index
+                }
+                // Clear crosshair state
+                setHoveredCandle(null);
+                setCurrentMouseY(null);
+                setActiveTimestamp(null);
+                setHoveredIndex(null);
+            }
+        };
 
-        // Global mouse move tracking for catching fast mouse movements
-        const handleGlobalMouseMove = (e) => {
-            if (chartRef.current && isMouseOverChart) {
+        const handleWheelEvent = (e) => {
+            if (!chartRef.current) return;
+            const chartRect = chartRef.current.getBoundingClientRect();
+            const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+            const relativeX = e.clientX - chartRect.left;
+            const relativeY = e.clientY - chartRect.top;
+            const isInChartArea =
+                relativeX >= marginLeft &&
+                relativeX <= (chartRect.width - marginRight) &&
+                relativeY >= marginTop &&
+                relativeY <= (chartRect.height - marginBottom);
+
+            if (isInChartArea) {
+                handleWheel(e); // Call the zoom handler
+            }
+        };
+
+        // Global mouse move listener to catch mouse leaving the chart area *while not dragging*
+        // This helps clear the crosshair if the mouse moves out quickly.
+        const handleGlobalMouseMoveForLeave = (e) => {
+            if (chartRef.current && !isDragging && isMouseOverChart) {
                 const chartRect = chartRef.current.getBoundingClientRect();
-                const isStillOverChart =
-                    e.clientX >= chartRect.left &&
-                    e.clientX <= chartRect.right &&
-                    e.clientY >= chartRect.top &&
-                    e.clientY <= chartRect.bottom;
+                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+                const isStillOverChartArea =
+                    e.clientX >= chartRect.left + marginLeft &&
+                    e.clientX <= chartRect.right - marginRight &&
+                    e.clientY >= chartRect.top + marginTop &&
+                    e.clientY <= chartRect.bottom - marginBottom;
 
-                if (!isStillOverChart && !isDragging) {
+                if (!isStillOverChartArea) {
                     setIsMouseOverChart(false);
                     setHoveredCandle(null);
                     setCurrentMouseY(null);
@@ -292,34 +389,43 @@ const CandleChart = () => {
             }
         };
 
+
         // Attach event listeners
-        if (chartRef.current) {
-            chartRef.current.addEventListener('mousedown', handleMouseDown);
-            chartRef.current.addEventListener('wheel', handleWheelEvent, { passive: false });
-            chartRef.current.addEventListener('mouseenter', handleMouseEnter);
-            chartRef.current.addEventListener('mouseleave', handleMouseLeave);
+        const chartElement = chartRef.current;
+        if (chartElement) {
+            chartElement.addEventListener('mousedown', handleMouseDown);
+            chartElement.addEventListener('wheel', handleWheelEvent, { passive: false });
+            chartElement.addEventListener('mouseenter', handleMouseEnter);
+            chartElement.addEventListener('mouseleave', handleMouseLeave);
         }
+        // Use document listeners for move/up to capture events outside the chart element during drag
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
-        document.addEventListener('mousemove', handleGlobalMouseMove);
+        document.addEventListener('mousemove', handleGlobalMouseMoveForLeave); // Separate listener for leave detection
 
         // Cleanup
         return () => {
-            if (chartRef.current) {
-                chartRef.current.removeEventListener('mousedown', handleMouseDown);
-                chartRef.current.removeEventListener('wheel', handleWheelEvent);
-                chartRef.current.removeEventListener('mouseenter', handleMouseEnter);
-                chartRef.current.removeEventListener('mouseleave', handleMouseLeave);
+            if (chartElement) {
+                chartElement.removeEventListener('mousedown', handleMouseDown);
+                chartElement.removeEventListener('wheel', handleWheelEvent);
+                chartElement.removeEventListener('mouseenter', handleMouseEnter);
+                chartElement.removeEventListener('mouseleave', handleMouseLeave);
             }
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
-            document.removeEventListener('mousemove', handleGlobalMouseMove);
+            document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
     }, [
-        data, isDragging, setIsDragging, setViewStartIndex, historicalBuffer,
-        setCurrentMouseY, displayedCandles, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES,
-        setHoveredIndex, isMouseOverChart, setHoveredCandle, setActiveTimestamp, setHoveredIndex
+        // Include all state and props used within the effect and its handlers
+        isDragging, setIsDragging, viewStartIndex, setViewStartIndex, historicalBuffer.length,
+        displayedCandles, setDisplayedCandles, // Added setDisplayedCandles for zoom/reset
+        setCurrentMouseY, isMouseOverChart, // Added isMouseOverChart
+        setHoveredCandle, setActiveTimestamp, setHoveredIndex, // Other state setters
+        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES // Constants used in handlers
+        // Note: `data` is not directly used in handlers, but implicitly via `displayedCandles` etc.
+        // `chartRef` is stable. `dragStartXRef`, `dragStartViewIndexRef` refs don't need to be deps.
     ]);
+
 
     // Calculate zoom percentage for display
     const zoomPercentage = Math.round(
@@ -329,35 +435,35 @@ const CandleChart = () => {
 
     return (
         <Card className="w-full h-80">
-            <CardContent className="flex flex-col h-full">
-                <div className="flex justify-between items-center mb-2">
+            <CardContent className="flex flex-col h-full p-4">
+                <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col space-y-1">
-                        <CandleInfoPanel candle={hoveredCandle}/>
-                        {/* Display main indicators info below candle info */}
-                        <MainIndicatorInfoPanel indicators={mainIndicators} />
+                        {/* Pass hoveredCandle and mainIndicators/hoveredIndex */}
+                        <CandleInfoPanel candle={hoveredCandle} />
+                        <MainIndicatorInfoPanel indicators={mainIndicators} hoveredIndex={hoveredIndex} />
                     </div>
-                    <div className="flex items-center">
-                        <div className="text-xs text-gray-500 mr-2">
+                    <div className="flex items-center flex-shrink-0">
+                        <div className="text-xs text-gray-500 mr-2 whitespace-nowrap">
                             Zoom: {zoomPercentage}%
                         </div>
                         <div className="flex space-x-1 mr-2">
                             <button
                                 onClick={handleZoomIn}
-                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded"
+                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
                                 title="Zoom In"
                             >
                                 +
                             </button>
                             <button
                                 onClick={handleResetZoom}
-                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded"
+                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
                                 title="Reset Zoom"
                             >
                                 ↺
                             </button>
                             <button
                                 onClick={handleZoomOut}
-                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded"
+                                className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
                                 title="Zoom Out"
                             >
                                 -
@@ -365,17 +471,36 @@ const CandleChart = () => {
                         </div>
                         <button
                             onClick={() => setIsLogarithmic(!isLogarithmic)}
-                            className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded"
+                            className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600"
                         >
                             {isLogarithmic ? "Linear" : "Log"} Scale
+                        </button>
+                        <button
+                            onClick={() => setIsDataGenerationEnabled(!isDataGenerationEnabled)}
+                            className={`px-2 py-1 text-xs rounded mr-2 whitespace-nowrap hover:opacity-80 ${
+                                isDataGenerationEnabled
+                                    ? "bg-green-200 dark:bg-green-700"
+                                    : "bg-gray-200 dark:bg-gray-700"
+                            }`}
+                            title={isDataGenerationEnabled ? "Pause Data Generation" : "Resume Data Generation"}
+                        >
+                            {isDataGenerationEnabled ? "Live Data" : "Static Data"}
                         </button>
                     </div>
                 </div>
                 <div
                     ref={chartRef}
-                    className="flex-1 w-full overflow-hidden"
-                    style={{cursor: isDragging ? 'grabbing' : 'crosshair'}}
-                ></div>
+                    className="flex-1 w-full overflow-hidden relative"
+                    style={{
+                        cursor: isDragging
+                            ? 'grabbing'
+                            : isMouseOverChart
+                                ? 'crosshair'
+                                : 'default'
+                    }}
+                >
+                    {/* SVG will be appended here by D3 */}
+                </div>
             </CardContent>
         </Card>
     );

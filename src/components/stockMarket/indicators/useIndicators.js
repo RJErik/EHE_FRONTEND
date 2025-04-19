@@ -1,50 +1,33 @@
 // src/components/stockMarket/indicators/useIndicators.js
-import { useState, useEffect, useContext } from "react";
-import { v4 as uuidv4 } from "uuid";
+import { useState, useContext } from "react";
 import { ChartContext } from "../ChartContext.jsx";
-import { calculateIndicator } from "./indicatorCalculations.js";
 
 export function useIndicators() {
-    const [indicators, setIndicators] = useState([]);
+    // Only local state is for configuration UI
     const [configuringIndicator, setConfiguringIndicator] = useState(null);
-    const { candleData } = useContext(ChartContext) || { candleData: [] };
 
-    // Calculate values for all indicators when candle data changes
-    useEffect(() => {
-        if (!candleData || candleData.length === 0) return;
+    // Get indicator state and functions from shared context
+    const {
+        indicators = [],
+        addIndicator = () => console.error("ChartContext not available"),
+        removeIndicator = () => console.error("ChartContext not available"),
+        updateIndicator = () => console.error("ChartContext not available")
+    } = useContext(ChartContext) || {};
 
-        // Calculate values for each indicator
-        const updatedIndicators = indicators.map(indicator => {
-            const values = calculateIndicator(indicator, candleData);
-            return { ...indicator, values };
-        });
-
-        setIndicators(updatedIndicators);
-    }, [candleData, indicators]);
-
-    const addIndicator = (indicator) => {
-        const newIndicator = {
-            ...indicator,
-            id: uuidv4()
-        };
-
-        setIndicators(prev => [...prev, newIndicator]);
-    };
-
-    const removeIndicator = (id) => {
-        setIndicators(prev => prev.filter(ind => ind.id !== id));
-    };
-
-    const updateIndicator = (id, updates) => {
-        setIndicators(prev =>
-            prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
-        );
-    };
-
+    // Configure an indicator
     const configureIndicator = (id) => {
+        console.log("Configuring indicator with ID:", id);
         const indicator = indicators.find(ind => ind.id === id);
-        setConfiguringIndicator(indicator);
+        if (indicator) {
+            setConfiguringIndicator(indicator);
+        } else {
+            console.warn(`Indicator with id ${id} not found for configuration`);
+        }
     };
+
+    // Debugging log to see what's being returned
+    console.log("useIndicators hook returning indicators:",
+        indicators?.map(i => ({id: i.id, name: i.name, category: i.category})));
 
     return {
         indicators,

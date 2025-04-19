@@ -1,13 +1,36 @@
-// src/components/stockMarket/indicators/IndicatorSelectionDialog.jsx
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../ui/dialog.jsx";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../ui/tabs.jsx";
+import { Tabs, TabsList, TabsTrigger } from "../../ui/tabs.jsx";
 import { Button } from "../../ui/button.jsx";
 import { Input } from "../../ui/input.jsx";
 import { Label } from "../../ui/label.jsx";
 import { ScrollArea } from "../../ui/scroll-area.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.jsx";
-import { ColorPicker, getRandomColor } from "./ColorPicker.jsx";
+
+// Define predefined colors with names
+const PREDEFINED_COLORS = [
+    { hex: "#FF5733", name: "Coral Red" },
+    { hex: "#33FF57", name: "Lime Green" },
+    { hex: "#3357FF", name: "Royal Blue" },
+    { hex: "#F033FF", name: "Bright Purple" },
+    { hex: "#FF3333", name: "Crimson" },
+    { hex: "#33FFF5", name: "Turquoise" },
+    { hex: "#F5FF33", name: "Canary Yellow" },
+    { hex: "#FF33A8", name: "Hot Pink" },
+    { hex: "#A833FF", name: "Violet" },
+    { hex: "#33A8FF", name: "Sky Blue" },
+    { hex: "#FFA833", name: "Orange" },
+    { hex: "#33FFA8", name: "Mint Green" },
+    { hex: "#A8FF33", name: "Chartreuse" },
+    { hex: "#8A2BE2", name: "Blue Violet" },
+    { hex: "#008000", name: "Forest Green" },
+];
+
+// Function to get a random color
+const getRandomColor = () => {
+    const randomIndex = Math.floor(Math.random() * PREDEFINED_COLORS.length);
+    return PREDEFINED_COLORS[randomIndex];
+};
 
 // Mock indicator types with short names and available categories
 const INDICATOR_TYPES = [
@@ -19,32 +42,50 @@ const INDICATOR_TYPES = [
     { id: "atr", name: "Average True Range", shortName: "ATR", categories: ["sub"], category: "Volatility" }
 ];
 
+// Find color name by hex value
+const getColorNameByHex = (hexValue) => {
+    const color = PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
+    return color ? color.name : "Custom";
+};
+
+// Find color object by hex value
+const getColorByHex = (hexValue) => {
+    return PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
+};
+
 const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
     const [category, setCategory] = useState("main");
     const [selectedType, setSelectedType] = useState(null);
     const [settings, setSettings] = useState({
         period: 14,
         source: "close",
-        color: getRandomColor(),
+        color: "",
+        colorName: "",
         thickness: 2
     });
 
-// Reset selected type when changing tabs
+    const [colorOption, setColorOption] = useState("default"); // "default", "predefined", or "custom"
+    console.log("Dialog open state:", isOpen);
+
+    // Only set a random color when an indicator is selected, not on initial load
+    useEffect(() => {
+        if (selectedType) {
+            const randomColor = getRandomColor();
+            setSettings(prev => ({
+                ...prev,
+                color: randomColor.hex,
+                colorName: randomColor.name
+            }));
+            setColorOption("predefined");
+        }
+    }, [selectedType]);
+
+    // Reset selected type when changing tabs
     useEffect(() => {
         setSelectedType(null);
     }, [category]);
 
-// Update color when a new indicator type is selected
-    useEffect(() => {
-        if (selectedType) {
-            setSettings(prev => ({
-                ...prev,
-                color: getRandomColor()
-            }));
-        }
-    }, [selectedType]);
-
-// Filter indicators by the selected category tab
+    // Filter indicators by the selected category tab
     const filteredIndicators = INDICATOR_TYPES.filter(indicator =>
         indicator.categories.includes(category)
     );
@@ -56,7 +97,12 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
             name: INDICATOR_TYPES.find(t => t.id === selectedType).shortName,
             type: selectedType,
             category,
-            settings
+            settings: {
+                period: settings.period,
+                source: settings.source,
+                color: settings.color,
+                thickness: settings.thickness
+            }
         };
 
         onAdd(newIndicator);
@@ -67,9 +113,61 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
         setSettings({
             period: 14,
             source: "close",
-            color: getRandomColor(),
+            color: "",
+            colorName: "",
             thickness: 2
         });
+        setColorOption("default");
+    };
+
+    // Handle color text input changes
+    const handleColorTextChange = (e) => {
+        const newHexColor = e.target.value;
+        const colorObj = getColorByHex(newHexColor);
+
+        setSettings(prev => ({
+            ...prev,
+            color: newHexColor,
+            colorName: colorObj ? colorObj.name : "Custom"
+        }));
+
+        // If the text input matches a predefined color, select that option
+        if (colorObj) {
+            setColorOption("predefined");
+        } else {
+            setColorOption("custom");
+        }
+    };
+
+    // Handle color selection from dropdown
+    const handleColorSelection = (value) => {
+        if (value === "custom") {
+            setColorOption("custom");
+            // Keep the current color
+        } else {
+            // Find color object by ID (index)
+            const selectedIndex = parseInt(value);
+            const selectedColor = PREDEFINED_COLORS[selectedIndex];
+
+            setSettings(prev => ({
+                ...prev,
+                color: selectedColor.hex,
+                colorName: selectedColor.name
+            }));
+            setColorOption("predefined");
+        }
+    };
+
+    // Get the current value for the color dropdown
+    const getColorDropdownValue = () => {
+        if (colorOption === "custom") return "custom";
+
+        // Find index of the current color in predefined colors
+        const colorIndex = PREDEFINED_COLORS.findIndex(
+            color => color.hex.toLowerCase() === settings.color.toLowerCase()
+        );
+
+        return colorIndex !== -1 ? colorIndex.toString() : "custom";
     };
 
     return (
@@ -118,7 +216,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                             <Input
                                                 type="number"
                                                 value={settings.period}
-                                                onChange={e => setSettings({...settings, period: parseInt(e.target.value)})}
+                                                onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
                                                 min="1"
                                             />
                                         </div>
@@ -127,7 +225,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                             <Label>Source</Label>
                                             <Select
                                                 value={settings.source}
-                                                onValueChange={value => setSettings({...settings, source: value})}
+                                                onValueChange={value => setSettings(prev => ({...prev, source: value}))}
                                             >
                                                 <SelectTrigger>
                                                     <SelectValue placeholder="Select source" />
@@ -145,10 +243,48 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
 
                                         <div className="space-y-2">
                                             <Label>Line Color</Label>
-                                            <ColorPicker
-                                                color={settings.color}
-                                                onChange={color => setSettings({...settings, color})}
-                                            />
+                                            <div className="flex gap-2 items-center">
+                                                {/* Color preview rectangle */}
+                                                <div
+                                                    className="w-8 h-8 border rounded-md flex-shrink-0"
+                                                    style={{ backgroundColor: settings.color }}
+                                                />
+
+                                                {/* Color text input */}
+                                                <Input
+                                                    type="text"
+                                                    value={settings.color}
+                                                    onChange={handleColorTextChange}
+                                                    className="flex-1"
+                                                    placeholder="#RRGGBB"
+                                                />
+                                            </div>
+
+                                            {/* Color dropdown */}
+                                            <Select
+                                                value={getColorDropdownValue()}
+                                                onValueChange={handleColorSelection}
+                                            >
+                                                <SelectTrigger className="mt-2">
+                                                    <SelectValue placeholder="Select color">
+                                                        {colorOption === "custom" ? "Custom" : settings.colorName}
+                                                    </SelectValue>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="custom">Custom</SelectItem>
+                                                    {PREDEFINED_COLORS.map((color, index) => (
+                                                        <SelectItem key={`${color.hex}-${index}`} value={index.toString()} className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-2 w-full">
+                                                                <div
+                                                                    className="w-4 h-4 rounded-full inline-block"
+                                                                    style={{ backgroundColor: color.hex }}
+                                                                />
+                                                                <span>{color.name}</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div className="space-y-2">
@@ -156,7 +292,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                             <Input
                                                 type="number"
                                                 value={settings.thickness}
-                                                onChange={e => setSettings({...settings, thickness: parseInt(e.target.value)})}
+                                                onChange={e => setSettings(prev => ({...prev, thickness: parseInt(e.target.value)}))}
                                                 min="1"
                                                 max="5"
                                             />

@@ -26,22 +26,41 @@ export function calculateIndicator(indicator, candleData) {
 
 function calculateSMA(data, settings) {
     const { period, source } = settings;
-    const result = [];
+    const result = new Array(data.length).fill(null);
 
-    for (let i = 0; i < data.length; i++) {
-        if (i < period - 1) {
-            result.push(null); // Not enough data yet
-        } else {
-            let sum = 0;
-            for (let j = 0; j < period; j++) {
-                sum += data[i-j][source];
+    console.log("SMA calculation called with:", settings);
+    console.log("Data available for calculation:", data?.length || 0, "candles");
+
+    // Add error checking
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        console.error("Invalid data for SMA calculation");
+        return [];
+    }
+
+    // For each point in the data
+    for (let i = period - 1; i < data.length; i++) {
+        let sum = 0;
+        let validPoints = 0;
+
+        // Look back 'period' candles to calculate average
+        for (let j = 0; j < period; j++) {
+            const value = data[i-j]?.[source];
+            if (value !== null && value !== undefined && !isNaN(value)) {
+                sum += value;
+                validPoints++;
             }
-            result.push(sum / period);
+        }
+
+        // Only calculate average if we have enough valid points
+        if (validPoints >= Math.ceil(period * 0.8)) { // At least 80% of required data
+            result[i] = sum / validPoints;
         }
     }
 
     return result;
 }
+
+
 
 function calculateEMA(data, settings) {
     // Simplified calculation for demo

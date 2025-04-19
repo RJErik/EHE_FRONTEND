@@ -7,6 +7,8 @@ import IndicatorInfoPanel from "./IndicatorInfoPanel.jsx";
 
 const IndicatorSubcard = ({ indicator, onConfigureClick, onRemoveClick }) => {
     const isMainIndicator = indicator.category === "main";
+    console.log("Rendering card for indicator:", indicator);
+    console.log("isMainIndicator value:", isMainIndicator);
 
     return (
         <Card className="w-64 h-[180px] flex flex-col">

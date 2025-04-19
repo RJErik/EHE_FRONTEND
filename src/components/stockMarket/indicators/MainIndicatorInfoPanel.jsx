@@ -4,19 +4,41 @@ import { ChartContext } from "../ChartContext.jsx";
 import { ScrollArea } from "../../ui/scroll-area.jsx";
 
 const MainIndicatorInfoPanel = ({ indicators }) => {
-    const { hoveredIndex } = useContext(ChartContext) || { hoveredIndex: null };
+    const { hoveredIndex, viewStartIndex } = useContext(ChartContext) || {
+        hoveredIndex: null,
+        viewStartIndex: 0
+    };
 
-    if (!indicators || indicators.length === 0 || hoveredIndex === null) {
-        return null;
+    if (!indicators || indicators.length === 0) {
+        return (
+            <div className="h-5 text-xs text-muted-foreground">
+                No indicators on main chart
+            </div>
+        );
+    }
+
+    if (hoveredIndex === null) {
+        return (
+            <div className="h-5 text-xs text-muted-foreground">
+                Hover over chart to view indicator values
+            </div>
+        );
     }
 
     return (
-        <ScrollArea className="h-8 overflow-y-auto">
-            <div className="flex flex-wrap items-center text-xs gap-x-3 gap-y-1">
+        <ScrollArea className="h-5 overflow-y-auto">
+            <div className="flex flex-wrap items-center text-xs gap-x-3">
                 {indicators.map(indicator => {
-                    if (!indicator.values || !indicator.values[hoveredIndex]) return null;
+                    if (!indicator.values) return null;
 
-                    const value = indicator.values[hoveredIndex];
+                    // Calculate absolute index with viewStartIndex
+                    const absoluteIndex = viewStartIndex + hoveredIndex;
+
+                    // Check if the value exists at this absolute index
+                    if (absoluteIndex >= indicator.values.length) return null;
+
+                    const value = indicator.values[absoluteIndex];
+                    if (value === null || value === undefined) return null;
 
                     if (typeof value === 'object') {
                         return (
@@ -28,7 +50,7 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
                                         className="mr-2"
                                         style={{ color: indicator.settings.color }}
                                     >
-                                        {key}: {val.toFixed(2)}
+                                        {key}: {val !== null && val !== undefined ? val.toFixed(2) : 'N/A'}
                                     </span>
                                 ))}
                             </div>
@@ -37,9 +59,9 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
 
                     return (
                         <div key={indicator.id} className="flex items-center">
-                            <span className="font-medium mr-1">{indicator.name}:</span>
+                            <span className="font-medium text-foreground mr-1">{indicator.name}:</span>
                             <span style={{ color: indicator.settings.color }}>
-                                {typeof value === 'number' ? value.toFixed(2) : value}
+                                {typeof value === 'number' ? value.toFixed(2) : (value || 'N/A')}
                             </span>
                         </div>
                     );

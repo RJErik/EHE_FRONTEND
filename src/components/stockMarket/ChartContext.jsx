@@ -1,6 +1,7 @@
-// src/components/stockMarket/ChartContext.js
+// src/components/stockMarket/ChartContext.jsx
 import { createContext, useState, useEffect } from "react";
 import { generateMockCandleData, generateNewCandle } from "../../utils/mockDataGenerator.js";
+import { calculateIndicator } from "./indicators/indicatorCalculations.js";
 
 export const ChartContext = createContext(null);
 
@@ -13,6 +14,7 @@ export function ChartProvider({ children }) {
     const [viewStartIndex, setViewStartIndex] = useState(0);
     const [displayedCandles, setDisplayedCandles] = useState(100);
     const [isDragging, setIsDragging] = useState(false);
+    const [isFollowingLatest, setIsFollowingLatest] = useState(true);
 
     // Cursor/hover state
     const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -22,6 +24,10 @@ export function ChartProvider({ children }) {
 
     // Configuration
     const [isLogarithmic, setIsLogarithmic] = useState(false);
+    const [isDataGenerationEnabled, setIsDataGenerationEnabled] = useState(true);
+
+    // Indicator state - now centralized here
+    const [indicators, setIndicators] = useState([]);
 
     // Constants
     const MIN_DISPLAY_CANDLES = 20;
@@ -34,7 +40,7 @@ export function ChartProvider({ children }) {
         setHistoricalBuffer(initialData);
         // Start viewing from the most recent candles instead of the oldest ones
         setViewStartIndex(Math.max(0, initialData.length - displayedCandles));
-    }, [displayedCandles]);
+    }, []);
 
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
@@ -64,6 +70,9 @@ export function ChartProvider({ children }) {
 
     // Simulation of real-time updates
     useEffect(() => {
+        // Skip setting up the interval if data generation is disabled
+        if (!isDataGenerationEnabled) return;
+
         const interval = setInterval(() => {
             if (historicalBuffer.length > 0) {
                 const newCandle = generateNewCandle(historicalBuffer[historicalBuffer.length - 1]);
@@ -73,20 +82,64 @@ export function ChartProvider({ children }) {
                     return newBuffer;
                 });
 
-                if (!isDragging) {
+                // Only auto-scroll if we're following the latest data
+                if (isFollowingLatest && !isDragging) {
                     setViewStartIndex(prevIndex => {
-                        const isAtEnd = prevIndex + displayedCandles >= historicalBuffer.length;
-                        if (isAtEnd) {
-                            return Math.max(0, (historicalBuffer.length + 1) - displayedCandles);
-                        }
-                        return prevIndex;
+                        return Math.max(0, (historicalBuffer.length + 1) - displayedCandles);
                     });
                 }
             }
         }, 5000);
 
         return () => clearInterval(interval);
-    }, [historicalBuffer, isDragging, displayedCandles]);
+    }, [historicalBuffer, isDragging, displayedCandles, isDataGenerationEnabled, isFollowingLatest]);
+
+    // Calculate indicator values when candle data changes
+    useEffect(() => {
+        if (!historicalBuffer || historicalBuffer.length === 0 || indicators.length === 0) return;
+
+        console.log("Calculating indicators with historical buffer length:", historicalBuffer.length);
+
+        // Clone the buffer to ensure we're working with the latest data
+        const currentBuffer = [...historicalBuffer];
+
+        setIndicators(prevIndicators =>
+            prevIndicators.map(indicator => {
+                try {
+                    const values = calculateIndicator(indicator, currentBuffer);
+                    console.log(`Calculated values for ${indicator.name}:`, values.length);
+                    return { ...indicator, values };
+                } catch (err) {
+                    console.error("Error calculating indicator:", err);
+                    return indicator;
+                }
+            })
+        );
+    }, [historicalBuffer, indicators.length]); // Remove indicators from dependency array
+
+    // Indicator management functions
+    const addIndicator = (indicator) => {
+        console.log("Adding indicator to context:", indicator);
+        const newIndicator = {
+            ...indicator,
+            id: crypto.randomUUID?.() || `id-${Date.now()}`
+        };
+        setIndicators(prev => {
+            const newState = [...prev, newIndicator];
+            console.log("New indicators state in context:", newState);
+            return newState;
+        });
+    };
+
+    const removeIndicator = (id) => {
+        setIndicators(prev => prev.filter(ind => ind.id !== id));
+    };
+
+    const updateIndicator = (id, updates) => {
+        setIndicators(prev =>
+            prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
+        );
+    };
 
     return (
         <ChartContext.Provider value={{
@@ -101,6 +154,8 @@ export function ChartProvider({ children }) {
             setDisplayedCandles,
             isDragging,
             setIsDragging,
+            isFollowingLatest,
+            setIsFollowingLatest,
 
             // Hover state
             hoveredIndex,
@@ -115,6 +170,14 @@ export function ChartProvider({ children }) {
             // Configuration
             isLogarithmic,
             setIsLogarithmic,
+            isDataGenerationEnabled,
+            setIsDataGenerationEnabled,
+
+            // Indicators
+            indicators,
+            addIndicator,
+            removeIndicator,
+            updateIndicator,
 
             // Constants
             MIN_DISPLAY_CANDLES,

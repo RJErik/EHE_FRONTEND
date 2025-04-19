@@ -1,3 +1,4 @@
+// src/components/stockMarket/renderCandleChart.js
 import * as d3 from 'd3';
 
 export function renderCandleChart({
@@ -10,7 +11,11 @@ export function renderCandleChart({
                                       setActiveTimestamp,
                                       activeTimestamp,
                                       currentMouseY,
-                                      displayedCandles
+                                      displayedCandles,
+                                      mainIndicators = [],
+                                      hoveredIndex,
+                                      setHoveredIndex,
+                                      viewStartIndex
                                   }) {
     if (!data.length || !chartRef.current) return;
 
@@ -69,6 +74,48 @@ export function renderCandleChart({
     // Draw candles
     const candles = drawCandles(svg, data, xScale, yScale, candleWidth);
 
+    // Draw main indicators if present
+    if (mainIndicators && mainIndicators.length > 0) {
+        console.log("Drawing main indicators on chart:", mainIndicators);
+
+// In renderCandleChart.js - modify the mainIndicators.forEach loop:
+
+        mainIndicators.forEach(indicator => {
+            if (!indicator.values) {
+                console.warn("Indicator missing values:", indicator.name);
+                return;
+            }
+
+            // Get the relevant slice of indicator values matching the visible candles
+            // Make sure we don't go out of bounds
+            const visibleValues = indicator.values.slice(
+                Math.min(viewStartIndex, indicator.values.length - 1),
+                Math.min(viewStartIndex + data.length, indicator.values.length)
+            );
+
+            // Create line generator for indicator
+            const line = d3.line()
+                .x((_, i) => {
+                    if (i < data.length) {
+                        return xScale(new Date(data[i].timestamp));
+                    }
+                    return 0; // Safe fallback
+                })
+                .y(d => d === null ? null : yScale(d))
+                .defined(d => d !== null && d !== undefined);
+
+            // Draw indicator line
+            svg.append("path")
+                .datum(visibleValues)
+                .attr("class", `indicator-line-${indicator.id}`)
+                .attr("fill", "none")
+                .attr("stroke", indicator.settings.color)
+                .attr("stroke-width", indicator.settings.thickness || 2)
+                .attr("d", line);
+        });
+    }
+
+
     // Create crosshair elements
     const {
         crosshair,
@@ -79,9 +126,12 @@ export function renderCandleChart({
     } = createCrosshair(svg, width, height);
 
     // Helper function to update the crosshair and labels
-    const updateCrosshair = (d, mouseY) => {
-        // Don't update crosshair if dragging
+    const updateCrosshair = (d, mouseY, index) => {
+        // Set hovered index for indicator values
+        setHoveredIndex(index);
+
         if (isDragging) return;
+        // Don't update crosshair if dragging
 
         updateCrosshairPosition(
             d, mouseY, crosshair, verticalLine, horizontalLine,
@@ -96,9 +146,11 @@ export function renderCandleChart({
     );
 
     svg.on("mousemove", function(event) {
-        // Always update current mouse Y position regardless of dragging state
-        const [, mouseY] = d3.pointer(event);
-        setCurrentMouseY(mouseY);
+        // Only update current mouse Y position if not dragging
+        if (!isDragging) {
+            const [, mouseY] = d3.pointer(event);
+            setCurrentMouseY(mouseY);
+        }
     });
 
     // Add mouseleave handler
@@ -110,6 +162,7 @@ export function renderCandleChart({
             setHoveredCandle(null);
             setCurrentMouseY(null);
             setActiveTimestamp(null);
+            setHoveredIndex(null);
         }
     });
 
@@ -117,7 +170,8 @@ export function renderCandleChart({
     if (!isDragging && activeTimestamp && currentMouseY !== null) {
         const activeCandle = data.find(d => d.timestamp === activeTimestamp);
         if (activeCandle) {
-            updateCrosshair(activeCandle, currentMouseY);
+            const index = data.findIndex(d => d.timestamp === activeTimestamp);
+            updateCrosshair(activeCandle, currentMouseY, index);
         }
     }
 
@@ -408,19 +462,16 @@ function createHoverZones(
                 setActiveTimestamp(d.timestamp);
 
                 // Only update hovered candle if not dragging
-                if (!isDragging) {
                     setHoveredCandle(d);
-                }
             })
             .on("mousemove", function(event) {
+                // Get mouse y-position relative to chart
+                const [, mouseY] = d3.pointer(event);
+                // Update the crosshair with index for indicator values
+                updateCrosshair(d, mouseY, i);
                 // Only update if not dragging
                 if (!isDragging) {
-                    // Get mouse y-position relative to chart
-                    const [, mouseY] = d3.pointer(event);
                     setCurrentMouseY(mouseY);
-
-                    // Update the crosshair
-                    updateCrosshair(d, mouseY);
                 }
             });
     });
