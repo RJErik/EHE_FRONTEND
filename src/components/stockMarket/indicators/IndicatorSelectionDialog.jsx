@@ -4,7 +4,7 @@ import { Tabs, TabsList, TabsTrigger } from "../../ui/tabs.jsx";
 import { Button } from "../../ui/button.jsx";
 import { Input } from "../../ui/input.jsx";
 import { Label } from "../../ui/label.jsx";
-import { ScrollArea } from "../../ui/scroll-area.jsx";
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../ui/select.jsx";
 
 // Define predefined colors with names
@@ -32,14 +32,76 @@ const getRandomColor = () => {
     return PREDEFINED_COLORS[randomIndex];
 };
 
-// Mock indicator types with short names and available categories
+// Enhanced indicator types with specific parameters and default values
 const INDICATOR_TYPES = [
-    { id: "sma", name: "Simple Moving Average", shortName: "SMA", categories: ["main"], category: "Trend" },
-    { id: "ema", name: "Exponential Moving Average", shortName: "EMA", categories: ["main"], category: "Trend" },
-    { id: "macd", name: "MACD", shortName: "MACD", categories: ["sub"], category: "Momentum" },
-    { id: "rsi", name: "Relative Strength Index", shortName: "RSI", categories: ["sub"], category: "Momentum" },
-    { id: "bb", name: "Bollinger Bands", shortName: "BB", categories: ["main"], category: "Volatility" },
-    { id: "atr", name: "Average True Range", shortName: "ATR", categories: ["sub"], category: "Volatility" }
+    {
+        id: "sma",
+        name: "Simple Moving Average",
+        shortName: "SMA",
+        categories: ["main"],
+        category: "Trend",
+        defaultSettings: {
+            period: 14,
+            source: "close"
+        }
+    },
+    {
+        id: "ema",
+        name: "Exponential Moving Average",
+        shortName: "EMA",
+        categories: ["main"],
+        category: "Trend",
+        defaultSettings: {
+            period: 14,
+            source: "close"
+        }
+    },
+    {
+        id: "macd",
+        name: "MACD",
+        shortName: "MACD",
+        categories: ["sub"],
+        category: "Momentum",
+        defaultSettings: {
+            fastPeriod: 12,
+            slowPeriod: 26,
+            signalPeriod: 9,
+            source: "close"
+        }
+    },
+    {
+        id: "rsi",
+        name: "Relative Strength Index",
+        shortName: "RSI",
+        categories: ["sub"],
+        category: "Momentum",
+        defaultSettings: {
+            period: 14,
+            source: "close"
+        }
+    },
+    {
+        id: "bb",
+        name: "Bollinger Bands",
+        shortName: "BB",
+        categories: ["main"],
+        category: "Volatility",
+        defaultSettings: {
+            period: 20,
+            multiplier: 2,
+            source: "close"
+        }
+    },
+    {
+        id: "atr",
+        name: "Average True Range",
+        shortName: "ATR",
+        categories: ["sub"],
+        category: "Volatility",
+        defaultSettings: {
+            period: 14
+        }
+    }
 ];
 
 // Find color name by hex value
@@ -57,8 +119,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
     const [category, setCategory] = useState("main");
     const [selectedType, setSelectedType] = useState(null);
     const [settings, setSettings] = useState({
-        period: 14,
-        source: "close",
         color: "",
         colorName: "",
         thickness: 2
@@ -66,16 +126,20 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
 
     const [colorOption, setColorOption] = useState("default"); // "default", "predefined", or "custom"
 
-    // Only set a random color when an indicator is selected, not on initial load
+    // When an indicator is selected, initialize with its specific default settings
     useEffect(() => {
         if (selectedType) {
-            const randomColor = getRandomColor();
-            setSettings(prev => ({
-                ...prev,
-                color: randomColor.hex,
-                colorName: randomColor.name
-            }));
-            setColorOption("predefined");
+            const indicatorType = INDICATOR_TYPES.find(t => t.id === selectedType);
+            if (indicatorType) {
+                const randomColor = getRandomColor();
+                setSettings(prev => ({
+                    ...indicatorType.defaultSettings,
+                    color: randomColor.hex,
+                    colorName: randomColor.name,
+                    thickness: 2
+                }));
+                setColorOption("predefined");
+            }
         }
     }, [selectedType]);
 
@@ -92,15 +156,16 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
     const handleAdd = () => {
         if (!selectedType) return;
 
+        const selectedIndicator = INDICATOR_TYPES.find(t => t.id === selectedType);
+
         const newIndicator = {
-            name: INDICATOR_TYPES.find(t => t.id === selectedType).shortName,
+            name: selectedIndicator.shortName,
             type: selectedType,
             category,
             settings: {
-                period: settings.period,
-                source: settings.source,
-                color: settings.color,
-                thickness: settings.thickness
+                ...settings,
+                // Remove helper fields that aren't actual settings
+                colorName: undefined
             }
         };
 
@@ -110,8 +175,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
         // Reset form
         setSelectedType(null);
         setSettings({
-            period: 14,
-            source: "close",
             color: "",
             colorName: "",
             thickness: 2
@@ -169,6 +232,82 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
         return colorIndex !== -1 ? colorIndex.toString() : "custom";
     };
 
+    // Render different setting inputs based on the selected indicator type
+    const renderIndicatorSpecificSettings = () => {
+        if (!selectedType) return null;
+
+        switch (selectedType) {
+            case "macd":
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label>Fast Period</Label>
+                            <Input
+                                type="number"
+                                value={settings.fastPeriod || 12}
+                                onChange={e => setSettings(prev => ({...prev, fastPeriod: parseInt(e.target.value)}))}
+                                min="1"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Slow Period</Label>
+                            <Input
+                                type="number"
+                                value={settings.slowPeriod || 26}
+                                onChange={e => setSettings(prev => ({...prev, slowPeriod: parseInt(e.target.value)}))}
+                                min="1"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Signal Period</Label>
+                            <Input
+                                type="number"
+                                value={settings.signalPeriod || 9}
+                                onChange={e => setSettings(prev => ({...prev, signalPeriod: parseInt(e.target.value)}))}
+                                min="1"
+                            />
+                        </div>
+                    </>
+                );
+            case "bb":
+                return (
+                    <>
+                        <div className="space-y-2">
+                            <Label>Period</Label>
+                            <Input
+                                type="number"
+                                value={settings.period || 20}
+                                onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
+                                min="1"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Multiplier</Label>
+                            <Input
+                                type="number"
+                                value={settings.multiplier || 2}
+                                onChange={e => setSettings(prev => ({...prev, multiplier: parseFloat(e.target.value)}))}
+                                min="0.1"
+                                step="0.1"
+                            />
+                        </div>
+                    </>
+                );
+            default:
+                return (
+                    <div className="space-y-2">
+                        <Label>Period</Label>
+                        <Input
+                            type="number"
+                            value={settings.period || 14}
+                            onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
+                            min="1"
+                        />
+                    </div>
+                );
+        }
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[700px]">
@@ -182,7 +321,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                         <TabsTrigger value="sub">Sub Chart</TabsTrigger>
                     </TabsList>
 
-                    <div className="flex gap-4 h-[400px]">
+                    <div className="flex gap-4 h-[350px]">
                         {/* Indicator Type List (25% width) */}
                         <div className="w-1/4 border rounded-md">
                             <ScrollArea className="h-full">
@@ -202,103 +341,101 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                         </div>
 
                         {/* Indicator Settings (75% width) */}
-                        <div className="w-3/4 border rounded-md p-4">
+                        <div className="w-3/4 border rounded-md p-4 flex flex-col">
                             {selectedType ? (
-                                <div className="space-y-4">
-                                    <h3 className="font-medium">
-                                        {INDICATOR_TYPES.find(t => t.id === selectedType).name} Settings
-                                    </h3>
+                                <>
+                                    <div className="flex-grow overflow-auto">
+                                        <h3 className="font-medium mb-4">
+                                            {INDICATOR_TYPES.find(t => t.id === selectedType).name} Settings
+                                        </h3>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>Period</Label>
-                                            <Input
-                                                type="number"
-                                                value={settings.period}
-                                                onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
-                                                min="1"
-                                            />
-                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {/* Render indicator-specific settings */}
+                                            {renderIndicatorSpecificSettings()}
 
-                                        <div className="space-y-2">
-                                            <Label>Source</Label>
-                                            <Select
-                                                value={settings.source}
-                                                onValueChange={value => setSettings(prev => ({...prev, source: value}))}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select source" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="close">Close</SelectItem>
-                                                    <SelectItem value="open">Open</SelectItem>
-                                                    <SelectItem value="high">High</SelectItem>
-                                                    <SelectItem value="low">Low</SelectItem>
-                                                    <SelectItem value="hl2">(High + Low)/2</SelectItem>
-                                                    <SelectItem value="hlc3">(High + Low + Close)/3</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                            {/* Common settings for all indicators */}
+                                            {selectedType !== "atr" && (
+                                                <div className="space-y-2">
+                                                    <Label>Source</Label>
+                                                    <Select
+                                                        value={settings.source || "close"}
+                                                        onValueChange={value => setSettings(prev => ({...prev, source: value}))}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select source" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="close">Close</SelectItem>
+                                                            <SelectItem value="open">Open</SelectItem>
+                                                            <SelectItem value="high">High</SelectItem>
+                                                            <SelectItem value="low">Low</SelectItem>
+                                                            <SelectItem value="hl2">(High + Low)/2</SelectItem>
+                                                            <SelectItem value="hlc3">(High + Low + Close)/3</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            )}
 
-                                        <div className="space-y-2">
-                                            <Label>Line Color</Label>
-                                            <div className="flex gap-2 items-center">
-                                                {/* Color preview rectangle */}
-                                                <div
-                                                    className="w-8 h-8 border rounded-md flex-shrink-0"
-                                                    style={{ backgroundColor: settings.color }}
-                                                />
+                                            <div className="space-y-2">
+                                                <Label>Line Color</Label>
+                                                <div className="flex gap-2 items-center">
+                                                    {/* Color preview rectangle */}
+                                                    <div
+                                                        className="w-8 h-8 border rounded-md flex-shrink-0"
+                                                        style={{ backgroundColor: settings.color }}
+                                                    />
 
-                                                {/* Color text input */}
-                                                <Input
-                                                    type="text"
-                                                    value={settings.color}
-                                                    onChange={handleColorTextChange}
-                                                    className="flex-1"
-                                                    placeholder="#RRGGBB"
-                                                />
+                                                    {/* Color text input */}
+                                                    <Input
+                                                        type="text"
+                                                        value={settings.color}
+                                                        onChange={handleColorTextChange}
+                                                        className="flex-1"
+                                                        placeholder="#RRGGBB"
+                                                    />
+                                                </div>
+
+                                                {/* Color dropdown */}
+                                                <Select
+                                                    value={getColorDropdownValue()}
+                                                    onValueChange={handleColorSelection}
+                                                >
+                                                    <SelectTrigger className="mt-2">
+                                                        <SelectValue placeholder="Select color">
+                                                            {colorOption === "custom" ? "Custom" : settings.colorName}
+                                                        </SelectValue>
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="custom">Custom</SelectItem>
+                                                        {PREDEFINED_COLORS.map((color, index) => (
+                                                            <SelectItem key={`${color.hex}-${index}`} value={index.toString()} className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-2 w-full">
+                                                                    <div
+                                                                        className="w-4 h-4 rounded-full inline-block"
+                                                                        style={{ backgroundColor: color.hex }}
+                                                                    />
+                                                                    <span>{color.name}</span>
+                                                                </div>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
 
-                                            {/* Color dropdown */}
-                                            <Select
-                                                value={getColorDropdownValue()}
-                                                onValueChange={handleColorSelection}
-                                            >
-                                                <SelectTrigger className="mt-2">
-                                                    <SelectValue placeholder="Select color">
-                                                        {colorOption === "custom" ? "Custom" : settings.colorName}
-                                                    </SelectValue>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="custom">Custom</SelectItem>
-                                                    {PREDEFINED_COLORS.map((color, index) => (
-                                                        <SelectItem key={`${color.hex}-${index}`} value={index.toString()} className="flex items-center gap-2">
-                                                            <div className="flex items-center gap-2 w-full">
-                                                                <div
-                                                                    className="w-4 h-4 rounded-full inline-block"
-                                                                    style={{ backgroundColor: color.hex }}
-                                                                />
-                                                                <span>{color.name}</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label>Line Thickness</Label>
-                                            <Input
-                                                type="number"
-                                                value={settings.thickness}
-                                                onChange={e => setSettings(prev => ({...prev, thickness: parseInt(e.target.value)}))}
-                                                min="1"
-                                                max="5"
-                                            />
+                                            <div className="space-y-2">
+                                                <Label>Line Thickness</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={settings.thickness}
+                                                    onChange={e => setSettings(prev => ({...prev, thickness: parseInt(e.target.value)}))}
+                                                    min="1"
+                                                    max="5"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="pt-4 flex justify-end space-x-2">
+                                    <div className="flex justify-end space-x-2 mt-4 pt-2 border-t">
                                         <Button variant="outline" onClick={onClose}>
                                             Cancel
                                         </Button>
@@ -306,7 +443,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                             Add Indicator
                                         </Button>
                                     </div>
-                                </div>
+                                </>
                             ) : (
                                 <div className="flex items-center justify-center h-full text-muted-foreground">
                                     Select an indicator type from the list

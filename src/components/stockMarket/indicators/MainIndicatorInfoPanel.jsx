@@ -35,22 +35,21 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
                     if (value === null || value === undefined) return null;
 
                     if (typeof value === 'object') {
+                        // For multi-value indicators (like BB, MACD)
                         return (
                             <div key={indicator.id} className="flex items-center">
-                                <span className="font-medium mr-1">{indicator.name}:</span>
-                                {Object.entries(value).map(([key, val]) => (
-                                    <span
-                                        key={key}
-                                        className="mr-2"
-                                        style={{ color: indicator.settings.color }}
-                                    >
-                                        {key}: {val !== null && val !== undefined ? val.toFixed(2) : 'N/A'}
-                                    </span>
-                                ))}
+                                <span className="font-medium text-foreground mr-1">{indicator.name}:</span>
+                                <span style={{ color: indicator.settings.color }}>
+                                    {Object.entries(value)
+                                        .filter(([_, val]) => val !== null && val !== undefined)
+                                        .map(([_, val]) => val.toFixed(2))
+                                        .join(', ')}
+                                </span>
                             </div>
                         );
                     }
 
+                    // For single-value indicators
                     return (
                         <div key={indicator.id} className="flex items-center">
                             <span className="font-medium text-foreground mr-1">{indicator.name}:</span>

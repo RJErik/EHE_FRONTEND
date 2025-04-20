@@ -88,37 +88,110 @@ export function renderCandleChart({
     const candles = drawCandles(svg, data, xScale, yScale, candleWidth);
 
     // Draw main indicators if present
+
+    // Draw main indicators if present
     if (mainIndicators && mainIndicators.length > 0) {
         mainIndicators.forEach(indicator => {
-            // Create line generator for indicator
-            const line = d3.line()
-                .x((_, i) => {
-                    if (i < data.length) {
-                        return xScale(new Date(data[i].timestamp));
-                    }
-                    return 0; // Safe fallback
-                })
-                .y((_, i) => {
-                    // Access indicator value directly from the candle
-                    const value = data[i]?.indicatorValues?.[indicator.id];
-                    return value === null || value === undefined ? null : yScale(value);
-                })
-                .defined((_, i) => {
-                    // Only draw if the value exists
-                    const value = data[i]?.indicatorValues?.[indicator.id];
-                    return value !== null && value !== undefined;
-                });
+            // Check if we're dealing with a multi-line indicator (like Bollinger Bands or MACD)
+            const firstValidCandle = data.find(candle =>
+                candle?.indicatorValues?.[indicator.id] !== undefined
+            );
 
-            // Draw indicator line with values taken directly from candles
-            svg.append("path")
-                .datum(data)
-                .attr("class", `indicator-line-${indicator.id}`)
-                .attr("fill", "none")
-                .attr("stroke", indicator.settings.color)
-                .attr("stroke-width", indicator.settings.thickness || 2)
-                .attr("d", line);
+            const multiValueIndicator = (
+                firstValidCandle &&
+                typeof firstValidCandle.indicatorValues[indicator.id] === 'object'
+            );
+
+            if (multiValueIndicator) {
+                // Get all value keys (e.g., upper, middle, lower for Bollinger Bands)
+                const valueKeys = Object.keys(firstValidCandle.indicatorValues[indicator.id]);
+
+                // Draw each component line
+                valueKeys.forEach(key => {
+                    const line = d3.line()
+                        .x((_, i) => {
+                            if (i < data.length) {
+                                return xScale(new Date(data[i].timestamp));
+                            }
+                            return 0; // Safe fallback
+                        })
+                        .y((_, i) => {
+                            // Access indicator value directly from the candle
+                            const value = data[i]?.indicatorValues?.[indicator.id]?.[key];
+                            return value === null || value === undefined ? null : yScale(value);
+                        })
+                        .defined((_, i) => {
+                            // Only draw if the value exists
+                            const value = data[i]?.indicatorValues?.[indicator.id]?.[key];
+                            return value !== null && value !== undefined;
+                        });
+
+                    // Customize line appearance based on indicator type and component
+                    let strokeDasharray = null;
+                    let strokeWidth = indicator.settings.thickness || 2;
+
+                    if (indicator.type === 'bb') {
+                        // Bollinger Bands styling - dashed outer bands
+                        if (key === 'upper' || key === 'lower') {
+                            strokeDasharray = '5,3';
+                            strokeWidth = 1;
+                        }
+                    }
+                    else if (indicator.type === 'macd') {
+                        // MACD styling
+                        if (key === 'signal') {
+                            strokeDasharray = '3,2';
+                            strokeWidth = 1;
+                        }
+                        else if (key === 'histogram') {
+                            // For histogram, we could do special handling here if needed
+                            strokeWidth = 2;
+                        }
+                    }
+
+                    // Use component-specific color if available, otherwise use indicator color
+                    const color = indicator.settings[`${key}Color`] || indicator.settings.color;
+
+                    // Draw the line
+                    svg.append("path")
+                        .datum(data)
+                        .attr("class", `indicator-line-${indicator.id}-${key}`)
+                        .attr("fill", "none")
+                        .attr("stroke", color)
+                        .attr("stroke-width", strokeWidth)
+                        .attr("stroke-dasharray", strokeDasharray)
+                        .attr("d", line);
+                });
+            }
+            else {
+                // Original code for single-value indicators
+                const line = d3.line()
+                    .x((_, i) => {
+                        if (i < data.length) {
+                            return xScale(new Date(data[i].timestamp));
+                        }
+                        return 0;
+                    })
+                    .y((_, i) => {
+                        const value = data[i]?.indicatorValues?.[indicator.id];
+                        return value === null || value === undefined ? null : yScale(value);
+                    })
+                    .defined((_, i) => {
+                        const value = data[i]?.indicatorValues?.[indicator.id];
+                        return value !== null && value !== undefined;
+                    });
+
+                svg.append("path")
+                    .datum(data)
+                    .attr("class", `indicator-line-${indicator.id}`)
+                    .attr("fill", "none")
+                    .attr("stroke", indicator.settings.color)
+                    .attr("stroke-width", indicator.settings.thickness || 2)
+                    .attr("d", line);
+            }
         });
     }
+
 
     // Create crosshair elements
     const {

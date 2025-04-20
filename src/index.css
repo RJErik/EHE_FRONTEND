@@ -122,3 +122,16 @@
 .chart-group {
   box-sizing: border-box;
 }
+
+::-webkit-scrollbar {
+  @apply w-2.5 h-2.5;
+
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent
+}
+
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-border border-[1px] border-transparent border-solid bg-clip-padding;
+}
