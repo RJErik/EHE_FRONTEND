@@ -89,23 +89,7 @@ export function renderCandleChart({
 
     // Draw main indicators if present
     if (mainIndicators && mainIndicators.length > 0) {
-        //console.log("Drawing main indicators on chart:", mainIndicators);
-
-// In renderCandleChart.js - modify the mainIndicators.forEach loop:
-
         mainIndicators.forEach(indicator => {
-            if (!indicator.values) {
-                //console.warn("Indicator missing values:", indicator.name);
-                return;
-            }
-
-            // Get the relevant slice of indicator values matching the visible candles
-            // Make sure we don't go out of bounds
-            const visibleValues = indicator.values.slice(
-                Math.min(viewStartIndex, indicator.values.length - 1),
-                Math.min(viewStartIndex + data.length, indicator.values.length)
-            );
-
             // Create line generator for indicator
             const line = d3.line()
                 .x((_, i) => {
@@ -114,12 +98,20 @@ export function renderCandleChart({
                     }
                     return 0; // Safe fallback
                 })
-                .y(d => d === null ? null : yScale(d))
-                .defined(d => d !== null && d !== undefined);
+                .y((_, i) => {
+                    // Access indicator value directly from the candle
+                    const value = data[i]?.indicatorValues?.[indicator.id];
+                    return value === null || value === undefined ? null : yScale(value);
+                })
+                .defined((_, i) => {
+                    // Only draw if the value exists
+                    const value = data[i]?.indicatorValues?.[indicator.id];
+                    return value !== null && value !== undefined;
+                });
 
-            // Draw indicator line
+            // Draw indicator line with values taken directly from candles
             svg.append("path")
-                .datum(visibleValues)
+                .datum(data)
                 .attr("class", `indicator-line-${indicator.id}`)
                 .attr("fill", "none")
                 .attr("stroke", indicator.settings.color)
@@ -127,7 +119,6 @@ export function renderCandleChart({
                 .attr("d", line);
         });
     }
-
 
     // Create crosshair elements
     const {

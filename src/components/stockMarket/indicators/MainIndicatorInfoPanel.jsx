@@ -4,9 +4,9 @@ import { ChartContext } from "../ChartContext.jsx";
 import { ScrollArea } from "../../ui/scroll-area.jsx";
 
 const MainIndicatorInfoPanel = ({ indicators }) => {
-    const { hoveredIndex, viewStartIndex } = useContext(ChartContext) || {
-        hoveredIndex: null,
-        viewStartIndex: 0
+    const { hoveredCandle, hoveredIndex } = useContext(ChartContext) || {
+        hoveredCandle: null,
+        hoveredIndex: null
     };
 
     if (!indicators || indicators.length === 0) {
@@ -17,7 +17,7 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
         );
     }
 
-    if (hoveredIndex === null) {
+    if (hoveredIndex === null || !hoveredCandle) {
         return (
             <div className="h-5 text-xs text-muted-foreground">
                 Hover over chart to view indicator values
@@ -29,15 +29,9 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
         <ScrollArea className="h-5 overflow-y-auto">
             <div className="flex flex-wrap items-center text-xs gap-x-3">
                 {indicators.map(indicator => {
-                    if (!indicator.values) return null;
+                    // Get value directly from the hovered candle
+                    const value = hoveredCandle.indicatorValues?.[indicator.id];
 
-                    // Calculate absolute index with viewStartIndex
-                    const absoluteIndex = viewStartIndex + hoveredIndex;
-
-                    // Check if the value exists at this absolute index
-                    if (absoluteIndex >= indicator.values.length) return null;
-
-                    const value = indicator.values[absoluteIndex];
                     if (value === null || value === undefined) return null;
 
                     if (typeof value === 'object') {

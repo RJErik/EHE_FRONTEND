@@ -1,5 +1,5 @@
 // src/components/stockMarket/ChartContext.jsx
-import { createContext, useState, useEffect } from "react";
+import { createContext, useState, useEffect, useCallback } from "react";
 import { generateMockCandleData, generateNewCandle } from "../../utils/mockDataGenerator.js";
 import { calculateIndicator } from "./indicators/indicatorCalculations.js";
 
@@ -33,6 +33,40 @@ export function ChartProvider({ children }) {
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
 
+    // Helper function to calculate indicators for a buffer
+    // We make this a useCallback so it's stable and can be used in effects
+    const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
+        if (!buffer.length || !currentIndicators.length) return buffer;
+
+        console.log("[ChartContext] Calculating indicators for buffer with length:", buffer.length);
+
+        return buffer.map((candle, candleIndex) => {
+            // Create a new candle object with existing properties
+            const updatedCandle = {
+                ...candle,
+                // Initialize indicatorValues if it doesn't exist
+                indicatorValues: candle.indicatorValues || {}
+            };
+
+            // Calculate each indicator's value for this candle
+            currentIndicators.forEach(indicator => {
+                try {
+                    // Calculate the full array of values for this indicator
+                    const fullValues = calculateIndicator(indicator, buffer);
+
+                    // Store just this candle's value
+                    if (fullValues && candleIndex < fullValues.length) {
+                        updatedCandle.indicatorValues[indicator.id] = fullValues[candleIndex];
+                    }
+                } catch (err) {
+                    console.error(`Error calculating ${indicator.name} for candle at index ${candleIndex}:`, err);
+                }
+            });
+
+            return updatedCandle;
+        });
+    }, []);
+
     // Initialize with mock data
     useEffect(() => {
         const initialData = generateMockCandleData(MAX_HISTORY_CANDLES);
@@ -41,9 +75,18 @@ export function ChartProvider({ children }) {
         setViewStartIndex(Math.max(0, initialData.length - displayedCandles));
     }, []);
 
+    // Recalculate indicators when indicators list changes
+    useEffect(() => {
+        if (!historicalBuffer.length || !indicators.length) return;
+
+        console.log("[ChartContext] Indicators changed - recalculating for all candles");
+
+        const processedBuffer = calculateIndicatorsForBuffer(historicalBuffer, indicators);
+        setHistoricalBuffer(processedBuffer);
+    }, [indicators, calculateIndicatorsForBuffer]); // No historicalBuffer dependency to avoid loops
+
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
-        // At the beginning of effect - LOG 6
         console.log("[Window Update] Starting - Buffer Length:", historicalBuffer.length,
             "ViewIndex:", viewStartIndex,
             "DisplayedCandles:", displayedCandles);
@@ -54,7 +97,6 @@ export function ChartProvider({ children }) {
                 Math.min(viewStartIndex, historicalBuffer.length - displayedCandles)
             );
 
-            // After calculating safe index - LOG 7
             console.log("[Window Update] Calculated SafeStartIndex:", safeStartIndex,
                 "EndIndex:", safeStartIndex + displayedCandles,
                 "Will Show:", safeStartIndex, "to", safeStartIndex + displayedCandles - 1);
@@ -64,7 +106,6 @@ export function ChartProvider({ children }) {
                 safeStartIndex + displayedCandles
             );
 
-            // Before setting candle data - LOG 8
             console.log("[Window Update] Final Visible Data - Length:", visibleData.length,
                 "First Candle Time:", visibleData[0]?.timestamp,
                 "Last Candle Time:", visibleData[visibleData.length-1]?.timestamp);
@@ -82,6 +123,7 @@ export function ChartProvider({ children }) {
         }
     }, [hoveredIndex, candleData]);
 
+    // Real-time data generation
     useEffect(() => {
         console.log("[ChartContext] Real-time update effect setup. isDataGenerationEnabled:", isDataGenerationEnabled);
 
@@ -92,7 +134,6 @@ export function ChartProvider({ children }) {
 
         console.log("[ChartContext] Starting data generation interval (5 seconds).");
         const interval = setInterval(() => {
-            // Just before generating new candle - LOG 1
             console.log("=== CYCLE START ===");
             console.log("[Buffer State] Length:", historicalBuffer.length,
                 "ViewIndex:", viewStartIndex,
@@ -113,31 +154,37 @@ export function ChartProvider({ children }) {
             const lastCandle = historicalBuffer[historicalBuffer.length - 1];
             const newCandle = generateNewCandle(lastCandle);
 
-            // After generating new candle - LOG 2
+            // Initialize indicator values object for the new candle
+            newCandle.indicatorValues = {};
+
             console.log("[New Candle]", newCandle);
 
             console.log(`[ChartContext] Interval Tick - Before Update: Buffer Length=${currentBufferLength}, Is Full=${isBufferFull}, Last Candle Timestamp=${lastCandle?.timestamp}`);
             console.log("[ChartContext] Interval Tick - Generated New Candle:", newCandle);
 
-            // Update historical buffer
+            // Update historical buffer AND calculate indicators for the new buffer in one step
             setHistoricalBuffer(prevBuffer => {
+                // First add the new candle to the buffer
                 const updatedBuffer = [...prevBuffer, newCandle].slice(-MAX_HISTORY_CANDLES);
 
-                // Inside the setHistoricalBuffer callback - LOG 3
                 console.log("[Buffer Updated] New Length:", updatedBuffer.length,
                     "First Candle Time:", updatedBuffer[0]?.timestamp,
                     "Last Candle Time:", updatedBuffer[updatedBuffer.length-1]?.timestamp);
 
-                console.log(`[ChartContext] Interval Tick - Updated Buffer: New Length=${updatedBuffer.length}`);
+                // Then immediately calculate indicators for the updated buffer
+                if (indicators.length > 0) {
+                    console.log("[ChartContext] Calculating indicators for updated buffer with new candle");
+                    return calculateIndicatorsForBuffer(updatedBuffer, indicators);
+                }
+
                 return updatedBuffer;
             });
 
-            // Update viewStartIndex (Fixed Auto-scroll logic)
+            // Update viewStartIndex (Auto-scroll logic)
             if (!isDragging) {
                 console.log("[ChartContext] Interval Tick - Not dragging, proceeding with auto-scroll check.");
 
                 setViewStartIndex(prevIndex => {
-                    // Inside the setViewStartIndex callback before any calculations - LOG 4
                     console.log("[View Calc] Current Index:", prevIndex,
                         "DisplayCandles:", displayedCandles,
                         "BufferLength:", currentBufferLength,
@@ -153,31 +200,26 @@ export function ChartProvider({ children }) {
 
                     if (isViewingEnd) {
                         // If viewing the end, keep showing the newest data
-                        // Advance the view to include the new candle
                         newIndex = Math.max(0, (currentBufferLength + 1) - displayedCandles);
                         console.log(`[ChartContext] AutoScroll Action - Viewing End: Scrolling to include new candle. New Index: ${newIndex}`);
                     }
                     else if (isBufferFull) {
-                        // If buffer is full but NOT viewing the end,
-                        // Shift by exactly 1 to maintain the same relative position
-                        // This compensates for the oldest candle being removed
+                        // If buffer is full but NOT viewing the end, shift by 1
                         newIndex = prevIndex - 1;
                         console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Full: Shifting +1 to maintain position. New Index: ${newIndex}`);
                     }
                     else {
                         // Not viewing end and buffer isn't full
-                        // Keep the view position exactly the same
                         newIndex = prevIndex;
                         console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Not Full: Keeping same position. New Index: ${prevIndex}`);
                     }
 
-                    // Ensure index is within valid bounds just in case
+                    // Ensure index is within valid bounds
                     const finalBoundedIndex = Math.max(0, Math.min(newIndex, (currentBufferLength + 1) - displayedCandles));
                     if (finalBoundedIndex !== newIndex) {
                         console.warn(`[ChartContext] AutoScroll Warning - Calculated index ${newIndex} was out of bounds, corrected to ${finalBoundedIndex}`);
                     }
 
-                    // After calculating new index - LOG 5
                     console.log("[View Calc] Result: New Index:", finalBoundedIndex,
                         "Will show candles", finalBoundedIndex, "to",
                         finalBoundedIndex + displayedCandles - 1);
@@ -202,31 +244,10 @@ export function ChartProvider({ children }) {
         isDragging,
         displayedCandles,
         isDataGenerationEnabled,
-        viewStartIndex, // Added for logging purposes
+        viewStartIndex,
+        indicators, // Added to access current indicators
+        calculateIndicatorsForBuffer // Added to use our calculation function
     ]);
-
-    // Calculate indicator values when candle data changes
-    useEffect(() => {
-        if (!historicalBuffer || historicalBuffer.length === 0 || indicators.length === 0) return;
-
-        console.log("Calculating indicators with historical buffer length:", historicalBuffer.length);
-
-        // Clone the buffer to ensure we're working with the latest data
-        const currentBuffer = [...historicalBuffer];
-
-        setIndicators(prevIndicators =>
-            prevIndicators.map(indicator => {
-                try {
-                    const values = calculateIndicator(indicator, currentBuffer);
-                    console.log(`Calculated values for ${indicator.name}:`, values.length);
-                    return { ...indicator, values };
-                } catch (err) {
-                    console.error("Error calculating indicator:", err);
-                    return indicator;
-                }
-            })
-        );
-    }, [historicalBuffer, indicators.length]);
 
     // Indicator management functions
     const addIndicator = (indicator) => {
