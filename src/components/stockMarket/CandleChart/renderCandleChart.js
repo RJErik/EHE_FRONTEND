@@ -19,6 +19,11 @@ export function renderCandleChart({
                                   }) {
     if (!data.length || !chartRef.current) return;
 
+    // At start of render - LOG 11
+    console.log("[D3 Render] Processing - Candles:", data.length,
+        "First:", new Date(data[0]?.timestamp).toLocaleTimeString(),
+        "Last:", new Date(data[data.length-1]?.timestamp).toLocaleTimeString());
+
     // Clear previous chart
     d3.select(chartRef.current).selectAll("*").remove();
 
@@ -65,11 +70,19 @@ export function renderCandleChart({
         .domain([0, d3.max(data, d => d.volume)])
         .range([height, height * 0.8]);
 
+    console.log("[D3 Render] Price Range:",
+        "Min:", d3.min(data, d => d.low),
+        "Max:", d3.max(data, d => d.high),
+        "Candle Width:", candleWidth);
+
     // Add axes and grid
     drawAxesAndGrid(svg, xScale, yScale, width, height);
 
     // Draw volume bars
     drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height);
+
+    // When drawing candles - LOG 13
+    console.log("[D3 Render] Drawing candles...");
 
     // Draw candles
     const candles = drawCandles(svg, data, xScale, yScale, candleWidth);
@@ -174,6 +187,9 @@ export function renderCandleChart({
             updateCrosshair(activeCandle, currentMouseY, index);
         }
     }
+
+    // After drawing is complete - LOG 14
+    console.log("[D3 Render] Complete! ===");
 
     // Return useful information for the dragging implementation
     return {

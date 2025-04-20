@@ -43,16 +43,31 @@ export function ChartProvider({ children }) {
 
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
+        // At the beginning of effect - LOG 6
+        console.log("[Window Update] Starting - Buffer Length:", historicalBuffer.length,
+            "ViewIndex:", viewStartIndex,
+            "DisplayedCandles:", displayedCandles);
+
         if (historicalBuffer.length > 0) {
             const safeStartIndex = Math.max(
                 0,
                 Math.min(viewStartIndex, historicalBuffer.length - displayedCandles)
             );
 
+            // After calculating safe index - LOG 7
+            console.log("[Window Update] Calculated SafeStartIndex:", safeStartIndex,
+                "EndIndex:", safeStartIndex + displayedCandles,
+                "Will Show:", safeStartIndex, "to", safeStartIndex + displayedCandles - 1);
+
             const visibleData = historicalBuffer.slice(
                 safeStartIndex,
                 safeStartIndex + displayedCandles
             );
+
+            // Before setting candle data - LOG 8
+            console.log("[Window Update] Final Visible Data - Length:", visibleData.length,
+                "First Candle Time:", visibleData[0]?.timestamp,
+                "Last Candle Time:", visibleData[visibleData.length-1]?.timestamp);
 
             setCandleData(visibleData);
         }
@@ -77,6 +92,14 @@ export function ChartProvider({ children }) {
 
         console.log("[ChartContext] Starting data generation interval (5 seconds).");
         const interval = setInterval(() => {
+            // Just before generating new candle - LOG 1
+            console.log("=== CYCLE START ===");
+            console.log("[Buffer State] Length:", historicalBuffer.length,
+                "ViewIndex:", viewStartIndex,
+                "DisplayedCandles:", displayedCandles,
+                "ViewEnd:", viewStartIndex + displayedCandles,
+                "ViewingLatest:", (viewStartIndex + displayedCandles >= historicalBuffer.length));
+
             console.log("--------------------");
             console.log("[ChartContext] Interval Tick - Attempting to generate new candle.");
 
@@ -90,12 +113,21 @@ export function ChartProvider({ children }) {
             const lastCandle = historicalBuffer[historicalBuffer.length - 1];
             const newCandle = generateNewCandle(lastCandle);
 
+            // After generating new candle - LOG 2
+            console.log("[New Candle]", newCandle);
+
             console.log(`[ChartContext] Interval Tick - Before Update: Buffer Length=${currentBufferLength}, Is Full=${isBufferFull}, Last Candle Timestamp=${lastCandle?.timestamp}`);
             console.log("[ChartContext] Interval Tick - Generated New Candle:", newCandle);
 
             // Update historical buffer
             setHistoricalBuffer(prevBuffer => {
                 const updatedBuffer = [...prevBuffer, newCandle].slice(-MAX_HISTORY_CANDLES);
+
+                // Inside the setHistoricalBuffer callback - LOG 3
+                console.log("[Buffer Updated] New Length:", updatedBuffer.length,
+                    "First Candle Time:", updatedBuffer[0]?.timestamp,
+                    "Last Candle Time:", updatedBuffer[updatedBuffer.length-1]?.timestamp);
+
                 console.log(`[ChartContext] Interval Tick - Updated Buffer: New Length=${updatedBuffer.length}`);
                 return updatedBuffer;
             });
@@ -105,6 +137,12 @@ export function ChartProvider({ children }) {
                 console.log("[ChartContext] Interval Tick - Not dragging, proceeding with auto-scroll check.");
 
                 setViewStartIndex(prevIndex => {
+                    // Inside the setViewStartIndex callback before any calculations - LOG 4
+                    console.log("[View Calc] Current Index:", prevIndex,
+                        "DisplayCandles:", displayedCandles,
+                        "BufferLength:", currentBufferLength,
+                        "IsViewingEnd:", prevIndex + displayedCandles >= currentBufferLength);
+
                     console.log(`[ChartContext] AutoScroll Check - Prev Index: ${prevIndex}, Displayed: ${displayedCandles}, Buffer Length (Before Add): ${currentBufferLength}`);
 
                     // Check if we're currently viewing the end of the chart
@@ -123,7 +161,7 @@ export function ChartProvider({ children }) {
                         // If buffer is full but NOT viewing the end,
                         // Shift by exactly 1 to maintain the same relative position
                         // This compensates for the oldest candle being removed
-                        newIndex = prevIndex + 1;
+                        newIndex = prevIndex - 1;
                         console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Full: Shifting +1 to maintain position. New Index: ${newIndex}`);
                     }
                     else {
@@ -138,6 +176,11 @@ export function ChartProvider({ children }) {
                     if (finalBoundedIndex !== newIndex) {
                         console.warn(`[ChartContext] AutoScroll Warning - Calculated index ${newIndex} was out of bounds, corrected to ${finalBoundedIndex}`);
                     }
+
+                    // After calculating new index - LOG 5
+                    console.log("[View Calc] Result: New Index:", finalBoundedIndex,
+                        "Will show candles", finalBoundedIndex, "to",
+                        finalBoundedIndex + displayedCandles - 1);
 
                     console.log(`[ChartContext] AutoScroll Final - Setting viewStartIndex to: ${finalBoundedIndex}`);
                     return finalBoundedIndex;
@@ -155,12 +198,11 @@ export function ChartProvider({ children }) {
             clearInterval(interval);
         };
     }, [
-        historicalBuffer, // Recalculate if buffer changes (needed for length checks)
-        isDragging,       // Recalculate if dragging state changes
-        displayedCandles, // Recalculate if displayed candles count changes
-        isDataGenerationEnabled, // Re-run effect if generation is toggled
-        // MAX_HISTORY_CANDLES is a constant, doesn't need to be a dependency
-        // setHistoricalBuffer, setViewStartIndex are stable refs from useState
+        historicalBuffer,
+        isDragging,
+        displayedCandles,
+        isDataGenerationEnabled,
+        viewStartIndex, // Added for logging purposes
     ]);
 
     // Calculate indicator values when candle data changes
@@ -184,7 +226,7 @@ export function ChartProvider({ children }) {
                 }
             })
         );
-    }, [historicalBuffer, indicators.length]); // Remove indicators from dependency array
+    }, [historicalBuffer, indicators.length]);
 
     // Indicator management functions
     const addIndicator = (indicator) => {

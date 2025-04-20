@@ -39,6 +39,15 @@ const CandleChart = () => {
         setIsDataGenerationEnabled
     } = useContext(ChartContext);
 
+    useEffect(() => {
+        console.log("[CandleChart] Received updated data - Length:", data.length,
+            "ViewIndex:", viewStartIndex,
+            "DisplayedCandles:", displayedCandles,
+            "Buffer Length:", historicalBuffer.length,
+            "First Candle:", data[0]?.timestamp,
+            "Last Candle:", data[data.length-1]?.timestamp);
+    }, [data, viewStartIndex, displayedCandles, historicalBuffer.length]);
+
     const DEFAULT_DISPLAY_CANDLES = 100; // Define constant here for reset function
 
     // Get main indicators that should be displayed on the candle chart
@@ -50,11 +59,10 @@ const CandleChart = () => {
     useEffect(() => {
         if (!data || data.length === 0 || !chartRef.current) return;
 
-        // console.log("About to render chart with indicators:", {
-        //     count: mainIndicators.length,
-        //     first: mainIndicators[0],
-        //     hasValues: mainIndicators[0]?.values ? 'yes' : 'no'
-        // });
+        // Before rendering - LOG 10
+        console.log("[Chart Render] Starting render with - Candles:", data.length,
+            "First Candle:", data[0]?.timestamp,
+            "Last Candle:", data[data.length-1]?.timestamp);
 
 
         renderCandleChart({
