@@ -16,38 +16,33 @@ const IndicatorCharts = () => {
         configureIndicator
     } = useIndicators();
 
-
-
     const MAX_INDICATORS = 15;
     const showAddButton = indicators.length < MAX_INDICATORS;
 
-    // Filter indicators by category
-    const subIndicators = indicators.filter(ind => ind.category === "sub");
-
-    // console.log("Indicators in IndicatorCharts:", indicators);
-    // console.log("Filtered subIndicators:", subIndicators);
+    // No longer filtering by indicator type - show all indicators
+    console.log("All indicators in IndicatorCharts:", indicators);
 
     return (
         <Card className="w-full">
             <CardContent className="p-4">
                 <ScrollArea className="w-full h-[200px]" orientation="vertical">
-                        <div className="flex space-x-4 pr-2 pb-2 pl-2 min-w-max">
-                            {subIndicators.map((indicator) => (
-                                <IndicatorSubcard
-                                    key={indicator.id}
-                                    indicator={indicator}
-                                    onConfigureClick={() => configureIndicator(indicator.id)}
-                                    onRemoveClick={() => removeIndicator(indicator.id)}
-                                />
-                            ))}
+                    <div className="flex flex-col space-y-4 pr-2 pb-2 pl-2">
+                        {indicators.map((indicator) => (
+                            <IndicatorSubcard
+                                key={indicator.id}
+                                indicator={indicator}
+                                onConfigureClick={() => configureIndicator(indicator.id)}
+                                onRemoveClick={() => removeIndicator(indicator.id)}
+                            />
+                        ))}
 
-                            {showAddButton && (
-                                <AddIndicatorCard onClick={() => {
-                                    console.log("Add indicator card clicked");
-                                    setIsDialogOpen(true);
-                                }}/>
-                            )}
-                        </div>
+                        {showAddButton && (
+                            <AddIndicatorCard onClick={() => {
+                                console.log("Add indicator card clicked");
+                                setIsDialogOpen(true);
+                            }}/>
+                        )}
+                    </div>
                 </ScrollArea>
             </CardContent>
 
@@ -55,7 +50,6 @@ const IndicatorCharts = () => {
                 isOpen={isDialogOpen}
                 onClose={() => setIsDialogOpen(false)}
                 onAdd={addIndicator}
-
             />
         </Card>
     );
