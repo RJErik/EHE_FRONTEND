@@ -19,7 +19,7 @@ const IndicatorSubcard = ({ indicator, onConfigureClick, onRemoveClick }) => {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={onConfigureClick}
+                        onClick={() => onConfigureClick(indicator.id)}
                     >
                         <Settings className="h-4 w-4" />
                     </Button>
@@ -27,7 +27,7 @@ const IndicatorSubcard = ({ indicator, onConfigureClick, onRemoveClick }) => {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
-                        onClick={onRemoveClick}
+                        onClick={() => onRemoveClick(indicator.id)}
                     >
                         <X className="h-4 w-4" />
                     </Button>

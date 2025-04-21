@@ -3,8 +3,10 @@ import { useState, useContext } from "react";
 import { ChartContext } from "../ChartContext.jsx";
 
 export function useIndicators() {
-    // Only local state is for configuration UI
-    const [configuringIndicator, setConfiguringIndicator] = useState(null);
+    // Configuration UI state
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editMode, setEditMode] = useState(false);
+    const [editingIndicator, setEditingIndicator] = useState(null);
 
     // Get indicator state and functions from shared context
     const {
@@ -14,27 +16,57 @@ export function useIndicators() {
         updateIndicator = () => console.error("ChartContext not available")
     } = useContext(ChartContext) || {};
 
-    // Configure an indicator
-    const configureIndicator = (id) => {
+    // Open dialog to add a new indicator
+    const openAddDialog = () => {
+        setEditMode(false);
+        setEditingIndicator(null);
+        setIsDialogOpen(true);
+    };
+
+    // Open dialog to edit an existing indicator
+    const openEditDialog = (id) => {
         const indicator = indicators.find(ind => ind.id === id);
         if (indicator) {
-            setConfiguringIndicator(indicator);
+            setEditMode(true);
+            setEditingIndicator(indicator);
+            setIsDialogOpen(true);
         } else {
-            console.warn(`Indicator with id ${id} not found for configuration`);
+            console.warn(`Indicator with id ${id} not found for editing`);
         }
     };
 
-    // // Debugging log to see what's being returned
-    // console.log("useIndicators hook returning indicators:",
-    //     indicators?.map(i => ({id: i.id, name: i.name, category: i.category})));
+    // Close the dialog
+    const closeDialog = () => {
+        setIsDialogOpen(false);
+        // Reset state after animation completes
+        setTimeout(() => {
+            setEditMode(false);
+            setEditingIndicator(null);
+        }, 300);
+    };
+
+    // Handle indicator update from dialog
+    const handleUpdateIndicator = (updatedData) => {
+        if (editingIndicator && editingIndicator.id) {
+            updateIndicator(editingIndicator.id, updatedData);
+        }
+    };
 
     return {
+        // State
         indicators,
+        isDialogOpen,
+        editMode,
+        editingIndicator,
+
+        // Dialog actions
+        openAddDialog,
+        openEditDialog,
+        closeDialog,
+
+        // Indicator actions
         addIndicator,
         removeIndicator,
-        updateIndicator,
-        configureIndicator,
-        configuringIndicator,
-        setConfiguringIndicator
+        updateIndicator: handleUpdateIndicator
     };
 }

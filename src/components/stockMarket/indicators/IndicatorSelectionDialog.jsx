@@ -115,7 +115,13 @@ const getColorByHex = (hexValue) => {
     return PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
 };
 
-const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
+// Helper to get default settings for an indicator type
+const getDefaultSettingsForType = (typeId) => {
+    const indicatorType = INDICATOR_TYPES.find(t => t.id === typeId);
+    return indicatorType ? { ...indicatorType.defaultSettings } : {};
+};
+
+const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, initialIndicator = null, onUpdate = null }) => {
     const [category, setCategory] = useState("main");
     const [selectedType, setSelectedType] = useState(null);
     const [settings, setSettings] = useState({
@@ -124,11 +130,68 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
         thickness: 2
     });
 
+    // Track the original indicator type and settings
+    const [originalType, setOriginalType] = useState(null);
+    const [originalSettings, setOriginalSettings] = useState(null);
+
     const [colorOption, setColorOption] = useState("default"); // "default", "predefined", or "custom"
 
-    // When an indicator is selected, initialize with its specific default settings
+    // Initialize dialog when opening in edit mode
     useEffect(() => {
-        if (selectedType) {
+        if (isOpen && editMode && initialIndicator) {
+            // Set category based on the initial indicator
+            setCategory(initialIndicator.category || "main");
+
+            // Set selected type
+            setSelectedType(initialIndicator.type);
+
+            // Save the original type
+            setOriginalType(initialIndicator.type);
+
+            // Get default settings for this indicator type
+            const defaultSettings = getDefaultSettingsForType(initialIndicator.type);
+
+            // Merge default settings with the initial indicator's settings
+            // This ensures all required fields exist
+            const indicatorSettings = {
+                ...defaultSettings,
+                ...(initialIndicator.settings || {}),
+                thickness: initialIndicator.settings?.thickness || 2
+            };
+
+            const colorObj = getColorByHex(indicatorSettings.color);
+
+            // Prepare settings with color name
+            const settingsWithColorName = {
+                ...indicatorSettings,
+                colorName: colorObj ? colorObj.name : "Custom"
+            };
+
+            // Initialize our settings
+            setSettings(settingsWithColorName);
+
+            // Save the original settings
+            setOriginalSettings(settingsWithColorName);
+
+            // Set color option based on the initial color
+            setColorOption(colorObj ? "predefined" : "custom");
+        } else if (isOpen && !editMode) {
+            // Reset when opening for new indicator
+            setSelectedType(null);
+            setSettings({
+                color: "",
+                colorName: "",
+                thickness: 2
+            });
+            setOriginalType(null);
+            setOriginalSettings(null);
+            setColorOption("default");
+        }
+    }, [isOpen, editMode, initialIndicator]);
+
+    // When an indicator is selected (in add mode), initialize with its specific default settings
+    useEffect(() => {
+        if (!editMode && selectedType) {
             const indicatorType = INDICATOR_TYPES.find(t => t.id === selectedType);
             if (indicatorType) {
                 const randomColor = getRandomColor();
@@ -141,24 +204,61 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                 setColorOption("predefined");
             }
         }
-    }, [selectedType]);
+    }, [selectedType, editMode]);
 
-    // Reset selected type when changing tabs
+    // Handle indicator type switching in edit mode
     useEffect(() => {
-        setSelectedType(null);
-    }, [category]);
+        if (editMode && selectedType && originalType) {
+            if (selectedType === originalType) {
+                // If switching back to the original indicator type, restore its original settings
+                setSettings(originalSettings);
+
+                // Set color option based on the original settings
+                const colorObj = getColorByHex(originalSettings.color);
+                setColorOption(colorObj ? "predefined" : "custom");
+            }
+            else if (selectedType !== originalType) {
+                // If switching to a different indicator type, get its default settings
+                // but preserve visual properties
+                const newTypeDefaults = getDefaultSettingsForType(selectedType);
+
+                // Create new settings with defaults for the new type but preserve visual settings
+                const newSettings = {
+                    ...newTypeDefaults,
+                    color: settings.color,
+                    colorName: settings.colorName,
+                    thickness: settings.thickness
+                };
+
+                // Preserve the 'source' setting if it exists in both
+                if (settings.source && newTypeDefaults.hasOwnProperty('source')) {
+                    newSettings.source = settings.source;
+                }
+
+                // Update settings
+                setSettings(newSettings);
+            }
+        }
+    }, [selectedType, editMode, originalType, originalSettings]);
+
+    // Reset selected type when changing tabs only in add mode
+    useEffect(() => {
+        if (!editMode) {
+            setSelectedType(null);
+        }
+    }, [category, editMode]);
 
     // Filter indicators by the selected category tab
     const filteredIndicators = INDICATOR_TYPES.filter(indicator =>
         indicator.categories.includes(category)
     );
 
-    const handleAdd = () => {
+    const handleSave = () => {
         if (!selectedType) return;
 
         const selectedIndicator = INDICATOR_TYPES.find(t => t.id === selectedType);
 
-        const newIndicator = {
+        const indicatorData = {
             name: selectedIndicator.shortName,
             type: selectedType,
             category,
@@ -169,17 +269,13 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
             }
         };
 
-        onAdd(newIndicator);
-        onClose();
+        if (editMode && onUpdate) {
+            onUpdate(indicatorData);
+        } else {
+            onAdd(indicatorData);
+        }
 
-        // Reset form
-        setSelectedType(null);
-        setSettings({
-            color: "",
-            colorName: "",
-            thickness: 2
-        });
-        setColorOption("default");
+        onClose();
     };
 
     // Handle color text input changes
@@ -244,7 +340,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                             <Label>Fast Period</Label>
                             <Input
                                 type="number"
-                                value={settings.fastPeriod || 12}
+                                value={settings.fastPeriod !== undefined ? settings.fastPeriod : 12}
                                 onChange={e => setSettings(prev => ({...prev, fastPeriod: parseInt(e.target.value)}))}
                                 min="1"
                             />
@@ -253,7 +349,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                             <Label>Slow Period</Label>
                             <Input
                                 type="number"
-                                value={settings.slowPeriod || 26}
+                                value={settings.slowPeriod !== undefined ? settings.slowPeriod : 26}
                                 onChange={e => setSettings(prev => ({...prev, slowPeriod: parseInt(e.target.value)}))}
                                 min="1"
                             />
@@ -262,7 +358,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                             <Label>Signal Period</Label>
                             <Input
                                 type="number"
-                                value={settings.signalPeriod || 9}
+                                value={settings.signalPeriod !== undefined ? settings.signalPeriod : 9}
                                 onChange={e => setSettings(prev => ({...prev, signalPeriod: parseInt(e.target.value)}))}
                                 min="1"
                             />
@@ -276,7 +372,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                             <Label>Period</Label>
                             <Input
                                 type="number"
-                                value={settings.period || 20}
+                                value={settings.period !== undefined ? settings.period : 20}
                                 onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
                                 min="1"
                             />
@@ -285,7 +381,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                             <Label>Multiplier</Label>
                             <Input
                                 type="number"
-                                value={settings.multiplier || 2}
+                                value={settings.multiplier !== undefined ? settings.multiplier : 2}
                                 onChange={e => setSettings(prev => ({...prev, multiplier: parseFloat(e.target.value)}))}
                                 min="0.1"
                                 step="0.1"
@@ -299,7 +395,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                         <Label>Period</Label>
                         <Input
                             type="number"
-                            value={settings.period || 14}
+                            value={settings.period !== undefined ? settings.period : 14}
                             onChange={e => setSettings(prev => ({...prev, period: parseInt(e.target.value)}))}
                             min="1"
                         />
@@ -312,7 +408,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="sm:max-w-[700px]">
                 <DialogHeader>
-                    <DialogTitle>Add Indicator</DialogTitle>
+                    <DialogTitle>{editMode ? "Edit Indicator" : "Add Indicator"}</DialogTitle>
                 </DialogHeader>
 
                 <Tabs value={category} onValueChange={setCategory}>
@@ -426,7 +522,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                                 <Label>Line Thickness</Label>
                                                 <Input
                                                     type="number"
-                                                    value={settings.thickness}
+                                                    value={settings.thickness !== undefined ? settings.thickness : 2}
                                                     onChange={e => setSettings(prev => ({...prev, thickness: parseInt(e.target.value)}))}
                                                     min="1"
                                                     max="5"
@@ -439,8 +535,8 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd }) => {
                                         <Button variant="outline" onClick={onClose}>
                                             Cancel
                                         </Button>
-                                        <Button onClick={handleAdd}>
-                                            Add Indicator
+                                        <Button onClick={handleSave}>
+                                            {editMode ? "Update Indicator" : "Add Indicator"}
                                         </Button>
                                     </div>
                                 </>
