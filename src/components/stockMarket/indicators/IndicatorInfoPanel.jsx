@@ -3,12 +3,12 @@ import { useContext } from "react";
 import { ChartContext } from "../ChartContext.jsx";
 
 const IndicatorInfoPanel = ({ indicator }) => {
-    const { hoveredIndex, viewStartIndex } = useContext(ChartContext) || {
+    const { hoveredIndex, candleData } = useContext(ChartContext) || {
         hoveredIndex: null,
-        viewStartIndex: 0
+        candleData: []
     };
 
-    if (!indicator?.values || hoveredIndex === null) {
+    if (!indicator?.id || hoveredIndex === null || !candleData[hoveredIndex]) {
         return (
             <div className="h-5 text-xs text-muted-foreground">
                 Hover for values
@@ -16,13 +16,17 @@ const IndicatorInfoPanel = ({ indicator }) => {
         );
     }
 
-    // Get value at ABSOLUTE hovered position
-    const absoluteIndex = viewStartIndex + hoveredIndex;
-    let value = absoluteIndex < indicator.values.length
-        ? indicator.values[absoluteIndex]
-        : null;
+    // Get indicator value from the hovered candle
+    const value = candleData[hoveredIndex].indicatorValues?.[indicator.id];
 
-    // Rest of your component remains the same...
+    if (!value) {
+        return (
+            <div className="h-5 text-xs text-muted-foreground">
+                No data available
+            </div>
+        );
+    }
+
     if (typeof value === 'object') {
         return (
             <div className="h-5 flex items-center text-xs overflow-x-auto whitespace-nowrap">
