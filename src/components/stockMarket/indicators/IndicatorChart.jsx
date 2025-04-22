@@ -1,17 +1,21 @@
 // src/components/stockMarket/indicators/IndicatorChart.jsx
-import { useEffect, useRef, useContext } from "react";
+import { useEffect, useRef, useContext, useState } from "react";
 import { renderIndicatorChart } from "./renderIndicatorChart.js";
 import { ChartContext } from "../ChartContext.jsx";
 
 const IndicatorChart = ({ indicator }) => {
     const chartRef = useRef(null);
+    const [isMouseOverChart, setIsMouseOverChart] = useState(false);
+
     const {
         candleData, // Added this to extract values
         viewStartIndex,
         displayedCandles,
         setActiveTimestamp,
         isDragging,
+        currentMouseY,
         setCurrentMouseY,
+        hoveredIndex,
         setHoveredIndex
     } = useContext(ChartContext) || {};
 
@@ -41,11 +45,91 @@ const IndicatorChart = ({ indicator }) => {
             isDragging,
             setActiveTimestamp,
             setCurrentMouseY,
-            setHoveredIndex
+            setHoveredIndex,
+            hoveredIndex,
+            currentMouseY,
+            isMouseOverChart
         });
 
         return cleanup;
-    }, [indicator, candleData, viewStartIndex, displayedCandles, isDragging]);
+    }, [
+        indicator,
+        candleData,
+        viewStartIndex,
+        displayedCandles,
+        isDragging,
+        hoveredIndex,
+        currentMouseY,
+        isMouseOverChart
+    ]);
+
+    // Setup mouse tracking to handle the case where the mouse moves out of the chart quickly
+    useEffect(() => {
+        const handleMouseEnter = (e) => {
+            const chartRect = chartRef.current.getBoundingClientRect();
+            const marginLeft = 40;
+            const marginRight = 40;
+            const marginTop = 5;
+            const marginBottom = 5;
+
+            const isInChartArea =
+                e.clientX >= chartRect.left + marginLeft &&
+                e.clientX <= chartRect.right - marginRight &&
+                e.clientY >= chartRect.top + marginTop &&
+                e.clientY <= chartRect.bottom - marginBottom;
+
+            if (isInChartArea) {
+                setIsMouseOverChart(true);
+            }
+        };
+
+        const handleMouseLeave = (e) => {
+            // Check if mouse is truly leaving the chart element
+            if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
+                setIsMouseOverChart(false);
+            }
+        };
+
+        // Global mouse move to catch quick mouse movements
+        const handleGlobalMouseMove = (e) => {
+            if (chartRef.current && isMouseOverChart && !isDragging) {
+                const chartRect = chartRef.current.getBoundingClientRect();
+                const marginLeft = 40;
+                const marginRight = 40;
+                const marginTop = 5;
+                const marginBottom = 5;
+
+                const isStillInChartArea =
+                    e.clientX >= chartRect.left + marginLeft &&
+                    e.clientX <= chartRect.right - marginRight &&
+                    e.clientY >= chartRect.top + marginTop &&
+                    e.clientY <= chartRect.bottom - marginBottom;
+
+                if (!isStillInChartArea) {
+                    setIsMouseOverChart(false);
+                }
+            }
+        };
+
+        // Attach event listeners
+        const chartElement = chartRef.current;
+        if (chartElement) {
+            chartElement.addEventListener('mouseenter', handleMouseEnter);
+            chartElement.addEventListener('mouseleave', handleMouseLeave);
+        }
+
+        // Global listener for quick mouse movements
+        document.addEventListener('mousemove', handleGlobalMouseMove);
+
+        // Cleanup
+        return () => {
+            if (chartElement) {
+                chartElement.removeEventListener('mouseenter', handleMouseEnter);
+                chartElement.removeEventListener('mouseleave', handleMouseLeave);
+            }
+            document.removeEventListener('mousemove', handleGlobalMouseMove);
+        };
+    }, [isMouseOverChart, isDragging]);
 
     // Helper function to extract indicator values from candle data
     const extractIndicatorValues = (candles, indicatorId, indicatorType) => {
