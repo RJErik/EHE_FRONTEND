@@ -87,6 +87,9 @@ const IndicatorChart = ({ indicator }) => {
             // Check if mouse is truly leaving the chart element
             if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
                 setIsMouseOverChart(false);
+                setHoveredIndex(null);
+                setCurrentMouseY(null);
+                setActiveTimestamp(null);
             }
         };
 

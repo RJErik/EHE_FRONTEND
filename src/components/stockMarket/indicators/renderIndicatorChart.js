@@ -65,23 +65,40 @@ export function renderIndicatorChart({
         data, xScale, yScale, crosshair, verticalLine, horizontalLine, valueLabel
     );
 
-    // If we have a hovered index and mouse is over chart, show the crosshair at that position
-    if (hoveredIndex !== null && hoveredIndex !== undefined && isMouseOverChart && !isDragging) {
-        updateCrosshair(
-            hoveredIndex,
-            currentMouseY || height / 2, // Use current mouse Y if available, otherwise middle
-            data,
-            xScale,
-            yScale,
-            crosshair,
-            verticalLine,
-            horizontalLine,
-            valueLabel,
-            width
-        );
-    } else if (!isMouseOverChart || isDragging) {
-        // Hide crosshair if mouse is not over chart or dragging
+    // Crosshair display logic with proper synchronization
+    if (hoveredIndex !== null && hoveredIndex !== undefined && !isDragging) {
+        // Calculate x position for the vertical line
+        const xPos = xScale(hoveredIndex);
+
+        // Only show crosshair components when mouse is over ANY chart
+        // This makes it behave like the CandleChart
+        if (isMouseOverChart) {
+            // Show and position vertical crosshair line
+            crosshair.style("display", null);
+            verticalLine.attr("x1", xPos).attr("x2", xPos);
+
+            // Show and position horizontal crosshair components
+            horizontalLine
+                .style("display", null)
+                .attr("y1", currentMouseY || height / 2)
+                .attr("y2", currentMouseY || height / 2);
+
+            // Update value label
+            updateValueLabel(
+                currentMouseY || height / 2,
+                yScale,
+                valueLabel,
+                width
+            );
+        } else {
+            // Hide everything when mouse is not over this chart
+            crosshair.style("display", "none");
+            valueLabel.style("display", "none");
+        }
+    } else {
+        // No valid hoveredIndex or we're dragging, hide everything
         crosshair.style("display", "none");
+        valueLabel.style("display", "none");
     }
 
     // Cleanup function
@@ -180,8 +197,9 @@ function createCrosshair(svg, width, height) {
         .attr("stroke-dasharray", "3,3");
 
     // Value label (right side)
-    const valueLabel = crosshair.append("g")
-        .attr("class", "value-label");
+    const valueLabel = svg.append("g")
+        .attr("class", "value-label")
+        .style("display", "none");
 
     valueLabel.append("rect")
         .attr("fill", "rgba(0, 0, 0, 0.7)")
@@ -225,83 +243,80 @@ function createHoverZone(
             setHoveredIndex(boundedIndex);
             setCurrentMouseY(mouseY);
 
-            // Update crosshair
+            // Update crosshair - show both vertical and horizontal components
             updateCrosshair(
                 boundedIndex,
                 mouseY,
-                data,
                 xScale,
-                yScale,
-                crosshair,
                 verticalLine,
                 horizontalLine,
+                height,
+                true
+            );
+
+            // Update value label
+            updateValueLabel(
+                mouseY,
+                yScale,
                 valueLabel,
                 width
             );
         });
 }
 
+// Split the crosshair update function to separately handle vertical and horizontal components
 function updateCrosshair(
     index,
     mouseY,
-    data,
     xScale,
-    yScale,
-    crosshair,
     verticalLine,
     horizontalLine,
-    valueLabel,
-    width
+    height,
+    showHorizontal
 ) {
-    // Only proceed if we have valid data
-    if (index === null || (Array.isArray(data) && index >= data.length)) {
-        crosshair.style("display", "none");
-        return;
-    }
-
-    // Show crosshair
-    crosshair.style("display", null);
-
     // Get X position
     const xPos = xScale(index);
 
     // Position vertical line
     verticalLine.attr("x1", xPos).attr("x2", xPos);
 
-    // Position horizontal line - use local mouseY position, not synchronized
-    horizontalLine.attr("y1", mouseY).attr("y2", mouseY);
-
-    // Get the value for this position (handling both array and object data)
-    let value;
-    if (Array.isArray(data)) {
-        value = data[index];
+    // Position horizontal line - only if showHorizontal is true
+    if (showHorizontal) {
+        horizontalLine.attr("y1", mouseY).attr("y2", mouseY)
+            .style("display", null);
     } else {
-        // For multiple lines, use the first series
-        const firstKey = Object.keys(data)[0];
-        value = data[firstKey][index];
+        horizontalLine.style("display", "none");
     }
+}
 
-    // Only update value label if we have a valid value
-    if (value !== null && value !== undefined) {
-        // Get value at current Y position
-        const displayValue = yScale.invert(mouseY);
+// Separate function to update value label
+function updateValueLabel(
+    mouseY,
+    yScale,
+    valueLabel,
+    width
+) {
+    // Get value at current Y position
+    const displayValue = yScale.invert(mouseY);
 
-        // Update value label
-        valueLabel.select("text")
-            .attr("x", width + 5)
-            .attr("y", mouseY)
-            .text(displayValue.toFixed(2));
+    // Show value label
+    valueLabel.style("display", null);
 
-        // Position value label rectangle
-        const valueLabelNode = valueLabel.select("text").node();
-        if (valueLabelNode) {
-            const bbox = valueLabelNode.getBBox();
-            valueLabel.select("rect")
-                .attr("x", width + 3)
-                .attr("y", mouseY - bbox.height/2 - 2)
-                .attr("width", bbox.width + 4)
-                .attr("height", bbox.height + 4);
-        }
+    // Update value label
+    valueLabel.select("text")
+        .attr("x", width + 5)
+        .attr("y", mouseY)
+        .text(displayValue.toFixed(2));
+
+    // Position value label rectangle
+    const valueLabelNode = valueLabel.select("text").node();
+    if (valueLabelNode) {
+        const bbox = valueLabelNode.getBBox();
+        valueLabel.select("rect")
+            .attr("x", width + 3)
+            .attr("y", mouseY - bbox.height/2 - 2)
+            .attr("width", bbox.width + 4)
+            .attr("height", bbox.height + 4);
     }
 }
 
