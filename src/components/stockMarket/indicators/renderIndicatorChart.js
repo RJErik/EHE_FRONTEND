@@ -65,25 +65,25 @@ export function renderIndicatorChart({
         data, xScale, yScale, crosshair, verticalLine, horizontalLine, valueLabel
     );
 
-    // Crosshair display logic with proper synchronization
+    // Always show the vertical line if we have a valid hoveredIndex, even when mouse is not over chart
     if (hoveredIndex !== null && hoveredIndex !== undefined && !isDragging) {
-        // Calculate x position for the vertical line
+        // Show crosshair group
+        crosshair.style("display", null);
+
+        // Get X position
         const xPos = xScale(hoveredIndex);
 
-        // Only show crosshair components when mouse is over ANY chart
-        // This makes it behave like the CandleChart
+        // Position vertical line
+        verticalLine.attr("x1", xPos).attr("x2", xPos);
+
+        // Only show horizontal line and value label if mouse is over THIS chart
         if (isMouseOverChart) {
-            // Show and position vertical crosshair line
-            crosshair.style("display", null);
-            verticalLine.attr("x1", xPos).attr("x2", xPos);
+            // Position horizontal line using local mouseY
+            horizontalLine.attr("y1", currentMouseY || height / 2)
+                .attr("y2", currentMouseY || height / 2)
+                .style("display", null);
 
-            // Show and position horizontal crosshair components
-            horizontalLine
-                .style("display", null)
-                .attr("y1", currentMouseY || height / 2)
-                .attr("y2", currentMouseY || height / 2);
-
-            // Update value label
+            // Update value label for hover position
             updateValueLabel(
                 currentMouseY || height / 2,
                 yScale,
@@ -91,14 +91,13 @@ export function renderIndicatorChart({
                 width
             );
         } else {
-            // Hide everything when mouse is not over this chart
-            crosshair.style("display", "none");
+            // Hide horizontal components when mouse is not over this chart
+            horizontalLine.style("display", "none");
             valueLabel.style("display", "none");
         }
     } else {
-        // No valid hoveredIndex or we're dragging, hide everything
+        // Hide everything if no valid hoveredIndex
         crosshair.style("display", "none");
-        valueLabel.style("display", "none");
     }
 
     // Cleanup function
