@@ -244,13 +244,84 @@ export function renderCandleChart({
     });
 
     // Restore crosshair position if we have active data and we're not dragging
-    if (!isDragging && activeTimestamp && currentMouseY !== null) {
-        const activeCandle = data.find(d => d.timestamp === activeTimestamp);
-        if (activeCandle) {
-            const index = data.findIndex(d => d.timestamp === activeTimestamp);
-            updateCrosshair(activeCandle, currentMouseY, index);
+    // UPDATED: Show crosshair based on hoveredIndex even if mouse is not over chart
+    if (!isDragging && hoveredIndex !== null && hoveredIndex >= 0 && hoveredIndex < data.length) {
+        // Get the candle at the hovered index
+        const hoveredCandle = data[hoveredIndex];
+
+        // Show vertical crosshair at this index position
+        crosshair.style("display", null);
+
+        // Position the vertical line at the candle's x position
+        const candleX = xScale(new Date(hoveredCandle.timestamp));
+        verticalLine.attr("x1", candleX).attr("x2", candleX);
+
+        // Show date label for the hovered candle
+        const dateFormat = new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric'
+        });
+
+        const formattedDate = dateFormat.format(new Date(hoveredCandle.timestamp));
+        dateLabel.select("text")
+            .attr("x", candleX)
+            .attr("y", height + 5)
+            .text(formattedDate);
+
+        // Position date label rectangle
+        const dateLabelNode = dateLabel.select("text").node();
+        if (dateLabelNode) {
+            const bbox = dateLabelNode.getBBox();
+            dateLabel.select("rect")
+                .attr("x", candleX - bbox.width/2 - 4)
+                .attr("y", height + 3)
+                .attr("width", bbox.width + 8)
+                .attr("height", bbox.height + 4)
+                .style("display", null);
+        }
+
+        // Highlight the candle
+        d3.select(`g.candle[data-timestamp='${hoveredCandle.timestamp}']`)
+            .select(".candle-body")
+            .attr("stroke", "#ffffff")
+            .attr("stroke-width", 1);
+
+        // Only show horizontal components if we have a valid Y position AND
+        // mouse is actually over this chart (activeTimestamp check)
+        if (activeTimestamp === hoveredCandle.timestamp && currentMouseY !== null) {
+            horizontalLine
+                .attr("y1", currentMouseY)
+                .attr("y2", currentMouseY)
+                .style("display", null);
+
+            // Update price label
+            const price = yScale.invert(currentMouseY);
+            priceLabel.select("text")
+                .attr("x", width + 5)
+                .attr("y", currentMouseY)
+                .text(price.toFixed(2));
+
+            // Position price label rectangle
+            const priceLabelNode = priceLabel.select("text").node();
+            if (priceLabelNode) {
+                const bbox = priceLabelNode.getBBox();
+                priceLabel.select("rect")
+                    .attr("x", width + 3)
+                    .attr("y", currentMouseY - bbox.height/2 - 2)
+                    .attr("width", bbox.width + 4)
+                    .attr("height", bbox.height + 4)
+                    .style("display", null);
+            }
+        } else {
+            // Hide horizontal line and price label if mouse not over chart
+            horizontalLine.style("display", "none");
+            priceLabel.select("rect").style("display", "none");
+            priceLabel.select("text").style("display", "none");
         }
     }
+
 
     // After drawing is complete - LOG 14
     console.log("[D3 Render] Complete! ===");

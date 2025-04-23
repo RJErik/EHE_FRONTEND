@@ -238,9 +238,14 @@ function createHoverZone(
 
             const boundedIndex = Math.max(0, Math.min(dataIndex, maxIndex));
 
-            // Update context state
+            // Update context state for both vertical and horizontal components
             setHoveredIndex(boundedIndex);
             setCurrentMouseY(mouseY);
+
+            // NEW: Update activeTimestamp to synchronize with candle chart
+            // For array data, there's no timestamp in the indicator data directly
+            // so we need to rely on the hoveredIndex for synchronization
+            setActiveTimestamp(boundedIndex);
 
             // Update crosshair - show both vertical and horizontal components
             updateCrosshair(

@@ -63,7 +63,7 @@ const IndicatorChart = ({ indicator }) => {
         isMouseOverChart
     ]);
 
-    // Setup mouse tracking to handle the case where the mouse moves out of the chart quickly
+    // Setup mouse tracking with more aggressive clearing of hover state
     useEffect(() => {
         const handleMouseEnter = (e) => {
             const chartRect = chartRef.current.getBoundingClientRect();
@@ -84,17 +84,18 @@ const IndicatorChart = ({ indicator }) => {
         };
 
         const handleMouseLeave = (e) => {
-            // Check if mouse is truly leaving the chart element
-            if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
-                setIsMouseOverChart(false);
-                if (setHoveredIndex) setHoveredIndex(null);
-                if (setCurrentMouseY) setCurrentMouseY(null);
-            }
+            // More aggressive clearing - always clear hover state regardless of relatedTarget
+            setIsMouseOverChart(false);
+
+            // Always clear these values when mouse leaves, matching CandleChart behavior
+            if (setHoveredIndex) setHoveredIndex(null);
+            if (setCurrentMouseY) setCurrentMouseY(null);
+            if (setActiveTimestamp) setActiveTimestamp(null);
         };
 
-        // Global mouse move to catch quick mouse movements
+        // Global mouse move to catch quick mouse movements - more aggressive clearing
         const handleGlobalMouseMove = (e) => {
-            if (chartRef.current && isMouseOverChart && !isDragging) {
+            if (chartRef.current && !isDragging) {
                 const chartRect = chartRef.current.getBoundingClientRect();
                 const marginLeft = 40;
                 const marginRight = 40;
@@ -107,8 +108,12 @@ const IndicatorChart = ({ indicator }) => {
                     e.clientY >= chartRect.top + marginTop &&
                     e.clientY <= chartRect.bottom - marginBottom;
 
-                if (!isStillInChartArea) {
+                // If mouse was over chart but now isn't, clear everything (matching CandleChart)
+                if (isMouseOverChart && !isStillInChartArea) {
                     setIsMouseOverChart(false);
+                    if (setHoveredIndex) setHoveredIndex(null);
+                    if (setCurrentMouseY) setCurrentMouseY(null);
+                    if (setActiveTimestamp) setActiveTimestamp(null);
                 }
             }
         };
@@ -131,7 +136,7 @@ const IndicatorChart = ({ indicator }) => {
             }
             document.removeEventListener('mousemove', handleGlobalMouseMove);
         };
-    }, [isMouseOverChart, isDragging]);
+    }, [isMouseOverChart, isDragging, setHoveredIndex, setCurrentMouseY, setActiveTimestamp]);
 
     // Helper function to extract indicator values from candle data
     const extractIndicatorValues = (candles, indicatorId, indicatorType) => {
