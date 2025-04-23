@@ -15,7 +15,8 @@ export function renderCandleChart({
                                       mainIndicators = [],
                                       hoveredIndex,
                                       setHoveredIndex,
-                                      viewStartIndex
+                                      viewStartIndex,
+                                      isMouseOverChart // New parameter
                                   }) {
     if (!data.length || !chartRef.current) return;
 
@@ -86,8 +87,6 @@ export function renderCandleChart({
 
     // Draw candles
     const candles = drawCandles(svg, data, xScale, yScale, candleWidth);
-
-    // Draw main indicators if present
 
     // Draw main indicators if present
     if (mainIndicators && mainIndicators.length > 0) {
@@ -192,7 +191,6 @@ export function renderCandleChart({
         });
     }
 
-
     // Create crosshair elements
     const {
         crosshair,
@@ -244,12 +242,11 @@ export function renderCandleChart({
     });
 
     // Restore crosshair position if we have active data and we're not dragging
-    // UPDATED: Show crosshair based on hoveredIndex even if mouse is not over chart
     if (!isDragging && hoveredIndex !== null && hoveredIndex >= 0 && hoveredIndex < data.length) {
         // Get the candle at the hovered index
         const hoveredCandle = data[hoveredIndex];
 
-        // Show vertical crosshair at this index position
+        // Always show vertical line for time alignment, even when mouse is on another chart
         crosshair.style("display", null);
 
         // Position the vertical line at the candle's x position
@@ -288,9 +285,9 @@ export function renderCandleChart({
             .attr("stroke", "#ffffff")
             .attr("stroke-width", 1);
 
-        // Only show horizontal components if we have a valid Y position AND
-        // mouse is actually over this chart (activeTimestamp check)
-        if (activeTimestamp === hoveredCandle.timestamp && currentMouseY !== null) {
+        // STRICTER CHECK: Only show horizontal components if the mouse is actually over THIS chart
+        // We check both isMouseOverChart AND that we have a valid Y position
+        if (isMouseOverChart && currentMouseY !== null) {
             horizontalLine
                 .attr("y1", currentMouseY)
                 .attr("y2", currentMouseY)
@@ -301,7 +298,8 @@ export function renderCandleChart({
             priceLabel.select("text")
                 .attr("x", width + 5)
                 .attr("y", currentMouseY)
-                .text(price.toFixed(2));
+                .text(price.toFixed(2))
+                .style("display", null);
 
             // Position price label rectangle
             const priceLabelNode = priceLabel.select("text").node();
@@ -315,13 +313,12 @@ export function renderCandleChart({
                     .style("display", null);
             }
         } else {
-            // Hide horizontal line and price label if mouse not over chart
+            // Hide horizontal components when mouse is not over this chart
             horizontalLine.style("display", "none");
             priceLabel.select("rect").style("display", "none");
             priceLabel.select("text").style("display", "none");
         }
     }
-
 
     // After drawing is complete - LOG 14
     console.log("[D3 Render] Complete! ===");
