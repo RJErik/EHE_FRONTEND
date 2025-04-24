@@ -123,8 +123,55 @@ function drawSingleLine(svg, data, xScale, yScale, color, thickness) {
 }
 
 function drawMultipleLines(svg, data, xScale, yScale, indicator) {
-    // Draw each line
-    Object.entries(data).forEach(([key, values], i) => {
+    // Special handling for MACD indicator
+    if (indicator.type === 'macd') {
+        // Draw histogram as bars
+        if (data.histogram && data.histogram.some(d => d !== null)) {
+            svg.selectAll(".macd-histogram")
+                .data(data.histogram)
+                .enter()
+                .append("rect")
+                .attr("class", "macd-histogram")
+                .attr("x", (d, i) => xScale(i) - 1)
+                .attr("y", d => d > 0 ? yScale(d) : yScale(0))
+                .attr("width", 2)
+                .attr("height", d => d > 0 ? yScale(0) - yScale(d) : yScale(d) - yScale(0))
+                .attr("fill", (d) => d > 0 ?
+                    lightenColor(indicator.settings.color, 20) :
+                    darkenColor(indicator.settings.color, 20));
+        }
+
+        // Draw MACD line
+        const macdLine = d3.line()
+            .x((d, i) => xScale(i))
+            .y(d => d === null ? null : yScale(d))
+            .defined(d => d !== null);
+
+        svg.append("path")
+            .datum(data.macd)
+            .attr("fill", "none")
+            .attr("stroke", indicator.settings.color)
+            .attr("stroke-width", indicator.settings.thickness)
+            .attr("d", macdLine);
+
+        // Draw signal line
+        const signalLine = d3.line()
+            .x((d, i) => xScale(i))
+            .y(d => d === null ? null : yScale(d))
+            .defined(d => d !== null);
+
+        svg.append("path")
+            .datum(data.signal)
+            .attr("fill", "none")
+            .attr("stroke", lightenColor(indicator.settings.color, 40))
+            .attr("stroke-width", indicator.settings.thickness)
+            .attr("d", signalLine);
+
+        return;
+    }
+
+    // Draw each line for other multi-line indicators
+    Object.entries(data).forEach(([, values], i) => {
         // Determine color based on index and indicator settings
         const color = i === 0 ? indicator.settings.color :
             i === 1 ? lightenColor(indicator.settings.color, 20) :

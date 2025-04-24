@@ -164,14 +164,16 @@ function calculateMACD(data, settings) {
         source = 'close'
     } = settings;
 
+    // Arrays for results
+    const macdLine = new Array(data.length).fill(null);
+    const signalLine = new Array(data.length).fill(null);
+    const histogram = new Array(data.length).fill(null);
+
     // Calculate fast EMA
     const fastEMA = calculateEMA(data, { period: fastPeriod, source });
 
     // Calculate slow EMA
     const slowEMA = calculateEMA(data, { period: slowPeriod, source });
-
-    // Arrays for results
-    const macdLine = new Array(data.length).fill(null);
 
     // Calculate MACD line (fastEMA - slowEMA)
     for (let i = 0; i < data.length; i++) {
@@ -180,21 +182,53 @@ function calculateMACD(data, settings) {
         }
     }
 
-    // Use macd values to calculate signal line (EMA of MACD)
-    const macdDataForSignal = data.map((candle, i) => ({ ...candle, close: macdLine[i] }));
-    const signalLine = calculateEMA(macdDataForSignal, { period: signalPeriod, source: 'close' });
+    // Calculate signal line (EMA of MACD line)
+    // We need at least signalPeriod valid MACD values to calculate the signal line
+    let firstValidMacdIndex = macdLine.findIndex(val => val !== null);
+    if (firstValidMacdIndex !== -1) {
+        // First calculate simple average for the first signal point
+        let sum = 0;
+        let count = 0;
+
+        for (let i = firstValidMacdIndex; i < Math.min(firstValidMacdIndex + signalPeriod, macdLine.length); i++) {
+            if (macdLine[i] !== null) {
+                sum += macdLine[i];
+                count++;
+            }
+        }
+
+        if (count > 0) {
+            const startIndex = firstValidMacdIndex + signalPeriod - 1;
+            if (startIndex < macdLine.length) {
+                signalLine[startIndex] = sum / count;
+
+                // Then calculate EMA for the rest
+                const multiplier = 2 / (signalPeriod + 1);
+
+                for (let i = startIndex + 1; i < macdLine.length; i++) {
+                    if (macdLine[i] !== null && signalLine[i-1] !== null) {
+                        signalLine[i] = (macdLine[i] - signalLine[i-1]) * multiplier + signalLine[i-1];
+                    }
+                }
+            }
+        }
+    }
+
+    // Calculate histogram (MACD - signal)
+    for (let i = 0; i < data.length; i++) {
+        if (macdLine[i] !== null && signalLine[i] !== null) {
+            histogram[i] = macdLine[i] - signalLine[i];
+        }
+    }
 
     // Return an object for each candle with macd, signal and histogram values
     return data.map((_, i) => {
         if (macdLine[i] === null) return null;
 
-        const signalValue = signalLine[i];
-        const histogramValue = macdLine[i] - (signalValue || 0);
-
         return {
             macd: macdLine[i],
-            signal: signalValue,
-            histogram: signalValue !== null ? histogramValue : null
+            signal: signalLine[i],
+            histogram: histogram[i]
         };
     });
 }
