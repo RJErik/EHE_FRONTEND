@@ -1,5 +1,5 @@
 // src/hooks/useCandleSubscription.js
-import { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { ChartContext } from '../components/stockMarket/ChartContext';
 import webSocketService from '../services/websocketService';
 import { useToast } from './use-toast';
@@ -159,6 +159,29 @@ export function useCandleSubscription() {
         setIsWaitingForData
     } = useContext(ChartContext);
 
+    // Calculate start date based on timeframe and number of candles
+    const calculateStartDate = useCallback((endDate, timeframe, candleCount) => {
+        let timeframeMinutes = 1; // default to 1 minute
+
+        // Convert timeframe to lowercase for case-insensitive matching
+        const normalizedTimeframe = timeframe.toLowerCase();
+
+        // Parse timeframe to get minutes
+        if (normalizedTimeframe.endsWith('m')) {
+            timeframeMinutes = parseInt(timeframe);
+        } else if (normalizedTimeframe.endsWith('h')) {
+            timeframeMinutes = parseInt(timeframe) * 60;
+        } else if (normalizedTimeframe.endsWith('d')) {
+            timeframeMinutes = parseInt(timeframe) * 60 * 24;
+        } else if (normalizedTimeframe.endsWith('w')) {
+            timeframeMinutes = parseInt(timeframe) * 60 * 24 * 7;
+        }
+
+        // Calculate how far back to go based on candle count and timeframe
+        const minutesBack = timeframeMinutes * candleCount;
+        return new Date(endDate.getTime() - (minutesBack * 60 * 1000));
+    }, []);
+
     // Handle incoming candle data
     const handleCandleMessage = useCallback((data) => {
         // Skip heartbeats - already handled in SubscriptionManager
@@ -289,14 +312,22 @@ export function useCandleSubscription() {
             // Get data range needed
             const range = calculateRequiredDataRange();
             const now = new Date();
-            const oneWeekAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+
+            // If we have existing data, use the calculated range
+            // Otherwise, request exactly displayedCandles worth of data based on the timeframe
+            const endDate = range.end ? new Date(range.end) : now;
+            const startDate = range.start ?
+                new Date(range.start) :
+                calculateStartDate(endDate, timeframe, displayedCandles);
+
+            console.log("[useCandleSubscription] Requesting candles from", startDate.toISOString(), "to", endDate.toISOString());
 
             const subscriptionRequest = {
                 platformName,
                 stockSymbol,
                 timeframe,
-                startDate: range.start ? new Date(range.start).toISOString() : oneWeekAgo.toISOString(),
-                endDate: range.end ? new Date(range.end).toISOString() : now.toISOString()
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
             };
 
             console.log("[useCandleSubscription] Subscribing to candles:", subscriptionRequest);
@@ -313,7 +344,7 @@ export function useCandleSubscription() {
         } finally {
             setIsSubscribing(false);
         }
-    }, [calculateRequiredDataRange, setIsWaitingForData]);
+    }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate]);
 
     // Initialize and setup effect
     useEffect(() => {
