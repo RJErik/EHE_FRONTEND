@@ -1,7 +1,6 @@
 // src/pages/StockMarket.jsx (update)
 import Header from "../components/Header";
 import StockSelectors from "../components/stockMarket/StockSelectors.jsx";
-import TimeIntervalButtons from "../components/stockMarket/TimeIntervalButtons.jsx";
 import CandleChart from "../components/stockMarket/CandleChart";
 import IndicatorCharts from "../components/stockMarket/IndicatorCharts.jsx";
 import PortfolioList from "../components/stockMarket/PortfolioList.jsx";
@@ -23,7 +22,6 @@ const StockMarket = ({ navigate }) => {
                             {/* Left section - Charts and controls */}
                             <div className="w-full md:w-2/3 space-y-4">
                                 <StockSelectors />
-                                <TimeIntervalButtons />
 
                                 <div className="mt-6 space-y-4">
                                     <CandleChart />

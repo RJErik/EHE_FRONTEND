@@ -1,6 +1,5 @@
 // src/components/stockMarket/ChartContext.jsx
 import { createContext, useState, useEffect, useCallback, useRef } from "react";
-import { generateMockCandleData, generateNewCandle } from "../../utils/mockDataGenerator.js";
 import { calculateIndicator } from "./indicators/indicatorCalculations.js";
 
 export const ChartContext = createContext(null);
@@ -23,7 +22,9 @@ export function ChartProvider({ children }) {
 
     // Configuration
     const [isLogarithmic, setIsLogarithmic] = useState(false);
-    const [isDataGenerationEnabled, setIsDataGenerationEnabled] = useState(false);
+
+    // WebSocket state
+    const [isWaitingForData, setIsWaitingForData] = useState(true);
 
     // Indicator state - now centralized here
     const [indicators, setIndicators] = useState([]);
@@ -34,7 +35,6 @@ export function ChartProvider({ children }) {
     const MAX_HISTORY_CANDLES = 500;
 
     // Helper function to calculate indicators for a buffer
-    // We make this a useCallback so it's stable and can be used in effects
     const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
         if (!buffer.length || !currentIndicators.length) return buffer;
 
@@ -68,7 +68,6 @@ export function ChartProvider({ children }) {
     }, []);
 
     // Calculate the required data range for websocket requests
-    // FIXED: Remove candleData dependency to break the infinite loop
     const calculateRequiredDataRange = useCallback(() => {
         if (!historicalBuffer.length) {
             console.log("[WebSocket Prep] No data available to calculate ranges");
@@ -140,18 +139,6 @@ export function ChartProvider({ children }) {
             ? (new Date(historicalBuffer[historicalBuffer.length - 1]?.timestamp + 60000)).getTime()
             : historicalBuffer[currentViewEnd - 1]?.timestamp;
 
-        console.log("[WebSocket Prep] Required Data Range:",
-            "Start Index:", dataStartIndex,
-            "End Index:", currentViewEnd + extraFutureCandles,
-            "Start Date:", new Date(startDate).toISOString(),
-            "End Date:", new Date(endDate).toISOString(),
-            "Looking at newest candles:", isViewingLatest,
-            "Extra future candles:", extraFutureCandles);
-
-        // Additional analysis for WebSocket transition planning
-        console.log("[WebSocket Prep] Total Candles Needed:", (currentViewEnd - dataStartIndex) + extraFutureCandles);
-        console.log("[WebSocket Prep] Extra Historical Candles for Indicators:", currentViewStart - dataStartIndex);
-
         return {
             start: startDate,
             end: endDate,
@@ -160,7 +147,7 @@ export function ChartProvider({ children }) {
             extraFutureCandles,
             totalCandlesNeeded: (currentViewEnd - dataStartIndex) + extraFutureCandles
         };
-    }, [historicalBuffer, viewStartIndex, displayedCandles, indicators]); // Removed candleData dependency
+    }, [historicalBuffer, viewStartIndex, displayedCandles, indicators]);
 
     // Create a ref to safely access the latest version of the function
     const calculateRangeRef = useRef(calculateRequiredDataRange);
@@ -170,14 +157,6 @@ export function ChartProvider({ children }) {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
 
-    // Initialize with mock data
-    useEffect(() => {
-        const initialData = generateMockCandleData(MAX_HISTORY_CANDLES);
-        setHistoricalBuffer(initialData);
-        // Start viewing from the most recent candles instead of the oldest ones
-        setViewStartIndex(Math.max(0, initialData.length - displayedCandles));
-    }, []);
-
     // Recalculate indicators when indicators list changes
     useEffect(() => {
         if (!historicalBuffer.length || !indicators.length) return;
@@ -186,7 +165,7 @@ export function ChartProvider({ children }) {
 
         const processedBuffer = calculateIndicatorsForBuffer(historicalBuffer, indicators);
         setHistoricalBuffer(processedBuffer);
-    }, [indicators, calculateIndicatorsForBuffer]); // No historicalBuffer dependency to avoid loops
+    }, [indicators, calculateIndicatorsForBuffer]);
 
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
@@ -210,28 +189,34 @@ export function ChartProvider({ children }) {
             );
 
             console.log("[Window Update] Final Visible Data - Length:", visibleData.length,
-                "First Candle Time:", visibleData[0]?.timestamp,
-                "Last Candle Time:", visibleData[visibleData.length-1]?.timestamp);
+                "First Candle Time:", new Date(visibleData[0]?.timestamp).toISOString(),
+                "Last Candle Time:", visibleData.length > 0 ?
+                    new Date(visibleData[visibleData.length-1]?.timestamp).toISOString() :
+                    "None");
 
             setCandleData(visibleData);
 
-            // FIXED: Use the ref version instead of the function directly to avoid infinite loops
+            // Calculate the required data range using the ref version
             setTimeout(() => {
                 if (historicalBuffer.length > 0) {
                     calculateRangeRef.current();
                 }
             }, 0);
+
+            // If we just got data and were waiting, set waiting to false
+            if (isWaitingForData && visibleData.length > 0) {
+                setIsWaitingForData(false);
+            }
         }
-    }, [historicalBuffer, viewStartIndex, displayedCandles]);
+    }, [historicalBuffer, viewStartIndex, displayedCandles, isWaitingForData]);
 
     // Run the calculation whenever indicators change too
     useEffect(() => {
         if (historicalBuffer.length > 0) {
             console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
-            // FIXED: Use the ref instead of the function directly
             calculateRangeRef.current();
         }
-    }, [indicators, historicalBuffer.length]); // Removed calculateRequiredDataRange dependency
+    }, [indicators, historicalBuffer.length]);
 
     // Update hovered candle when index changes
     useEffect(() => {
@@ -242,134 +227,12 @@ export function ChartProvider({ children }) {
         }
     }, [hoveredIndex, candleData]);
 
-    // Real-time data generation
+    // Set waiting for data state when buffer is emptied (e.g., when changing subscriptions)
     useEffect(() => {
-        console.log("[ChartContext] Real-time update effect setup. isDataGenerationEnabled:", isDataGenerationEnabled);
-
-        if (!isDataGenerationEnabled) {
-            console.log("[ChartContext] Data generation is disabled, interval not started.");
-            return; // Exit if data generation is off
+        if (historicalBuffer.length === 0) {
+            setIsWaitingForData(true);
         }
-
-        console.log("[ChartContext] Starting data generation interval (5 seconds).");
-        const interval = setInterval(() => {
-            console.log("=== CYCLE START ===");
-            console.log("[Buffer State] Length:", historicalBuffer.length,
-                "ViewIndex:", viewStartIndex,
-                "DisplayedCandles:", displayedCandles,
-                "ViewEnd:", viewStartIndex + displayedCandles,
-                "ViewingLatest:", (viewStartIndex + displayedCandles >= historicalBuffer.length));
-
-            console.log("--------------------");
-            console.log("[ChartContext] Interval Tick - Attempting to generate new candle.");
-
-            if (historicalBuffer.length === 0) {
-                console.log("[ChartContext] Interval Tick - Historical buffer is empty, skipping generation.");
-                return; // Don't generate if buffer is empty
-            }
-
-            const currentBufferLength = historicalBuffer.length;
-            const isBufferFull = currentBufferLength >= MAX_HISTORY_CANDLES;
-            const lastCandle = historicalBuffer[historicalBuffer.length - 1];
-            const newCandle = generateNewCandle(lastCandle);
-
-            // Initialize indicator values object for the new candle
-            newCandle.indicatorValues = {};
-
-            console.log("[New Candle]", newCandle);
-
-            console.log(`[ChartContext] Interval Tick - Before Update: Buffer Length=${currentBufferLength}, Is Full=${isBufferFull}, Last Candle Timestamp=${lastCandle?.timestamp}`);
-            console.log("[ChartContext] Interval Tick - Generated New Candle:", newCandle);
-
-            // Update historical buffer AND calculate indicators for the new buffer in one step
-            setHistoricalBuffer(prevBuffer => {
-                // First add the new candle to the buffer
-                const updatedBuffer = [...prevBuffer, newCandle].slice(-MAX_HISTORY_CANDLES);
-
-                console.log("[Buffer Updated] New Length:", updatedBuffer.length,
-                    "First Candle Time:", updatedBuffer[0]?.timestamp,
-                    "Last Candle Time:", updatedBuffer[updatedBuffer.length-1]?.timestamp);
-
-                // Then immediately calculate indicators for the updated buffer
-                if (indicators.length > 0) {
-                    console.log("[ChartContext] Calculating indicators for updated buffer with new candle");
-                    return calculateIndicatorsForBuffer(updatedBuffer, indicators);
-                }
-
-                return updatedBuffer;
-            });
-
-            // Update viewStartIndex (Auto-scroll logic)
-            if (!isDragging) {
-                console.log("[ChartContext] Interval Tick - Not dragging, proceeding with auto-scroll check.");
-
-                setViewStartIndex(prevIndex => {
-                    console.log("[View Calc] Current Index:", prevIndex,
-                        "DisplayCandles:", displayedCandles,
-                        "BufferLength:", currentBufferLength,
-                        "IsViewingEnd:", prevIndex + displayedCandles >= currentBufferLength);
-
-                    console.log(`[ChartContext] AutoScroll Check - Prev Index: ${prevIndex}, Displayed: ${displayedCandles}, Buffer Length (Before Add): ${currentBufferLength}`);
-
-                    // Check if we're currently viewing the end of the chart
-                    const isViewingEnd = prevIndex + displayedCandles >= currentBufferLength;
-                    console.log(`[ChartContext] AutoScroll Check - Is Viewing End? ${isViewingEnd}`);
-
-                    let newIndex;
-
-                    if (isViewingEnd) {
-                        // If viewing the end, keep showing the newest data
-                        newIndex = Math.max(0, (currentBufferLength + 1) - displayedCandles);
-                        console.log(`[ChartContext] AutoScroll Action - Viewing End: Scrolling to include new candle. New Index: ${newIndex}`);
-                    }
-                    else if (isBufferFull) {
-                        // If buffer is full but NOT viewing the end, shift by 1
-                        newIndex = prevIndex - 1;
-                        console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Full: Shifting +1 to maintain position. New Index: ${newIndex}`);
-                    }
-                    else {
-                        // Not viewing end and buffer isn't full
-                        newIndex = prevIndex;
-                        console.log(`[ChartContext] AutoScroll Action - Not Viewing End + Buffer Not Full: Keeping same position. New Index: ${prevIndex}`);
-                    }
-
-                    // Ensure index is within valid bounds
-                    const finalBoundedIndex = Math.max(0, Math.min(newIndex, (currentBufferLength + 1) - displayedCandles));
-                    if (finalBoundedIndex !== newIndex) {
-                        console.warn(`[ChartContext] AutoScroll Warning - Calculated index ${newIndex} was out of bounds, corrected to ${finalBoundedIndex}`);
-                    }
-
-                    console.log("[View Calc] Result: New Index:", finalBoundedIndex,
-                        "Will show candles", finalBoundedIndex, "to",
-                        finalBoundedIndex + displayedCandles - 1);
-
-                    console.log(`[ChartContext] AutoScroll Final - Setting viewStartIndex to: ${finalBoundedIndex}`);
-                    return finalBoundedIndex;
-                });
-            } else {
-                console.log("[ChartContext] Interval Tick - Currently dragging, skipping auto-scroll.");
-            }
-            console.log("--------------------");
-
-            // FIXED: Use the ref version to avoid triggering effects
-            calculateRangeRef.current();
-
-        }, 5000); // Generate every 5 seconds
-
-        // Cleanup function
-        return () => {
-            console.log("[ChartContext] Cleaning up data generation interval.");
-            clearInterval(interval);
-        };
-    }, [
-        historicalBuffer,
-        isDragging,
-        displayedCandles,
-        isDataGenerationEnabled,
-        viewStartIndex,
-        indicators,
-        calculateIndicatorsForBuffer
-    ]); // Removed calculateRequiredDataRange from dependencies
+    }, [historicalBuffer]);
 
     // Indicator management functions
     const addIndicator = (indicator) => {
@@ -399,6 +262,7 @@ export function ChartProvider({ children }) {
         <ChartContext.Provider value={{
             // Data
             historicalBuffer,
+            setHistoricalBuffer,
             candleData,
 
             // View state
@@ -422,8 +286,8 @@ export function ChartProvider({ children }) {
             // Configuration
             isLogarithmic,
             setIsLogarithmic,
-            isDataGenerationEnabled,
-            setIsDataGenerationEnabled,
+            isWaitingForData,
+            setIsWaitingForData,
 
             // Indicators
             indicators,
