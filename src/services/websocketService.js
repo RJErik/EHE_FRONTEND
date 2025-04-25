@@ -137,6 +137,29 @@ class WebSocketService {
             });
     }
 
+    safeSend(destination, message) {
+        console.log(`[WebSocket] Safe sending to ${destination}:`, message);
+
+        if (!this.connected || !this.stompClient) {
+            console.log(`[WebSocket] Not connected, cannot send to ${destination}`);
+            return Promise.resolve(false); // Return resolved promise instead of error
+        }
+
+        return new Promise((resolve) => {
+            try {
+                this.stompClient.publish({
+                    destination,
+                    body: JSON.stringify(message)
+                });
+                console.log(`[WebSocket] Safely sent message to ${destination}`);
+                resolve(true);
+            } catch (error) {
+                console.warn(`[WebSocket] Safe send error to ${destination}:`, error);
+                resolve(false); // Still resolve but with false to indicate failure
+            }
+        });
+    }
+
     // Ensure the client is connected before performing operations
     ensureConnected() {
         if (this.connected) {
