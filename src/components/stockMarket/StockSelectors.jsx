@@ -1,18 +1,55 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.jsx";
 import { Button } from "../ui/button.jsx";
+import { useStockData } from "../../hooks/useStockData.js";
+import { Loader2 } from "lucide-react";
+import { useToast } from "../../hooks/use-toast.js";
+import { useEffect } from "react";
 
 const StockSelectors = () => {
-    // Mock data for platforms and stocks
-    const platforms = ["NYSE", "NASDAQ", "LSE", "TSE"];
-    const stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"];
+    const {
+        platforms,
+        stocks,
+        selectedPlatform,
+        setSelectedPlatform,
+        selectedStock,
+        setSelectedStock,
+        isLoadingPlatforms,
+        isLoadingStocks,
+        error
+    } = useStockData();
+
+    const { toast } = useToast();
+
+    // Show error toast if there's an error
+    useEffect(() => {
+        if (error) {
+            toast({
+                title: "Error",
+                description: error,
+                variant: "destructive",
+                duration: 5000
+            });
+        }
+    }, [error, toast]);
 
     return (
         <div className="flex flex-col sm:flex-row gap-4 items-start">
             <div className="w-full sm:w-auto flex-1">
                 <p className="text-sm text-muted-foreground mb-1">Platform</p>
-                <Select>
+                <Select
+                    value={selectedPlatform}
+                    onValueChange={setSelectedPlatform}
+                    disabled={isLoadingPlatforms}
+                >
                     <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select" />
+                        {isLoadingPlatforms ? (
+                            <div className="flex items-center">
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                <span>Loading...</span>
+                            </div>
+                        ) : (
+                            <SelectValue placeholder="Select platform" />
+                        )}
                     </SelectTrigger>
                     <SelectContent>
                         {platforms.map((platform) => (
@@ -24,9 +61,20 @@ const StockSelectors = () => {
 
             <div className="w-full sm:w-auto flex-1">
                 <p className="text-sm text-muted-foreground mb-1">Stock</p>
-                <Select>
+                <Select
+                    value={selectedStock}
+                    onValueChange={setSelectedStock}
+                    disabled={isLoadingStocks || !selectedPlatform}
+                >
                     <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select" />
+                        {isLoadingStocks ? (
+                            <div className="flex items-center">
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                <span>Loading...</span>
+                            </div>
+                        ) : (
+                            <SelectValue placeholder={selectedPlatform ? "Select stock" : "Select platform first"} />
+                        )}
                     </SelectTrigger>
                     <SelectContent>
                         {stocks.map((stock) => (
