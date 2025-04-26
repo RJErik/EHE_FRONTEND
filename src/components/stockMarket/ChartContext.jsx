@@ -157,6 +157,20 @@ export function ChartProvider({ children }) {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
 
+    // Monitor scroll position to detect when user approaches the edge of available data
+    useEffect(() => {
+        // If we're close to the beginning of the buffer and not already loading
+        if (viewStartIndex < 20 && historicalBuffer.length > 0 && !isWaitingForData) {
+            console.log("[ChartContext] Close to buffer edge, requesting more historical data");
+
+            // Create a custom event to request more historical data
+            const event = new CustomEvent('requestMoreHistoricalData', {
+                detail: calculateRequiredDataRange()
+            });
+            window.dispatchEvent(event);
+        }
+    }, [viewStartIndex, historicalBuffer.length, isWaitingForData, calculateRequiredDataRange]);
+
     // Recalculate indicators when indicators list changes
     useEffect(() => {
         if (!historicalBuffer.length || !indicators.length) return;
@@ -165,7 +179,7 @@ export function ChartProvider({ children }) {
 
         const processedBuffer = calculateIndicatorsForBuffer(historicalBuffer, indicators);
         setHistoricalBuffer(processedBuffer);
-    }, [indicators, calculateIndicatorsForBuffer]);
+    }, [indicators, calculateIndicatorsForBuffer, historicalBuffer]);
 
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
@@ -234,16 +248,41 @@ export function ChartProvider({ children }) {
         }
     }, [historicalBuffer]);
 
-    // Indicator management functions
+    // Enhanced indicator management functions
     const addIndicator = (indicator) => {
         console.log("Adding indicator to context:", indicator);
         const newIndicator = {
             ...indicator,
             id: crypto.randomUUID?.() || `id-${Date.now()}`
         };
+
         setIndicators(prev => {
             const newState = [...prev, newIndicator];
             console.log("New indicators state in context:", newState);
+
+            // After adding the indicator, check if we need additional historical data
+            // Use a setTimeout to ensure the state update completes first
+            setTimeout(() => {
+                if (historicalBuffer.length > 0) {
+                    // Get the required range for the newly added indicator
+                    const range = calculateRequiredDataRange();
+
+                    // Get the timestamp of our earliest candle
+                    const earliestCandleTime = historicalBuffer[0]?.timestamp;
+
+                    // If we need data earlier than what we have, request it
+                    if (range.lookbackNeeded > 0 && earliestCandleTime) {
+                        console.log("[ChartContext] New indicator requires additional historical data, triggering request");
+
+                        // Create a custom event to request data for the indicator
+                        const event = new CustomEvent('requestDataForIndicator', {
+                            detail: { range, indicator: newIndicator }
+                        });
+                        window.dispatchEvent(event);
+                    }
+                }
+            }, 0);
+
             return newState;
         });
     };
@@ -253,9 +292,31 @@ export function ChartProvider({ children }) {
     };
 
     const updateIndicator = (id, updates) => {
-        setIndicators(prev =>
-            prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
-        );
+        setIndicators(prev => {
+            const newState = prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind);
+
+            // After updating an indicator, check if we need more historical data
+            // Similar approach as in addIndicator
+            setTimeout(() => {
+                if (historicalBuffer.length > 0) {
+                    const range = calculateRequiredDataRange();
+                    const earliestCandleTime = historicalBuffer[0]?.timestamp;
+
+                    // If settings have changed and we need more data
+                    if (range.lookbackNeeded > 0 && earliestCandleTime) {
+                        console.log("[ChartContext] Updated indicator may require additional historical data, triggering request");
+
+                        // Create a custom event to request data for the updated indicator
+                        const event = new CustomEvent('requestDataForIndicator', {
+                            detail: { range, indicator: newState.find(ind => ind.id === id) }
+                        });
+                        window.dispatchEvent(event);
+                    }
+                }
+            }, 0);
+
+            return newState;
+        });
     };
 
     return (
