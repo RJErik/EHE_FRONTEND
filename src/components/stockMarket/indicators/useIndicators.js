@@ -49,6 +49,10 @@ export function useIndicators() {
     const handleUpdateIndicator = (updatedData) => {
         if (editingIndicator && editingIndicator.id) {
             updateIndicator(editingIndicator.id, updatedData);
+            
+            // Log that indicator requirements might have changed
+            console.log(`[useIndicators] Updated indicator ${editingIndicator.id} with new settings:`, updatedData);
+            console.log(`[useIndicators] Requirements for historical data may have changed`);
         }
     };
 
@@ -65,8 +69,15 @@ export function useIndicators() {
         closeDialog,
 
         // Indicator actions
-        addIndicator,
-        removeIndicator,
+        addIndicator: (indicator) => {
+            console.log(`[useIndicators] Adding new indicator: ${indicator.name} (${indicator.type})`);
+            console.log(`[useIndicators] Requirements for historical data may have changed`);
+            addIndicator(indicator);
+        },
+        removeIndicator: (id) => {
+            console.log(`[useIndicators] Removing indicator: ${id}`);
+            removeIndicator(id);
+        },
         updateIndicator: handleUpdateIndicator
     };
 }

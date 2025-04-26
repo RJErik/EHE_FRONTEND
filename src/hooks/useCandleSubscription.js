@@ -217,6 +217,15 @@ export function useCandleSubscription() {
 
                 // Create a copy of the buffer to modify
                 const updatedBuffer = [...prevBuffer];
+                
+                // Check if we're receiving older candles (for indicators)
+                const receivingOlderCandles = newCandles.some(newCandle => {
+                    return prevBuffer.length > 0 && newCandle.timestamp < prevBuffer[0].timestamp;
+                });
+                
+                if (receivingOlderCandles) {
+                    console.log("[useCandleSubscription] Receiving older candles for indicator requirements");
+                }
 
                 // Update or add each candle
                 newCandles.forEach(newCandle => {
@@ -225,14 +234,34 @@ export function useCandleSubscription() {
                     );
 
                     if (existingIndex >= 0) {
-                        updatedBuffer[existingIndex] = newCandle;
+                        // Update existing candle
+                        updatedBuffer[existingIndex] = {
+                            ...updatedBuffer[existingIndex],
+                            ...newCandle,
+                            // Preserve existing indicator values if any
+                            indicatorValues: {
+                                ...updatedBuffer[existingIndex].indicatorValues,
+                                ...newCandle.indicatorValues
+                            }
+                        };
                     } else {
+                        // Add new candle
                         updatedBuffer.push(newCandle);
                     }
                 });
 
                 // Sort by timestamp
-                return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+                const sortedBuffer = updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Log info about the buffer expansion
+                if (receivingOlderCandles && sortedBuffer.length > 0 && prevBuffer.length > 0) {
+                    const oldestPrevious = new Date(prevBuffer[0].timestamp).toISOString();
+                    const oldestNew = new Date(sortedBuffer[0].timestamp).toISOString();
+                    console.log(`[useCandleSubscription] Buffer expanded: oldest candle was ${oldestPrevious}, now ${oldestNew}`);
+                    console.log(`[useCandleSubscription] Buffer size increased from ${prevBuffer.length} to ${sortedBuffer.length} candles`);
+                }
+                
+                return sortedBuffer;
             });
         }
         // Handle initial data load
@@ -251,8 +280,74 @@ export function useCandleSubscription() {
                 .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol))
                 .sort((a, b) => a.timestamp - b.timestamp);
 
-            setHistoricalBuffer(candles);
-            setViewStartIndex(Math.max(0, candles.length - displayedCandles));
+            setHistoricalBuffer(prevBuffer => {
+                // If we already have data, merge with existing buffer (subscription update case)
+                if (prevBuffer.length > 0 && candles.length > 0) {
+                    console.log(`[useCandleSubscription] Merging ${candles.length} candles with existing buffer of ${prevBuffer.length} candles`);
+                    
+                    // Create a map for quick lookup of existing candles by timestamp
+                    const existingCandleMap = new Map();
+                    prevBuffer.forEach(candle => {
+                        existingCandleMap.set(candle.timestamp, candle);
+                    });
+                    
+                    // Merge new candles with existing ones
+                    const mergedCandles = [...prevBuffer];
+                    let addedCount = 0;
+                    let updatedCount = 0;
+                    
+                    candles.forEach(newCandle => {
+                        const existingCandle = existingCandleMap.get(newCandle.timestamp);
+                        
+                        if (existingCandle) {
+                            // Update existing candle (preserve indicator values)
+                            const index = mergedCandles.findIndex(c => c.timestamp === newCandle.timestamp);
+                            if (index >= 0) {
+                                mergedCandles[index] = {
+                                    ...existingCandle,
+                                    ...newCandle,
+                                    indicatorValues: {
+                                        ...existingCandle.indicatorValues,
+                                        ...newCandle.indicatorValues
+                                    }
+                                };
+                                updatedCount++;
+                            }
+                        } else {
+                            // Add new candle
+                            mergedCandles.push(newCandle);
+                            addedCount++;
+                        }
+                    });
+                    
+                    // Sort the merged candles
+                    const sortedCandles = mergedCandles.sort((a, b) => a.timestamp - b.timestamp);
+                    
+                    console.log(`[useCandleSubscription] Merged candles: ${addedCount} added, ${updatedCount} updated, total ${sortedCandles.length}`);
+                    
+                    if (sortedCandles.length > 0) {
+                        const oldestCandle = new Date(sortedCandles[0].timestamp).toISOString();
+                        const newestCandle = new Date(sortedCandles[sortedCandles.length - 1].timestamp).toISOString();
+                        console.log(`[useCandleSubscription] Buffer now spans from ${oldestCandle} to ${newestCandle}`);
+                    }
+                    
+                    return sortedCandles;
+                }
+                
+                // Otherwise, just use the new candles
+                return candles;
+            });
+            
+            // Only adjust the view index if this is the initial data load, not a subscription update
+            if (data.success && !data.updateType) {
+                setViewStartIndex(prevIndex => {
+                    // If we're already viewing data, don't change the view
+                    if (prevIndex > 0) return prevIndex;
+                    // Otherwise set to show the most recent candles
+                    return Math.max(0, candles.length - displayedCandles);
+                });
+            }
+            
             setError(null);
             setIsWaitingForData(false);
         }
@@ -382,10 +477,95 @@ export function useCandleSubscription() {
         };
     }, [handleCandleMessage, toast]);
 
+    // Listen for indicator requirements changes
+    useEffect(() => {
+        const handleIndicatorRequirementsChanged = async (event) => {
+            const { range } = event.detail;
+            
+            if (!range || !SubscriptionManager.activeSubscriptionId) return;
+            
+            console.log('[useCandleSubscription] Indicator requirements changed, updating subscription');
+            console.log(`[useCandleSubscription] New range: ${new Date(range.start).toISOString()} to ${new Date(range.end).toISOString()}`);
+            
+            try {
+                // Only update if we're already subscribed to something
+                if (SubscriptionManager.currentSubscription.platformName &&
+                    SubscriptionManager.currentSubscription.stockSymbol &&
+                    SubscriptionManager.currentSubscription.timeframe) {
+                    
+                    const startDate = new Date(range.start);
+                    const endDate = new Date(range.end);
+                    
+                    console.log('[useCandleSubscription] Updating subscription with new date range');
+                    
+                    const updateRequest = {
+                        subscriptionId: SubscriptionManager.activeSubscriptionId,
+                        newStartDate: startDate.toISOString(),
+                        newEndDate: endDate.toISOString(),
+                        resetData: false // Don't reset existing data, just extend it
+                    };
+                    
+                    setIsWaitingForData(true);
+                    await webSocketService.send('/app/candles/update-subscription', updateRequest);
+                    console.log('[useCandleSubscription] Subscription update request sent');
+                }
+            } catch (err) {
+                console.error('[useCandleSubscription] Error updating subscription:', err);
+                toast({
+                    title: "Subscription Update Error",
+                    description: "Failed to update subscription for indicator requirements.",
+                    variant: "destructive",
+                    duration: 3000
+                });
+            }
+        };
+        
+        // Add event listener for indicator requirements changed
+        window.addEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
+        
+        return () => {
+            window.removeEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
+        };
+    }, [toast, setIsWaitingForData]);
+
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
         return SubscriptionManager.unsubscribe();
     }, []);
+    
+    // Function to manually update subscription date range
+    const updateSubscriptionDateRange = useCallback(async (newStartDate, newEndDate, resetData = false) => {
+        if (!SubscriptionManager.activeSubscriptionId) {
+            console.warn("[useCandleSubscription] No active subscription to update");
+            return Promise.resolve(false);
+        }
+        
+        try {
+            console.log('[useCandleSubscription] Manually updating subscription date range');
+            console.log(`[useCandleSubscription] New range: ${new Date(newStartDate).toISOString()} to ${new Date(newEndDate).toISOString()}`);
+            
+            const updateRequest = {
+                subscriptionId: SubscriptionManager.activeSubscriptionId,
+                newStartDate: new Date(newStartDate).toISOString(),
+                newEndDate: new Date(newEndDate).toISOString(),
+                resetData: resetData
+            };
+            
+            setIsWaitingForData(true);
+            await webSocketService.send('/app/candles/update-subscription', updateRequest);
+            console.log('[useCandleSubscription] Subscription update request sent');
+            return true;
+        } catch (err) {
+            console.error('[useCandleSubscription] Error updating subscription date range:', err);
+            toast({
+                title: "Update Error",
+                description: "Failed to update candle data range.",
+                variant: "destructive",
+                duration: 3000
+            });
+            return false;
+        }
+    }, [toast, setIsWaitingForData]);
 
     return {
         isConnected,
@@ -393,6 +573,7 @@ export function useCandleSubscription() {
         subscriptionId: SubscriptionManager.activeSubscriptionId,
         error,
         subscribeToCandles,
-        unsubscribeFromCandles
+        unsubscribeFromCandles,
+        updateSubscriptionDateRange
     };
 }
