@@ -62,9 +62,9 @@ const CandleChart = () => {
         if (!data || data.length === 0 || !chartRef.current) return;
 
         // Before rendering - LOG 10
-        console.log("[Chart Render] Starting render with - Candles:", data.length,
-            "First Candle:", data[0]?.timestamp,
-            "Last Candle:", data[data.length-1]?.timestamp);
+        //console.log("[Chart Render] Starting render with - Candles:", data.length,
+            //"First Candle:", data[0]?.timestamp,
+            //"Last Candle:", data[data.length-1]?.timestamp);
 
         renderCandleChart({
             chartRef,

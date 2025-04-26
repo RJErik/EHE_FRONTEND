@@ -29,6 +29,17 @@ class WebSocketService {
                         reconnectDelay: RECONNECT_DELAY_MS,
                         heartbeatIncoming: 10000,
                         heartbeatOutgoing: 10000,
+                        debug: msg => {
+                            if (msg.includes('STOMP error') || msg.includes('Lost connection')) {
+                                console.error('[WebSocket Debug]', msg);
+                            } else if (
+                                !msg.includes('>>> PING') &&
+                                !msg.includes('<<< PONG') &&
+                                !msg.includes('heart-beat')
+                            ) {
+                                console.debug('[WebSocket Debug]', msg);
+                            }
+                        },
                         onConnect: frame => {
                             console.log("[WebSocket] Connected:", frame);
                             this.connected = true;
@@ -93,8 +104,14 @@ class WebSocketService {
             .then(() => {
                 // Create subscription
                 const subscription = this.stompClient.subscribe(destination, message => {
-                    const payload = JSON.parse(message.body);
-                    callback(payload);
+                    try {
+                        const payload = JSON.parse(message.body);
+                        callback(payload);
+                    } catch (err) {
+                        console.error(`[WebSocket] Error processing message from ${destination}:`, err);
+                        console.error(`[WebSocket] Raw message:`, message.body);
+                        callback(message.body); // Pass through as-is if parsing fails
+                    }
                 });
 
                 // Store the subscription

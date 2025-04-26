@@ -24,7 +24,7 @@ const IndicatorCharts = () => {
     const showAddButton = indicators.length < MAX_INDICATORS;
 
     // No longer filtering by indicator type - show all indicators
-    console.log("All indicators in IndicatorCharts:", indicators);
+    //console.log("All indicators in IndicatorCharts:", indicators);
 
     return (
         <Card className="w-full">
