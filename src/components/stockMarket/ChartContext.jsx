@@ -196,21 +196,6 @@ export function ChartProvider({ children }) {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
 
-    // Create a function to update subscription when indicators change
-    const updateSubscriptionForIndicators = useCallback(() => {
-        if (!historicalBuffer.length || !indicators.length) return;
-        
-        // This function will be available to be called from outside
-        // It will be used to update the subscription when indicators change
-        // The actual subscription update will happen in the component that uses this context
-        
-        // Calculate the required data range
-        const range = calculateRequiredDataRange();
-        
-        // Return the range so it can be used by the subscription manager
-        return range;
-    }, [historicalBuffer, indicators, calculateRequiredDataRange]);
-
     // Recalculate indicators when indicators list changes
     useEffect(() => {
         if (!historicalBuffer.length || !indicators.length) return;
@@ -271,40 +256,6 @@ export function ChartProvider({ children }) {
             calculateRangeRef.current();
         }
     }, [indicators, historicalBuffer.length]);
-
-    // Custom event for subscription updates
-    useEffect(() => {
-        if (historicalBuffer.length > 0 && indicators.length > 0) {
-            console.log("[ChartContext] Indicators changed - checking if we need to update subscription");
-            
-            // Calculate the required data range
-            const range = calculateRequiredDataRange();
-            
-            // Check if the current data range covers the required range
-            if (range.start && historicalBuffer.length > 0) {
-                const earliestAvailableTimestamp = historicalBuffer[0].timestamp;
-                
-                // If we need data earlier than what we have, dispatch a custom event
-                if (range.start < earliestAvailableTimestamp) {
-                    console.log("[ChartContext] Need to update subscription for indicator requirements");
-                    console.log(`[ChartContext] Earliest available: ${new Date(earliestAvailableTimestamp).toISOString()}`);
-                    console.log(`[ChartContext] Required earliest: ${new Date(range.start).toISOString()}`);
-                    console.log(`[ChartContext] Missing ${Math.ceil((earliestAvailableTimestamp - range.start) / timeframeInMs)} candles for indicators`);
-                    
-                    // Create and dispatch a custom event to notify subscribers
-                    const event = new CustomEvent('indicatorRequirementsChanged', {
-                        detail: { range }
-                    });
-                    window.dispatchEvent(event);
-                } else {
-                    console.log("[ChartContext] Current data range is sufficient for indicators");
-                    console.log(`[ChartContext] Earliest available: ${new Date(earliestAvailableTimestamp).toISOString()}`);
-                    console.log(`[ChartContext] Required earliest: ${new Date(range.start).toISOString()}`);
-                    console.log(`[ChartContext] Buffer has ${Math.ceil((earliestAvailableTimestamp - range.start) / timeframeInMs)} extra candles beyond requirements`);
-                }
-            }
-        }
-    }, [indicators, historicalBuffer, calculateRequiredDataRange, timeframeInMs]);
 
     // Update hovered candle when index changes
     useEffect(() => {
@@ -390,8 +341,7 @@ export function ChartProvider({ children }) {
             MAX_DISPLAY_CANDLES,
 
             // WebSocket preparation
-            calculateRequiredDataRange,
-            updateSubscriptionForIndicators
+            calculateRequiredDataRange
         }}>
             {children}
         </ChartContext.Provider>
