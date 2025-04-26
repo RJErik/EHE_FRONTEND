@@ -4,27 +4,6 @@ import { ChartContext } from '../components/stockMarket/ChartContext';
 import webSocketService from '../services/websocketService';
 import { useToast } from './use-toast';
 
-// Helper function to convert timeframe to milliseconds
-const timeframeToMilliseconds = (timeframe) => {
-    if (!timeframe) return 60000; // Default to 1 minute
-
-    // Convert timeframe to lowercase for case-insensitive matching
-    const normalizedTimeframe = timeframe.toLowerCase();
-
-    // Parse timeframe to get milliseconds
-    if (normalizedTimeframe.endsWith('m')) {
-        return parseInt(timeframe) * 60 * 1000;
-    } else if (normalizedTimeframe.endsWith('h')) {
-        return parseInt(timeframe) * 60 * 60 * 1000;
-    } else if (normalizedTimeframe.endsWith('d')) {
-        return parseInt(timeframe) * 24 * 60 * 60 * 1000;
-    } else if (normalizedTimeframe.endsWith('w')) {
-        return parseInt(timeframe) * 7 * 24 * 60 * 60 * 1000;
-    }
-
-    return 60000; // Default to 1 minute if parsing fails
-};
-
 // Global persistent subscription manager - lives outside React lifecycle
 const SubscriptionManager = {
     // Active subscription tracking
@@ -177,17 +156,7 @@ export function useCandleSubscription() {
         calculateRequiredDataRange,
         setViewStartIndex,
         displayedCandles,
-        setIsWaitingForData,
-        isWaitingForData,
-        needsMoreHistoricalData,
-        setNeedsMoreHistoricalData,
-        needsMoreFutureData,
-        setNeedsMoreFutureData,
-        historicalBuffer,
-        isLoadingMoreData,
-        setIsLoadingMoreData,
-        requiredLookbackCandles,
-        viewStartIndex
+        setIsWaitingForData
     } = useContext(ChartContext);
 
     // Calculate start date based on timeframe and number of candles
@@ -213,106 +182,8 @@ export function useCandleSubscription() {
         return new Date(endDate.getTime() - (minutesBack * 60 * 1000));
     }, []);
 
-    // Function to fetch more historical data - updated to get just 1 more candle
-    const fetchMoreHistoricalData = useCallback(async () => {
-        if (!SubscriptionManager.activeSubscriptionId || isLoadingMoreData) {
-            console.log("[useCandleSubscription] Skipping historical data fetch - no active subscription or already loading");
-            return false;
-        }
-
-        try {
-            console.log("[useCandleSubscription] Fetching more historical data");
-            setIsLoadingMoreData(true);
-
-            // Find the earliest candle in our buffer
-            if (historicalBuffer.length === 0) {
-                console.log("[useCandleSubscription] No historical data to extend from");
-                setIsLoadingMoreData(false);
-                return false;
-            }
-
-            const earliestCandle = historicalBuffer[0];
-            const earliestTimestamp = earliestCandle.timestamp;
-
-            // Just request 1 more candle before the current earliest
-            const additionalCandles = 1;
-            console.log(`[useCandleSubscription] Will fetch ${additionalCandles} more candle before ${new Date(earliestTimestamp).toISOString()}`);
-
-            // Calculate new start date for 1 more candle
-            const timeframeDuration = timeframeToMilliseconds(SubscriptionManager.currentSubscription.timeframe);
-            const newStartDate = new Date(earliestTimestamp - (additionalCandles * timeframeDuration));
-
-            console.log(`[useCandleSubscription] Requesting historical data from ${newStartDate.toISOString()} to ${new Date(earliestTimestamp).toISOString()}`);
-
-            // Request more data with subscription update
-            await webSocketService.send('/app/candles/update-subscription', {
-                subscriptionId: SubscriptionManager.activeSubscriptionId,
-                newStartDate: newStartDate.toISOString(),
-                newEndDate: new Date(earliestTimestamp).toISOString(),
-                resetData: false // Don't reset existing data
-            });
-
-            console.log("[useCandleSubscription] Historical data request sent, waiting for response...");
-            return true;
-        } catch (err) {
-            console.error("[useCandleSubscription] Error fetching more historical data:", err);
-            setError("Failed to load more historical data: " + err.message);
-            setIsLoadingMoreData(false);
-            return false;
-        }
-    }, [historicalBuffer, isLoadingMoreData, setIsLoadingMoreData, setError]);
-
-    // Function to fetch more future data - updated to get just 1 more candle
-    const fetchMoreFutureData = useCallback(async () => {
-        if (!SubscriptionManager.activeSubscriptionId || isLoadingMoreData) {
-            console.log("[useCandleSubscription] Skipping future data fetch - no active subscription or already loading");
-            return false;
-        }
-
-        try {
-            console.log("[useCandleSubscription] Fetching more future data");
-            setIsLoadingMoreData(true);
-
-            // Find the latest candle in our buffer
-            if (historicalBuffer.length === 0) {
-                console.log("[useCandleSubscription] No historical data to extend from");
-                setIsLoadingMoreData(false);
-                return false;
-            }
-
-            const latestCandle = historicalBuffer[historicalBuffer.length - 1];
-            const latestTimestamp = latestCandle.timestamp;
-
-            // Request just 1 more candle into the future
-            const timeframeDuration = timeframeToMilliseconds(SubscriptionManager.currentSubscription.timeframe);
-            const newEndDate = new Date(latestTimestamp + timeframeDuration);
-
-            console.log(`[useCandleSubscription] Requesting future data from ${new Date(latestTimestamp).toISOString()} to ${newEndDate.toISOString()}`);
-
-            // Request more data with subscription update
-            await webSocketService.send('/app/candles/update-subscription', {
-                subscriptionId: SubscriptionManager.activeSubscriptionId,
-                newStartDate: new Date(latestTimestamp).toISOString(),
-                newEndDate: newEndDate.toISOString(),
-                resetData: false // Don't reset existing data
-            });
-
-            console.log("[useCandleSubscription] Future data request sent, waiting for response...");
-            return true;
-        } catch (err) {
-            console.error("[useCandleSubscription] Error fetching more future data:", err);
-            setError("Failed to load more future data: " + err.message);
-            setIsLoadingMoreData(false);
-            return false;
-        }
-    }, [historicalBuffer, isLoadingMoreData, setIsLoadingMoreData, setError]);
-
-    // Handle incoming candle data - improved with better logging and view adjustments
+    // Handle incoming candle data
     const handleCandleMessage = useCallback((data) => {
-        // Debug log message contents
-        console.log("[useCandleSubscription] Received message:",
-            JSON.stringify(data).substring(0, 200) + (JSON.stringify(data).length > 200 ? "..." : ""));
-
         // Skip heartbeats - already handled in SubscriptionManager
         if (data.updateType === "HEARTBEAT") return;
 
@@ -328,7 +199,6 @@ export function useCandleSubscription() {
                     variant: "destructive",
                     duration: 5000
                 });
-                setIsLoadingMoreData(false);
                 return;
             }
 
@@ -340,23 +210,11 @@ export function useCandleSubscription() {
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
             console.log("[useCandleSubscription] Received candle updates:", data.updatedCandles.length);
 
-            // Track if we're adding historical data (before the current view)
-            let newCandlesBeforeStart = 0;
-            const firstBufferTimestamp = historicalBuffer[0]?.timestamp;
-
-            // Transform backend candles to frontend format
-            const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
-
-            // Count how many new candles are before our current buffer start
-            if (firstBufferTimestamp) {
-                newCandlesBeforeStart = newCandles.filter(c => c.timestamp < firstBufferTimestamp).length;
-                if (newCandlesBeforeStart > 0) {
-                    console.log(`[useCandleSubscription] Found ${newCandlesBeforeStart} candles before our current buffer`);
-                }
-            }
-
             setHistoricalBuffer(prevBuffer => {
+                // Transform backend candles to frontend format
+                const newCandles = data.updatedCandles.map(candle =>
+                    transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
+
                 // Create a copy of the buffer to modify
                 const updatedBuffer = [...prevBuffer];
 
@@ -376,106 +234,29 @@ export function useCandleSubscription() {
                 // Sort by timestamp
                 return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
             });
-
-            // If we added historical data, adjust the viewStartIndex to maintain position
-            if (newCandlesBeforeStart > 0) {
-                console.log(`[useCandleSubscription] Adjusting view index by ${newCandlesBeforeStart} to maintain current view`);
-                setViewStartIndex(prev => prev + newCandlesBeforeStart);
-            }
-
-            // Data loading is complete
-            setIsLoadingMoreData(false);
         }
-        // Handle initial data load or additional data load
+        // Handle initial data load
         else if (data.candles) {
-            console.log("[useCandleSubscription] Received candle data:", data.candles.length);
+            console.log("[useCandleSubscription] Received initial candle data:", data.candles.length);
 
             if (data.success === false) {
                 console.error("[useCandleSubscription] Data fetch error:", data.message);
                 setError(data.message);
                 setIsWaitingForData(false);
-                setIsLoadingMoreData(false);
                 return;
             }
 
-            // Transform the candles
-            const newCandles = data.candles
+            // Transform and store the candles
+            const candles = data.candles
                 .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol))
                 .sort((a, b) => a.timestamp - b.timestamp);
 
-            setHistoricalBuffer(prevBuffer => {
-                // If we're loading additional data (not initial load)
-                if (prevBuffer.length > 0 && !data.resetData) {
-                    console.log("[useCandleSubscription] Merging new candles with existing buffer");
-
-                    // Track how many new candles come before the current first candle
-                    const firstBufferTimestamp = prevBuffer[0]?.timestamp;
-                    const newCandlesBeforeStart = firstBufferTimestamp ?
-                        newCandles.filter(c => c.timestamp < firstBufferTimestamp).length : 0;
-
-                    if (newCandlesBeforeStart > 0) {
-                        console.log(`[useCandleSubscription] Found ${newCandlesBeforeStart} new candles before current buffer start`);
-
-                        // Schedule view adjustment after the buffer update completes
-                        setTimeout(() => {
-                            setViewStartIndex(prev => prev + newCandlesBeforeStart);
-                            console.log(`[useCandleSubscription] Adjusted view index by ${newCandlesBeforeStart} to maintain position`);
-                        }, 0);
-                    }
-
-                    // Create a merged array with candles from both sources
-                    const mergedCandles = [...prevBuffer];
-
-                    // Add new candles, avoiding duplicates
-                    newCandles.forEach(newCandle => {
-                        const existingIndex = mergedCandles.findIndex(
-                            c => c.timestamp === newCandle.timestamp
-                        );
-
-                        if (existingIndex >= 0) {
-                            // Replace existing candle
-                            mergedCandles[existingIndex] = newCandle;
-                        } else {
-                            // Add new candle
-                            mergedCandles.push(newCandle);
-                        }
-                    });
-
-                    // Sort by timestamp
-                    const sortedCandles = mergedCandles.sort((a, b) => a.timestamp - b.timestamp);
-
-                    console.log("[useCandleSubscription] Merged buffer contains", sortedCandles.length, "candles");
-                    if (sortedCandles.length > 0) {
-                        console.log("[useCandleSubscription] Buffer date range:",
-                            new Date(sortedCandles[0].timestamp).toISOString(), "to",
-                            new Date(sortedCandles[sortedCandles.length - 1].timestamp).toISOString());
-                    }
-
-                    return sortedCandles;
-                }
-
-                // For initial load or reset, just use the new candles
-                console.log("[useCandleSubscription] Setting initial buffer with", newCandles.length, "candles");
-                return newCandles;
-            });
-
-            // For initial load, set view to the end of the data
-            if (data.resetData || historicalBuffer.length === 0) {
-                console.log("[useCandleSubscription] Initial load - setting view to end of data");
-                setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
-            }
-
-            // Clear errors and loading states
+            setHistoricalBuffer(candles);
+            setViewStartIndex(Math.max(0, candles.length - displayedCandles));
             setError(null);
             setIsWaitingForData(false);
-            setIsLoadingMoreData(false);
-
-            // Reset data loading flags
-            setNeedsMoreHistoricalData(false);
-            setNeedsMoreFutureData(false);
         }
-    }, [setHistoricalBuffer, setViewStartIndex, displayedCandles, setIsWaitingForData,
-        toast, historicalBuffer, setIsLoadingMoreData, setNeedsMoreHistoricalData, setNeedsMoreFutureData]);
+    }, [setHistoricalBuffer, setViewStartIndex, displayedCandles, setIsWaitingForData, toast]);
 
     // Transform candle data from backend format to frontend format
     const transformCandleData = useCallback((backendCandle, stockSymbol) => {
@@ -528,19 +309,18 @@ export function useCandleSubscription() {
                 timeframe
             };
 
-            // Get data range needed based on historical buffer and indicators
+            // Get data range needed
             const range = calculateRequiredDataRange();
             const now = new Date();
 
             // If we have existing data, use the calculated range
-            // Otherwise, request exactly displayedCandles + lookback worth of data + 1 extra on each end
+            // Otherwise, request exactly displayedCandles worth of data based on the timeframe
             const endDate = range.end ? new Date(range.end) : now;
             const startDate = range.start ?
                 new Date(range.start) :
-                calculateStartDate(endDate, timeframe, displayedCandles + requiredLookbackCandles + 2); // +2 for 1 extra on each end
+                calculateStartDate(endDate, timeframe, displayedCandles);
 
             console.log("[useCandleSubscription] Requesting candles from", startDate.toISOString(), "to", endDate.toISOString());
-            console.log("[useCandleSubscription] Including lookback of", requiredLookbackCandles, "candles for indicators");
 
             const subscriptionRequest = {
                 platformName,
@@ -553,7 +333,7 @@ export function useCandleSubscription() {
             console.log("[useCandleSubscription] Subscribing to candles:", subscriptionRequest);
 
             await webSocketService.send('/app/candles/subscribe', subscriptionRequest);
-            console.log("[useCandleSubscription] Subscription request sent, waiting for response...");
+            console.log("[useCandleSubscription] Subscription request sent");
 
             return "pending";
         } catch (err) {
@@ -564,7 +344,7 @@ export function useCandleSubscription() {
         } finally {
             setIsSubscribing(false);
         }
-    }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate, requiredLookbackCandles]);
+    }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate]);
 
     // Initialize and setup effect
     useEffect(() => {
@@ -602,30 +382,6 @@ export function useCandleSubscription() {
         };
     }, [handleCandleMessage, toast]);
 
-    // Monitor for data loading needs
-    useEffect(() => {
-        if (!isConnected || !SubscriptionManager.activeSubscriptionId || isWaitingForData) {
-            return;
-        }
-
-        const handleDataNeeds = async () => {
-            // Handle need for more historical data
-            if (needsMoreHistoricalData && !isLoadingMoreData) {
-                console.log("[useCandleSubscription] Detected need for more historical data");
-                await fetchMoreHistoricalData();
-            }
-
-            // Handle need for more future data
-            if (needsMoreFutureData && !isLoadingMoreData && !needsMoreHistoricalData) {
-                console.log("[useCandleSubscription] Detected need for more future data");
-                await fetchMoreFutureData();
-            }
-        };
-
-        handleDataNeeds();
-    }, [needsMoreHistoricalData, needsMoreFutureData, isConnected, isWaitingForData,
-        isLoadingMoreData, fetchMoreHistoricalData, fetchMoreFutureData]);
-
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
         return SubscriptionManager.unsubscribe();
@@ -637,7 +393,6 @@ export function useCandleSubscription() {
         subscriptionId: SubscriptionManager.activeSubscriptionId,
         error,
         subscribeToCandles,
-        unsubscribeFromCandles,
-        isLoadingMoreData
+        unsubscribeFromCandles
     };
 }

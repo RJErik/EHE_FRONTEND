@@ -14,12 +14,6 @@ export function ChartProvider({ children }) {
     const [displayedCandles, setDisplayedCandles] = useState(100);
     const [isDragging, setIsDragging] = useState(false);
 
-    // Data loading state
-    const [isLoadingMoreData, setIsLoadingMoreData] = useState(false);
-    const [needsMoreHistoricalData, setNeedsMoreHistoricalData] = useState(false);
-    const [needsMoreFutureData, setNeedsMoreFutureData] = useState(false);
-    const [requiredLookbackCandles, setRequiredLookbackCandles] = useState(1); // Default to 1 extra candle
-
     // Cursor/hover state
     const [hoveredIndex, setHoveredIndex] = useState(null);
     const [hoveredCandle, setHoveredCandle] = useState(null);
@@ -28,6 +22,7 @@ export function ChartProvider({ children }) {
 
     // Configuration
     const [isLogarithmic, setIsLogarithmic] = useState(false);
+    const [timeframeInMs, setTimeframeInMs] = useState(60000); // Default to 1 minute
 
     // WebSocket state
     const [isWaitingForData, setIsWaitingForData] = useState(true);
@@ -39,7 +34,6 @@ export function ChartProvider({ children }) {
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
-    const BUFFER_PADDING = 5; // Default extra candles on each end
 
     // Helper function to calculate indicators for a buffer
     const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
@@ -85,14 +79,8 @@ export function ChartProvider({ children }) {
         const currentViewStart = viewStartIndex;
         const currentViewEnd = Math.min(viewStartIndex + displayedCandles, historicalBuffer.length);
 
-        console.log("[WebSocket Prep] Current View Range:",
-            "Start Index:", currentViewStart,
-            "End Index:", currentViewEnd,
-            "First Displayed Date:", new Date(historicalBuffer[currentViewStart]?.timestamp).toISOString(),
-            "Last Displayed Date:", new Date(historicalBuffer[currentViewEnd - 1]?.timestamp).toISOString());
-
         // Calculate maximum lookback period needed for indicators
-        let maxLookback = BUFFER_PADDING; // Start with the default buffer padding
+        let maxLookback = 0;
 
         indicators.forEach(indicator => {
             let indicatorLookback = 0;
@@ -131,25 +119,64 @@ export function ChartProvider({ children }) {
             maxLookback = Math.max(maxLookback, indicatorLookback);
         });
 
-        console.log("[WebSocket Prep] Maximum indicator lookback period:", maxLookback);
-
-        // Store the required lookback for later use
-        if (maxLookback !== requiredLookbackCandles) {
-            setRequiredLookbackCandles(maxLookback);
-        }
-
         // Calculate the actual data range needed
-        const dataStartIndex = Math.max(0, currentViewStart - maxLookback);
+        const dataStartIndex = Math.min(0, currentViewStart - maxLookback);
+
+        console.log(currentViewStart);
+        console.log(maxLookback);
+        console.log(dataStartIndex);
+
 
         // Check if we're viewing the latest data and need to fetch future candles
-        const isViewingLatest = currentViewEnd >= historicalBuffer.length - BUFFER_PADDING;
+        const isViewingLatest = currentViewEnd >= historicalBuffer.length;
         // For now, we'll just request 1 candle ahead if we're at the edge
         const extraFutureCandles = isViewingLatest ? 1 : 0;
 
-        const startDate = historicalBuffer[dataStartIndex]?.timestamp;
+        const startDate = historicalBuffer[viewStartIndex].timestamp - (maxLookback * timeframeInMs); // Using timeframeInMs here
         const endDate = isViewingLatest
             ? (new Date(historicalBuffer[historicalBuffer.length - 1]?.timestamp + 60000)).getTime()
             : historicalBuffer[currentViewEnd - 1]?.timestamp;
+
+        // New detailed logging for indicator calculations
+        console.log("--------- INDICATOR CALCULATION REQUIREMENTS ---------");
+        console.log(`[Indicator Requirements] Active Indicators: ${indicators.length}`);
+
+        if (indicators.length > 0) {
+            console.log("[Indicator Requirements] Indicator Details:");
+            indicators.forEach(ind => {
+                let periodText = "";
+                switch (ind.type) {
+                    case "sma":
+                    case "ema":
+                    case "rsi":
+                    case "bb":
+                    case "atr":
+                        periodText = `Period: ${ind.settings?.period || "default"}`;
+                        break;
+                    case "macd":
+                        periodText = `Fast: ${ind.settings?.fastPeriod || 12}, Slow: ${ind.settings?.slowPeriod || 26}, Signal: ${ind.settings?.signalPeriod || 9}`;
+                        break;
+                }
+                console.log(`  - ${ind.name} (${ind.type}): ${periodText}`);
+            });
+        }
+
+        console.log(`[Indicator Requirements] Maximum lookback needed: ${maxLookback} candles`);
+        console.log(`[Indicator Requirements] Candles before current view needed: ${currentViewStart - dataStartIndex}`);
+
+        // Date formatting helper
+        const formatDate = (timestamp) => {
+            if (!timestamp) return "undefined";
+            return new Date(timestamp).toISOString();
+        };
+
+        console.log(`[Indicator Requirements] Oldest candle needed time: ${formatDate(startDate)}`);
+        console.log(`[Indicator Requirements] Oldest displayed candle time: ${formatDate(historicalBuffer[currentViewStart]?.timestamp)}`);
+        console.log(`[Indicator Requirements] Newest displayed candle time: ${formatDate(historicalBuffer[currentViewEnd - 1]?.timestamp)}`);
+        console.log(`[Indicator Requirements] Number of displayed candles: ${currentViewEnd - currentViewStart}`);
+        console.log(`[Indicator Requirements] Total candles needed (including lookback): ${(currentViewEnd - dataStartIndex) + extraFutureCandles}`);
+        console.log(`[Indicator Requirements] Data request range: ${formatDate(startDate)} to ${formatDate(endDate)}`);
+        console.log("-----------------------------------------------------");
 
         return {
             start: startDate,
@@ -159,7 +186,7 @@ export function ChartProvider({ children }) {
             extraFutureCandles,
             totalCandlesNeeded: (currentViewEnd - dataStartIndex) + extraFutureCandles
         };
-    }, [historicalBuffer, viewStartIndex, displayedCandles, indicators, requiredLookbackCandles]);
+    }, [historicalBuffer, viewStartIndex, displayedCandles, indicators, timeframeInMs]);
 
     // Create a ref to safely access the latest version of the function
     const calculateRangeRef = useRef(calculateRequiredDataRange);
@@ -169,50 +196,15 @@ export function ChartProvider({ children }) {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
 
-    // Check if we need to load more historical data
-    useEffect(() => {
-        if (!historicalBuffer.length || isWaitingForData || isLoadingMoreData) return;
-
-        // Check if we're close to the start of the buffer and need more historical data
-        if (viewStartIndex <= requiredLookbackCandles + BUFFER_PADDING) {
-            console.log(`[ChartContext] Close to buffer start (index: ${viewStartIndex}), need more historical data`);
-            setNeedsMoreHistoricalData(true);
-        } else {
-            setNeedsMoreHistoricalData(false);
-        }
-
-        // Check if we're close to the end of the buffer and need more future data
-        if (viewStartIndex + displayedCandles >= historicalBuffer.length - BUFFER_PADDING) {
-            console.log(`[ChartContext] Close to buffer end (displaying up to: ${viewStartIndex + displayedCandles}, buffer length: ${historicalBuffer.length}), need more future data`);
-            setNeedsMoreFutureData(true);
-        } else {
-            setNeedsMoreFutureData(false);
-        }
-    }, [viewStartIndex, displayedCandles, historicalBuffer.length, isWaitingForData, isLoadingMoreData, requiredLookbackCandles]);
-
     // Recalculate indicators when indicators list changes
     useEffect(() => {
         if (!historicalBuffer.length || !indicators.length) return;
 
         console.log("[ChartContext] Indicators changed - recalculating for all candles");
 
-        // Calculate max lookback needed after indicator change
-        const range = calculateRequiredDataRange();
-        console.log("[ChartContext] Indicator change requires lookback of:", range.lookbackNeeded);
-
-        // Check if we have enough historical data for the indicators
-        const dataStartIndex = Math.max(0, viewStartIndex - range.lookbackNeeded);
-
-        if (dataStartIndex === 0 && viewStartIndex > 0) {
-            // We need more historical data for accurate indicator calculations
-            console.log("[ChartContext] Need more historical data for indicators");
-            setNeedsMoreHistoricalData(true);
-        }
-
-        // Recalculate all indicators with current buffer
         const processedBuffer = calculateIndicatorsForBuffer(historicalBuffer, indicators);
         setHistoricalBuffer(processedBuffer);
-    }, [indicators, calculateIndicatorsForBuffer, calculateRequiredDataRange, viewStartIndex, historicalBuffer.length]);
+    }, [indicators, calculateIndicatorsForBuffer]);
 
     // Update visible data when viewStartIndex changes or historical buffer changes
     useEffect(() => {
@@ -243,12 +235,27 @@ export function ChartProvider({ children }) {
 
             setCandleData(visibleData);
 
+            // Calculate the required data range using the ref version
+            setTimeout(() => {
+                if (historicalBuffer.length > 0) {
+                    calculateRangeRef.current();
+                }
+            }, 0);
+
             // If we just got data and were waiting, set waiting to false
             if (isWaitingForData && visibleData.length > 0) {
                 setIsWaitingForData(false);
             }
         }
     }, [historicalBuffer, viewStartIndex, displayedCandles, isWaitingForData]);
+
+    // Run the calculation whenever indicators change too
+    useEffect(() => {
+        if (historicalBuffer.length > 0) {
+            console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
+            calculateRangeRef.current();
+        }
+    }, [indicators, historicalBuffer.length]);
 
     // Update hovered candle when index changes
     useEffect(() => {
@@ -278,20 +285,16 @@ export function ChartProvider({ children }) {
             console.log("New indicators state in context:", newState);
             return newState;
         });
-
-        // We'll check for needed data in the useEffect that watches indicator changes
     };
 
     const removeIndicator = (id) => {
         setIndicators(prev => prev.filter(ind => ind.id !== id));
-        // Recalculation will happen in the useEffect
     };
 
     const updateIndicator = (id, updates) => {
         setIndicators(prev =>
             prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
         );
-        // Recalculation will happen in the useEffect
     };
 
     return (
@@ -309,15 +312,6 @@ export function ChartProvider({ children }) {
             isDragging,
             setIsDragging,
 
-            // Data loading state
-            isLoadingMoreData,
-            setIsLoadingMoreData,
-            needsMoreHistoricalData,
-            setNeedsMoreHistoricalData,
-            needsMoreFutureData,
-            setNeedsMoreFutureData,
-            requiredLookbackCandles,
-
             // Hover state
             hoveredIndex,
             setHoveredIndex,
@@ -333,6 +327,8 @@ export function ChartProvider({ children }) {
             setIsLogarithmic,
             isWaitingForData,
             setIsWaitingForData,
+            timeframeInMs,
+            setTimeframeInMs,
 
             // Indicators
             indicators,

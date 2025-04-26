@@ -4,9 +4,10 @@ import { Button } from "../ui/button.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
 import { Loader2 } from "lucide-react";
 import { useToast } from "../../hooks/use-toast.js";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useContext } from "react";
 import TimeIntervalButtons from "./TimeIntervalButtons.jsx";
 import { useCandleSubscription } from "../../hooks/useCandleSubscription.js";
+import { ChartContext } from "./ChartContext.jsx";
 
 const StockSelectors = () => {
     const {
@@ -21,7 +22,10 @@ const StockSelectors = () => {
         error: stockDataError
     } = useStockData();
 
-    const [selectedTimeframe, setSelectedTimeframe] = useState("1H");
+    const [selectedTimeframe, setSelectedTimeframe] = useState(null);
+
+    // Import setTimeframeInMs from ChartContext
+    const { setTimeframeInMs } = useContext(ChartContext);
 
     const {
         isConnected,
@@ -38,6 +42,27 @@ const StockSelectors = () => {
         stock: null,
         timeframe: null
     });
+
+    // Function to convert timeframe string to milliseconds
+    const timeframeToMilliseconds = (timeframe) => {
+        if (!timeframe) return 60000; // Default to 1 minute
+
+        switch (timeframe) {
+            case "1M": return 60000; // 1 minute
+            case "5M": return 5 * 60000; // 5 minutes
+            case "15M": return 15 * 60000; // 15 minutes
+            case "1H": return 60 * 60000; // 1 hour
+            case "4H": return 4 * 60 * 60000; // 4 hours
+            case "1D": return 24 * 60 * 60000; // 1 day
+            default: return 60000; // Default to 1 minute
+        }
+    };
+
+    // Handle timeframe change
+    const handleTimeframeChange = (timeframe) => {
+        setSelectedTimeframe(timeframe);
+        setTimeframeInMs(timeframeToMilliseconds(timeframe));
+    };
 
     // Combine errors from different sources
     const error = stockDataError || subscriptionError;
@@ -155,7 +180,7 @@ const StockSelectors = () => {
             {/* Time interval buttons */}
             <TimeIntervalButtons
                 value={selectedTimeframe}
-                onChange={setSelectedTimeframe}
+                onChange={handleTimeframeChange}
                 isLoading={isSubscribing}
                 disabled={!selectedStock || !selectedPlatform}
             />
