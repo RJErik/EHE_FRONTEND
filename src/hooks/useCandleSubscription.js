@@ -152,11 +152,13 @@ export function useCandleSubscription() {
 
     // Get chart context for data management
     const {
-        setHistoricalBuffer,
+        setDisplayCandles,
+        setIndicatorCandles,
         calculateRequiredDataRange,
         setViewStartIndex,
         displayedCandles,
-        setIsWaitingForData
+        setIsWaitingForData,
+        applyIndicatorsToCandleDisplay
     } = useContext(ChartContext);
 
     // Calculate start date based on timeframe and number of candles
@@ -215,30 +217,12 @@ export function useCandleSubscription() {
             const lastCandleTime = new Date(data.updatedCandles[data.updatedCandles.length-1].timestamp).toISOString();
             console.log(`[WebSocket Data] Received candle update range: ${firstCandleTime} to ${lastCandleTime}`);
 
-            setHistoricalBuffer(prevBuffer => {
-                // Transform backend candles to frontend format
-                const newCandles = data.updatedCandles.map(candle =>
-                    transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
+            // Transform backend candles to frontend format
+            const newCandles = data.updatedCandles.map(candle =>
+                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
 
-                // Create a copy of the buffer to modify
-                const updatedBuffer = [...prevBuffer];
-
-                // Update or add each candle
-                newCandles.forEach(newCandle => {
-                    const existingIndex = updatedBuffer.findIndex(
-                        c => c.timestamp === newCandle.timestamp
-                    );
-
-                    if (existingIndex >= 0) {
-                        updatedBuffer[existingIndex] = newCandle;
-                    } else {
-                        updatedBuffer.push(newCandle);
-                    }
-                });
-
-                // Sort by timestamp
-                return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
-            });
+            // Update both display and indicator candles
+            updateBothCandleStores(newCandles);
         }
         // Handle initial data load
         else if (data.candles) {
@@ -263,33 +247,73 @@ export function useCandleSubscription() {
             const newCandles = data.candles
                 .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
 
-            // Merge with existing buffer instead of replacing it
-            setHistoricalBuffer(prevBuffer => {
-                // Create a copy of the buffer to modify
-                const updatedBuffer = [...prevBuffer];
-
-                // Add or update each candle
-                newCandles.forEach(newCandle => {
-                    const existingIndex = updatedBuffer.findIndex(
-                        c => c.timestamp === newCandle.timestamp
-                    );
-
-                    if (existingIndex >= 0) {
-                        updatedBuffer[existingIndex] = newCandle;
-                    } else {
-                        updatedBuffer.push(newCandle);
-                    }
-                });
-
-                // Sort by timestamp
-                return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
-            });
+            // Update both display and indicator candles with new data
+            updateBothCandleStores(newCandles, true);
 
             setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
             setError(null);
             setIsWaitingForData(false);
         }
-    }, [setHistoricalBuffer, setViewStartIndex, displayedCandles, setIsWaitingForData, toast]);
+    }, [setDisplayCandles, setIndicatorCandles, applyIndicatorsToCandleDisplay, setViewStartIndex, displayedCandles, setIsWaitingForData, toast]);
+
+    // Helper function to update both candle stores
+    const updateBothCandleStores = useCallback((newCandles, isInitialLoad = false) => {
+        // First, update the display candles for chart rendering
+        setDisplayCandles(prevCandles => {
+            console.log('####################UPDATED DISPLAY CANDLES1.##################################');
+            // For initial load or when explicitly refreshing, replace the entire buffer
+            if (isInitialLoad) {
+                return [...newCandles].sort((a, b) => a.timestamp - b.timestamp);
+            }
+
+            console.log('####################UPDATED DISPLAY CANDLES2.##################################');
+            // Create a copy of the buffer to modify
+            const updatedBuffer = [...prevCandles];
+
+            // Update or add each candle
+            newCandles.forEach(newCandle => {
+                const existingIndex = updatedBuffer.findIndex(
+                    c => c.timestamp === newCandle.timestamp
+                );
+
+                if (existingIndex >= 0) {
+                    updatedBuffer[existingIndex] = newCandle;
+                } else {
+                    updatedBuffer.push(newCandle);
+                }
+            });
+
+            // Sort by timestamp
+            return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+        });
+
+        // Then update the indicator candles for calculations
+        setIndicatorCandles(prevCandles => {
+            // For initial load or when explicitly refreshing, replace the entire buffer
+            if (isInitialLoad) {
+                return [...newCandles].sort((a, b) => a.timestamp - b.timestamp);
+            }
+
+            // Create a copy of the buffer to modify
+            const updatedBuffer = [...prevCandles];
+
+            // Update or add each candle
+            newCandles.forEach(newCandle => {
+                const existingIndex = updatedBuffer.findIndex(
+                    c => c.timestamp === newCandle.timestamp
+                );
+
+                if (existingIndex >= 0) {
+                    updatedBuffer[existingIndex] = newCandle;
+                } else {
+                    updatedBuffer.push(newCandle);
+                }
+            });
+
+            // Sort by timestamp
+            return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+        });
+    }, [setDisplayCandles, setIndicatorCandles]);
 
     // Transform candle data from backend format to frontend format
     const transformCandleData = useCallback((backendCandle, stockSymbol) => {
@@ -391,7 +415,7 @@ export function useCandleSubscription() {
         } finally {
             setIsSubscribing(false);
         }
-    }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate]);
+    }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate, updateBothCandleStores]);
 
 
     // Listen for indicator requirement changes
@@ -430,12 +454,12 @@ export function useCandleSubscription() {
                     console.log(`[Subscription Update] Total candles needed: ${range.totalCandlesNeeded || "unknown"}`);
                     console.log("--------------------------------------");
 
-                    // Create the update request
+                    // Create the update request - this will update indicator candles without affecting display candles
                     const updateRequest = {
                         subscriptionId: SubscriptionManager.activeSubscriptionId,
                         newStartDate: new Date(range.start).toISOString(),
                         newEndDate: new Date(range.end).toISOString(),
-                        resetData: true // Reset existing data
+                        resetData: true // Don't reset data, just update the necessary range
                     };
 
                     // Send the update request to the server
@@ -502,6 +526,45 @@ export function useCandleSubscription() {
         };
     }, [handleCandleMessage, toast]);
 
+    // Special handler for indicator-only data updates
+    const handleIndicatorOnlyData = useCallback((data) => {
+        if (!data || !data.candles || data.candles.length === 0) return;
+        
+        console.log("[useCandleSubscription] Received indicator-only data update:", data.candles.length);
+        
+        // Transform candles for indicator calculations
+        const indicatorCandles = data.candles.map(c => 
+            transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
+        
+        // Update only the indicator candles buffer
+        setIndicatorCandles(prevCandles => {
+            // Create a copy of the buffer to modify
+            const updatedBuffer = [...prevCandles];
+            
+            // Update or add each candle
+            indicatorCandles.forEach(newCandle => {
+                const existingIndex = updatedBuffer.findIndex(
+                    c => c.timestamp === newCandle.timestamp
+                );
+                
+                if (existingIndex >= 0) {
+                    updatedBuffer[existingIndex] = newCandle;
+                } else {
+                    updatedBuffer.push(newCandle);
+                }
+            });
+            
+            // Sort by timestamp
+            return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+        });
+        
+        // Trigger indicator recalculation
+        setTimeout(() => {
+            applyIndicatorsToCandleDisplay();
+        }, 0);
+        
+    }, [setIndicatorCandles, transformCandleData, applyIndicatorsToCandleDisplay]);
+
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
         return SubscriptionManager.unsubscribe();
@@ -513,6 +576,7 @@ export function useCandleSubscription() {
         subscriptionId: SubscriptionManager.activeSubscriptionId,
         error,
         subscribeToCandles,
-        unsubscribeFromCandles
+        unsubscribeFromCandles,
+        handleIndicatorOnlyData
     };
 }

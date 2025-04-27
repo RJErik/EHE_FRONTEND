@@ -19,7 +19,7 @@ const CandleChart = () => {
     // Use the shared chart context instead of local state
     const {
         candleData: data,
-        historicalBuffer,
+        displayCandles, // Fix: Changed from historicalBuffer to displayCandles
         viewStartIndex,
         setViewStartIndex,
         isDragging,
@@ -38,18 +38,20 @@ const CandleChart = () => {
         MAX_DISPLAY_CANDLES,
         hoveredIndex,
         setHoveredIndex,
-        isDataGenerationEnabled,
-        setIsDataGenerationEnabled
-    } = useContext(ChartContext);
+        isDataGenerationEnabled = false, // Provide default
+        setIsDataGenerationEnabled = () => {} // Provide default no-op function
+    } = useContext(ChartContext) || {}; // Add fallback empty object
 
     useEffect(() => {
+        if (!data) return; // Guard against undefined data
+        
         console.log("[CandleChart] Received updated data - Length:", data.length,
             "ViewIndex:", viewStartIndex,
             "DisplayedCandles:", displayedCandles,
-            "Buffer Length:", historicalBuffer.length,
+            "Buffer Length:", displayCandles?.length || 0,
             "First Candle:", data[0]?.timestamp,
             "Last Candle:", data[data.length-1]?.timestamp);
-    }, [data, viewStartIndex, displayedCandles, historicalBuffer.length]);
+    }, [data, viewStartIndex, displayedCandles, displayCandles?.length]);
 
     const DEFAULT_DISPLAY_CANDLES = 100; // Define constant here for reset function
 
@@ -59,7 +61,7 @@ const CandleChart = () => {
 
     // D3 chart rendering
     useEffect(() => {
-        if (!data || data.length === 0 || !chartRef.current) return;
+        if (!data || !Array.isArray(data) || data.length === 0 || !chartRef.current) return;
 
         // Before rendering - LOG 10
         //console.log("[Chart Render] Starting render with - Candles:", data.length,
@@ -77,7 +79,7 @@ const CandleChart = () => {
             activeTimestamp,
             currentMouseY,
             displayedCandles,
-            mainIndicators, // Pass main indicators for rendering
+            mainIndicators: mainIndicators || [], // Ensure array even if undefined
             hoveredIndex,
             setHoveredIndex,
             viewStartIndex, // Pass the current viewStartIndex
@@ -86,6 +88,8 @@ const CandleChart = () => {
 
         // Add window resize handler
         const handleResize = () => {
+            if (!data || !Array.isArray(data) || data.length === 0) return;
+            
             // Re-render on resize
             renderCandleChart({
                 chartRef,
@@ -98,10 +102,11 @@ const CandleChart = () => {
                 activeTimestamp,
                 currentMouseY,
                 displayedCandles,
-                mainIndicators,
+                mainIndicators: mainIndicators || [],
                 hoveredIndex,
                 setHoveredIndex,
-                viewStartIndex // Pass the current viewStartIndex
+                viewStartIndex, // Pass the current viewStartIndex
+                isMouseOverChart // Also pass mouse over state
             });
         };
 
@@ -164,7 +169,7 @@ const CandleChart = () => {
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
-            Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
+            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
     };
 
@@ -178,7 +183,7 @@ const CandleChart = () => {
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
-            Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
+            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
     };
 
@@ -192,7 +197,7 @@ const CandleChart = () => {
         setViewStartIndex(Math.max(
             0,
             // Ensure the reset index is valid with the new candle count
-            Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
+            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
     };
 
@@ -227,7 +232,7 @@ const CandleChart = () => {
         // Adjust start index to stay within bounds
         newViewStartIndex = Math.max(
             0,
-            Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
+            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         );
 
         setDisplayedCandles(newDisplayedCandles);
@@ -309,7 +314,7 @@ const CandleChart = () => {
                     const newIndex = Math.round(targetViewStartIndex);
                     const boundedIndex = Math.max(
                         0,
-                        Math.min(newIndex, historicalBuffer.length - displayedCandles)
+                        Math.min(newIndex, displayCandles.length - displayedCandles)
                     );
 
                     // Update state only if the index actually changes to avoid unnecessary re-renders
@@ -471,7 +476,7 @@ const CandleChart = () => {
         };
     }, [
         // Include all state and props used within the effect and its handlers
-        isDragging, setIsDragging, viewStartIndex, setViewStartIndex, historicalBuffer.length,
+        isDragging, setIsDragging, viewStartIndex, setViewStartIndex, displayCandles.length,
         displayedCandles, setDisplayedCandles, // Added setDisplayedCandles for zoom/reset
         setCurrentMouseY, isMouseOverChart, setMouseX, // Added setMouseX for tracking X position
         setHoveredCandle, setActiveTimestamp, setHoveredIndex, // Other state setters
