@@ -210,6 +210,11 @@ export function useCandleSubscription() {
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
             console.log("[useCandleSubscription] Received candle updates:", data.updatedCandles.length);
 
+            // Get timestamps from first and last candles to log data range received
+            const firstCandleTime = new Date(data.updatedCandles[0].timestamp).toISOString();
+            const lastCandleTime = new Date(data.updatedCandles[data.updatedCandles.length-1].timestamp).toISOString();
+            console.log(`[WebSocket Data] Received candle update range: ${firstCandleTime} to ${lastCandleTime}`);
+
             setHistoricalBuffer(prevBuffer => {
                 // Transform backend candles to frontend format
                 const newCandles = data.updatedCandles.map(candle =>
@@ -246,13 +251,41 @@ export function useCandleSubscription() {
                 return;
             }
 
-            // Transform and store the candles
-            const candles = data.candles
-                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol))
-                .sort((a, b) => a.timestamp - b.timestamp);
+            // Log the received data range
+            if (data.candles.length > 0) {
+                const firstCandleTime = new Date(data.candles[0].timestamp).toISOString();
+                const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
+                console.log(`[WebSocket Data] Received initial data range: ${firstCandleTime} to ${lastCandleTime}`);
+                console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
+            }
 
-            setHistoricalBuffer(candles);
-            setViewStartIndex(Math.max(0, candles.length - displayedCandles));
+            // Transform the new candles
+            const newCandles = data.candles
+                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
+
+            // Merge with existing buffer instead of replacing it
+            setHistoricalBuffer(prevBuffer => {
+                // Create a copy of the buffer to modify
+                const updatedBuffer = [...prevBuffer];
+
+                // Add or update each candle
+                newCandles.forEach(newCandle => {
+                    const existingIndex = updatedBuffer.findIndex(
+                        c => c.timestamp === newCandle.timestamp
+                    );
+
+                    if (existingIndex >= 0) {
+                        updatedBuffer[existingIndex] = newCandle;
+                    } else {
+                        updatedBuffer.push(newCandle);
+                    }
+                });
+
+                // Sort by timestamp
+                return updatedBuffer.sort((a, b) => a.timestamp - b.timestamp);
+            });
+
+            setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
             setError(null);
             setIsWaitingForData(false);
         }
@@ -320,7 +353,21 @@ export function useCandleSubscription() {
                 new Date(range.start) :
                 calculateStartDate(endDate, timeframe, displayedCandles);
 
-            console.log("[useCandleSubscription] Requesting candles from", startDate.toISOString(), "to", endDate.toISOString());
+            console.log("--------- CANDLE DATA REQUEST ---------");
+            console.log(`[Data Request] Platform: ${platformName}, Symbol: ${stockSymbol}, Timeframe: ${timeframe}`);
+            console.log(`[Data Request] Start date: ${startDate.toISOString()}`);
+            console.log(`[Data Request] End date: ${endDate.toISOString()}`);
+
+            if (range.lookbackNeeded) {
+                console.log(`[Data Request] Lookback required: ${range.lookbackNeeded} candles`);
+            }
+
+            if (range.isViewingLatest) {
+                console.log(`[Data Request] Including future candles: ${range.extraFutureCandles}`);
+            }
+
+            console.log(`[Data Request] Total candles needed: ${range.totalCandlesNeeded || displayedCandles}`);
+            console.log("--------------------------------------");
 
             const subscriptionRequest = {
                 platformName,
@@ -345,6 +392,79 @@ export function useCandleSubscription() {
             setIsSubscribing(false);
         }
     }, [calculateRequiredDataRange, setIsWaitingForData, displayedCandles, calculateStartDate]);
+
+
+    // Listen for indicator requirement changes
+    useEffect(() => {
+        // Define event handler for indicator requirement changes
+        const handleIndicatorRequirementsChanged = async (event) => {
+            if (!SubscriptionManager.activeSubscriptionId) {
+                console.log("[Indicator Monitor] No active subscription to update");
+                return; // No active subscription to update
+            }
+
+            console.log(`[Indicator Monitor] Detected indicator requirements change event`);
+            const { range, indicatorCount } = event.detail;
+
+            // Only update if we have valid range data
+            if (range && range.start && range.end) {
+                try {
+                    // Get the current subscription details
+                    const { platformName, stockSymbol, timeframe } = SubscriptionManager.currentSubscription;
+                    if (!platformName || !stockSymbol || !timeframe) {
+                        console.log("[Indicator Monitor] Missing subscription parameters");
+                        return; // Missing required data
+                    }
+
+                    console.log("--------- SUBSCRIPTION UPDATE ---------");
+                    console.log(`[Subscription Update] Updating for ${indicatorCount} indicators`);
+                    console.log(`[Subscription Update] Platform: ${platformName}, Symbol: ${stockSymbol}, Timeframe: ${timeframe}`);
+                    console.log(`[Subscription Update] New start date: ${new Date(range.start).toISOString()}`);
+                    console.log(`[Subscription Update] New end date: ${new Date(range.end).toISOString()}`);
+                    console.log(`[Subscription Update] Lookback needed: ${range.lookbackNeeded} candles`);
+
+                    if (range.isViewingLatest) {
+                        console.log(`[Subscription Update] Including future candles: ${range.extraFutureCandles}`);
+                    }
+
+                    console.log(`[Subscription Update] Total candles needed: ${range.totalCandlesNeeded || "unknown"}`);
+                    console.log("--------------------------------------");
+
+                    // Create the update request
+                    const updateRequest = {
+                        subscriptionId: SubscriptionManager.activeSubscriptionId,
+                        newStartDate: new Date(range.start).toISOString(),
+                        newEndDate: new Date(range.end).toISOString(),
+                        resetData: true // Reset existing data
+                    };
+
+                    // Send the update request to the server
+                    await webSocketService.safeSend('/app/candles/update-subscription', updateRequest);
+                    console.log("[Indicator Monitor] Subscription update request sent successfully");
+                } catch (err) {
+                    console.error("[Indicator Monitor] Error updating subscription for indicators:", err);
+                    setError("Failed to update subscription: " + err.message);
+
+                    toast({
+                        title: "Indicator Update Error",
+                        description: "Failed to update data requirements for indicators.",
+                        variant: "destructive",
+                        duration: 3000
+                    });
+                }
+            } else {
+                console.log("[Indicator Monitor] Invalid range data received, cannot update subscription", range);
+            }
+        };
+
+        // Register event listener for indicator changes
+        window.addEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
+
+        // Clean up event listener
+        return () => {
+            window.removeEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
+        };
+    }, [setError, toast]);
 
     // Initialize and setup effect
     useEffect(() => {

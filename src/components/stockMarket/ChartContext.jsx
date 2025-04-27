@@ -30,6 +30,10 @@ export function ChartProvider({ children }) {
     // Indicator state - now centralized here
     const [indicators, setIndicators] = useState([]);
 
+    // New state for controlling subscription updates
+    const [shouldUpdateSubscription, setShouldUpdateSubscription] = useState(false);
+    const lastRequestedRangeRef = useRef(null);
+
     // Constants
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
@@ -120,11 +124,12 @@ export function ChartProvider({ children }) {
         });
 
         // Calculate the actual data range needed
-        const dataStartIndex = Math.min(0, currentViewStart - maxLookback);
+        // This should be currentViewStart - maxLookback, but limited to a minimum of 0
+        const dataStartIndex = Math.max(0, currentViewStart - maxLookback);
 
-        console.log(currentViewStart);
-        console.log(maxLookback);
-        console.log(dataStartIndex);
+        console.log("[Range Debug] CurrentViewStart:", currentViewStart);
+        console.log("[Range Debug] MaxLookback:", maxLookback);
+        console.log("[Range Debug] DataStartIndex:", dataStartIndex);
 
 
         // Check if we're viewing the latest data and need to fetch future candles
@@ -132,10 +137,28 @@ export function ChartProvider({ children }) {
         // For now, we'll just request 1 candle ahead if we're at the edge
         const extraFutureCandles = isViewingLatest ? 1 : 0;
 
-        const startDate = historicalBuffer[viewStartIndex].timestamp - (maxLookback * timeframeInMs); // Using timeframeInMs here
-        const endDate = isViewingLatest
+        // Calculate start date based on lookback
+        let startDate;
+        if (maxLookback > 0 && historicalBuffer[dataStartIndex]) {
+            // If we have a lookback and data at the start index, use that date
+            startDate = historicalBuffer[dataStartIndex].timestamp - (maxLookback * timeframeInMs);
+        } else if (historicalBuffer[viewStartIndex]) {
+            // Otherwise use the view start date
+            startDate = historicalBuffer[viewStartIndex].timestamp;
+        } else if (historicalBuffer.length > 0) {
+            // Fallback to first available candle
+            startDate = historicalBuffer[0].timestamp;
+        } else {
+            // No data available
+            startDate = null;
+        }
+
+        // Calculate end date
+        const endDate = isViewingLatest && historicalBuffer.length > 0
             ? (new Date(historicalBuffer[historicalBuffer.length - 1]?.timestamp + 60000)).getTime()
-            : historicalBuffer[currentViewEnd - 1]?.timestamp;
+            : (currentViewEnd < historicalBuffer.length)
+                ? historicalBuffer[currentViewEnd - 1]?.timestamp
+                : (historicalBuffer.length > 0 ? historicalBuffer[historicalBuffer.length - 1].timestamp : null);
 
         // New detailed logging for indicator calculations
         console.log("--------- INDICATOR CALCULATION REQUIREMENTS ---------");
@@ -249,13 +272,41 @@ export function ChartProvider({ children }) {
         }
     }, [historicalBuffer, viewStartIndex, displayedCandles, isWaitingForData]);
 
-    // Run the calculation whenever indicators change too
+    // FIXED: Modified useEffect to prevent infinite loop
     useEffect(() => {
         if (historicalBuffer.length > 0) {
-            console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
-            calculateRangeRef.current();
+            // Only recalculate range when indicators change or when explicitly requested
+            if (indicators.length > 0 || shouldUpdateSubscription) {
+                console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
+                const range = calculateRequiredDataRange();
+
+                // Check if range is different from last request
+                const lastRange = lastRequestedRangeRef.current;
+                const isRangeDifferent = !lastRange ||
+                    lastRange.start !== range.start ||
+                    lastRange.end !== range.end;
+
+                if (isRangeDifferent) {
+                    lastRequestedRangeRef.current = { ...range };
+
+                    const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
+                        detail: {
+                            range,
+                            indicatorCount: indicators.length
+                        }
+                    });
+                    window.dispatchEvent(indicatorChangeEvent);
+
+                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
+                } else {
+                    console.log("[WebSocket Prep] Skipping event dispatch - Range unchanged");
+                }
+
+                // Reset the flag
+                setShouldUpdateSubscription(false);
+            }
         }
-    }, [indicators, historicalBuffer.length]);
+    }, [indicators, shouldUpdateSubscription, historicalBuffer.length, calculateRequiredDataRange]);
 
     // Update hovered candle when index changes
     useEffect(() => {
@@ -273,28 +324,56 @@ export function ChartProvider({ children }) {
         }
     }, [historicalBuffer]);
 
+    // Helper function to format date for logs
+    const formatDate = (timestamp) => {
+        if (!timestamp) return "undefined";
+        return new Date(timestamp).toISOString();
+    };
+
     // Indicator management functions
     const addIndicator = (indicator) => {
-        console.log("Adding indicator to context:", indicator);
+        console.log("[Indicator Manager] Adding indicator to context:", indicator);
         const newIndicator = {
             ...indicator,
             id: crypto.randomUUID?.() || `id-${Date.now()}`
         };
         setIndicators(prev => {
             const newState = [...prev, newIndicator];
-            console.log("New indicators state in context:", newState);
+            console.log("[Indicator Manager] New indicators state in context:", newState);
             return newState;
         });
+
+        // Request a subscription update when adding an indicator
+        setShouldUpdateSubscription(true);
     };
 
     const removeIndicator = (id) => {
+        // Get indicator name before removing for logging
+        const indicator = indicators.find(ind => ind.id === id);
+        const indicatorName = indicator ? indicator.name : "Unknown";
+
+        console.log(`[Indicator Manager] Removing indicator "${indicatorName}" (${id})`);
         setIndicators(prev => prev.filter(ind => ind.id !== id));
+
+        // Request a subscription update when removing an indicator
+        setShouldUpdateSubscription(true);
     };
 
     const updateIndicator = (id, updates) => {
-        setIndicators(prev =>
-            prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
-        );
+        // Get indicator name before updating for logging
+        const indicator = indicators.find(ind => ind.id === id);
+        const indicatorName = indicator ? indicator.name : "Unknown";
+
+        console.log(`[Indicator Manager] Updating indicator "${indicatorName}" (${id}) with:`, updates);
+        setIndicators(prev => prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind));
+
+        // Request a subscription update when updating an indicator
+        setShouldUpdateSubscription(true);
+    };
+
+    // Method to explicitly request a subscription update
+    const requestSubscriptionUpdate = () => {
+        setShouldUpdateSubscription(true);
     };
 
     return (
@@ -341,7 +420,8 @@ export function ChartProvider({ children }) {
             MAX_DISPLAY_CANDLES,
 
             // WebSocket preparation
-            calculateRequiredDataRange
+            calculateRequiredDataRange,
+            requestSubscriptionUpdate
         }}>
             {children}
         </ChartContext.Provider>
