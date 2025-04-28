@@ -9,7 +9,7 @@ export function ChartProvider({ children }) {
     const [displayCandles, setDisplayCandles] = useState([]); // For rendering charts
     const [indicatorCandles, setIndicatorCandles] = useState([]); // For calculating indicators
     const [candleData, setCandleData] = useState([]); // Currently visible candles
-    
+
     // Add isDataGenerationEnabled state for CandleChart component
     const [isDataGenerationEnabled, setIsDataGenerationEnabled] = useState(false);
 
@@ -78,25 +78,71 @@ export function ChartProvider({ children }) {
 
     // Function to apply calculated indicator values to display candles
     const applyIndicatorsToCandleDisplay = useCallback(() => {
-        if (!displayCandles.length || !indicatorCandles.length || !indicators.length) return;
+        if (!displayCandles.length || !indicatorCandles.length || !indicators.length) {
+            console.log("[ChartContext] Cannot apply indicators - missing data or no indicators", {
+                displayCandlesLength: displayCandles.length,
+                indicatorCandlesLength: indicatorCandles.length,
+                indicatorsCount: indicators.length
+            });
+            return;
+        }
 
-        console.log("[ChartContext] Applying calculated indicators to display candles");
+        // Log information about the current candle data (BEFORE processing)
+        console.log("===== BEFORE INDICATOR PROCESSING =====");
+
+        // Display candles timestamp info
+        const firstDisplayCandle = displayCandles[0];
+        const lastDisplayCandle = displayCandles[displayCandles.length - 1];
+
+        console.log("[ChartContext] Display candles range (BEFORE):", {
+            count: displayCandles.length,
+            firstTimestamp: firstDisplayCandle ? new Date(firstDisplayCandle.timestamp).toISOString() : 'none',
+            lastTimestamp: lastDisplayCandle ? new Date(lastDisplayCandle.timestamp).toISOString() : 'none'
+        });
+
+        // Indicator candles timestamp info
+        const firstIndicatorCandle = indicatorCandles[0];
+        const lastIndicatorCandle = indicatorCandles[indicatorCandles.length - 1];
+
+        console.log("[ChartContext] Indicator candles range:", {
+            count: indicatorCandles.length,
+            firstTimestamp: firstIndicatorCandle ? new Date(firstIndicatorCandle.timestamp).toISOString() : 'none',
+            lastTimestamp: lastIndicatorCandle ? new Date(lastIndicatorCandle.timestamp).toISOString() : 'none'
+        });
+
+        // Active indicators summary
+        console.log("[ChartContext] Active indicators:", indicators.map(ind => ({
+            id: ind.id.substring(0, 8) + '...',  // Truncate ID for readability
+            name: ind.name,
+            type: ind.type
+        })));
 
         // First calculate indicators on the indicator candle buffer
+        console.log("[ChartContext] Calculating indicators for candle buffer...");
         const processedIndicatorCandles = calculateIndicatorsForBuffer(indicatorCandles, indicators);
 
         // Create a map of timestamp to calculated indicator values
+        console.log("[ChartContext] Creating timestamp mapping...");
         const indicatorValuesByTimestamp = {};
+        let mappedTimestamps = 0;
+
         processedIndicatorCandles.forEach(candle => {
             if (candle.timestamp && candle.indicatorValues) {
                 indicatorValuesByTimestamp[candle.timestamp] = candle.indicatorValues;
+                mappedTimestamps++;
             }
         });
 
+        console.log(`[ChartContext] Created timestamp map with ${mappedTimestamps} entries`);
+
         // Apply indicator values to display candles
+        console.log("[ChartContext] Applying indicator values to display candles...");
+
+        let matchedCandles = 0;
         const updatedDisplayCandles = displayCandles.map(candle => {
             const calculatedValues = indicatorValuesByTimestamp[candle.timestamp];
             if (calculatedValues) {
+                matchedCandles++;
                 return {
                     ...candle,
                     indicatorValues: calculatedValues
@@ -105,9 +151,70 @@ export function ChartProvider({ children }) {
             return candle;
         });
 
+        console.log(`[ChartContext] Matched ${matchedCandles} out of ${displayCandles.length} display candles with indicator values`);
+
+        // Check for any display candles that didn't get indicator values
+        if (matchedCandles < displayCandles.length) {
+            console.warn(`[ChartContext] Warning: ${displayCandles.length - matchedCandles} display candles did not receive indicator values`);
+
+            // Log a few sample missing timestamps
+            const missingSampleSize = Math.min(5, displayCandles.length - matchedCandles);
+            const missingSamples = displayCandles
+                .filter(candle => !indicatorValuesByTimestamp[candle.timestamp])
+                .slice(0, missingSampleSize)
+                .map(candle => new Date(candle.timestamp).toISOString());
+
+            console.warn(`[ChartContext] Sample missing timestamps: ${JSON.stringify(missingSamples)}`);
+        }
+
         // Update the display candles with calculated indicators
         setDisplayCandles(updatedDisplayCandles);
+
+        // Log information AFTER processing
+        console.log("===== AFTER INDICATOR PROCESSING =====");
+
+        // Display candles timestamp info AFTER processing
+        const firstUpdatedDisplayCandle = updatedDisplayCandles[0];
+        const lastUpdatedDisplayCandle = updatedDisplayCandles[updatedDisplayCandles.length - 1];
+
+        console.log("[ChartContext] Display candles range (AFTER):", {
+            count: updatedDisplayCandles.length,
+            firstTimestamp: firstUpdatedDisplayCandle ? new Date(firstUpdatedDisplayCandle.timestamp).toISOString() : 'none',
+            lastTimestamp: lastUpdatedDisplayCandle ? new Date(lastUpdatedDisplayCandle.timestamp).toISOString() : 'none'
+        });
+
+        // Get the first and last candles with indicator values
+        const firstCandleWithIndicator = updatedDisplayCandles.find(c =>
+            c.indicatorValues && Object.keys(c.indicatorValues).length > 0);
+        const lastCandleWithIndicator = [...updatedDisplayCandles].reverse().find(c =>
+            c.indicatorValues && Object.keys(c.indicatorValues).length > 0);
+
+        console.log("[ChartContext] Final display candles with indicators:", {
+            total: updatedDisplayCandles.length,
+            withIndicators: matchedCandles,
+            firstIndicatorTimestamp: firstCandleWithIndicator
+                ? new Date(firstCandleWithIndicator.timestamp).toISOString()
+                : 'none',
+            lastIndicatorTimestamp: lastCandleWithIndicator
+                ? new Date(lastCandleWithIndicator.timestamp).toISOString()
+                : 'none'
+        });
+
+        // Sample of indicator values for the first candle with indicators
+        if (firstCandleWithIndicator) {
+            const sampleIndicatorValues = {};
+            Object.entries(firstCandleWithIndicator.indicatorValues).forEach(([id, value]) => {
+                const indicator = indicators.find(ind => ind.id === id);
+                sampleIndicatorValues[indicator ? indicator.name : id] =
+                    typeof value === 'object' ? JSON.stringify(value) : value;
+            });
+
+            console.log("[ChartContext] Sample indicator values for first candle:", sampleIndicatorValues);
+        }
+
+        console.log("======================================");
     }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer]);
+
 
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
@@ -128,7 +235,7 @@ export function ChartProvider({ children }) {
 
             switch (indicator.type) {
                 case "sma":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                    indicatorLookback = indicator.settings?.period -1 || 14;
                     break;
                 case "ema":
                     indicatorLookback = indicator.settings?.period - 1 || 14;
@@ -266,8 +373,8 @@ export function ChartProvider({ children }) {
 
         console.log("[ChartContext] Indicators or indicator data changed - applying to display candles");
         applyIndicatorsToCandleDisplay();
-        
-    }, [indicators, indicatorCandles, applyIndicatorsToCandleDisplay]);
+
+    }, [indicators, indicatorCandles.length, applyIndicatorsToCandleDisplay]);
 
     // Update visible data when viewStartIndex changes or display candles change
     useEffect(() => {
@@ -312,22 +419,26 @@ export function ChartProvider({ children }) {
         }
     }, [displayCandles, viewStartIndex, displayedCandles, isWaitingForData]);
 
-    // FIXED: Modified useEffect to prevent infinite loop
+    // Monitor indicator changes to update subscription requirements
     useEffect(() => {
         if (displayCandles.length > 0) {
-            // Only recalculate range when indicators change or when explicitly requested
-            if (indicators.length > 0 || shouldUpdateSubscription) {
+            // Always recalculate range when indicators change or when explicitly requested
+            if (shouldUpdateSubscription || indicators.length > 0) {
                 console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
                 const range = calculateRequiredDataRange();
 
-                // Check if range is different from last request
+                // Check if range is different from last request or if indicator count changed
                 const lastRange = lastRequestedRangeRef.current;
                 const isRangeDifferent = !lastRange ||
                     lastRange.start !== range.start ||
-                    lastRange.end !== range.end;
+                    lastRange.end !== range.end ||
+                    lastRange.indicatorCount !== indicators.length;
 
                 if (isRangeDifferent) {
-                    lastRequestedRangeRef.current = { ...range };
+                    lastRequestedRangeRef.current = { 
+                        ...range,
+                        indicatorCount: indicators.length 
+                    };
 
                     const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
                         detail: {
@@ -337,9 +448,9 @@ export function ChartProvider({ children }) {
                     });
                     window.dispatchEvent(indicatorChangeEvent);
 
-                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
+                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range or indicator count changed");
                 } else {
-                    console.log("[WebSocket Prep] Skipping event dispatch - Range unchanged");
+                    console.log("[WebSocket Prep] Skipping event dispatch - Range and indicator count unchanged");
                 }
 
                 // Reset the flag
@@ -363,12 +474,6 @@ export function ChartProvider({ children }) {
             setIsWaitingForData(true);
         }
     }, [displayCandles]);
-
-    // Helper function to format date for logs
-    const formatDate = (timestamp) => {
-        if (!timestamp) return "undefined";
-        return new Date(timestamp).toISOString();
-    };
 
     // Indicator management functions
     const addIndicator = (indicator) => {
