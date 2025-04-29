@@ -1,7 +1,7 @@
 // src/hooks/useCandleSubscription.js
 import { useState, useEffect, useContext, useCallback } from 'react';
 import { ChartContext } from '../components/stockMarket/ChartContext';
-import webSocketService, { CHART_CANDLES_QUEUE, INDICATOR_CANDLES_QUEUE } from '../services/websocketService';
+import webSocketService from '../services/websocketService';
 import { useToast } from './use-toast';
 
 // Global persistent subscription manager - lives outside React lifecycle
@@ -24,10 +24,7 @@ const SubscriptionManager = {
 
     // WebSocket connection state
     isConnected: false,
-    subscriptions: {
-        chart: null,
-        indicator: null
-    },
+    userQueueSubscription: null,
 
     // Track initialization and message handlers
     initialized: false,
@@ -49,14 +46,12 @@ const SubscriptionManager = {
             console.log("[SubscriptionManager] WebSocket connected globally");
             this.isConnected = true;
 
-            // Subscribe to the chart candles queue
-            this.subscriptions.chart = await webSocketService.subscribe(
-                CHART_CANDLES_QUEUE,
-                (message) => this.handleGlobalMessage(message, 'chart')
+            // Subscribe to the user queue for candle data
+            this.userQueueSubscription = await webSocketService.subscribe(
+                '/user/queue/candles',
+                this.handleGlobalMessage.bind(this)
             );
-            
-            console.log("[SubscriptionManager] Subscribed to chart candles queue");
-            
+
             this.initialized = true;
             console.log("[SubscriptionManager] Global WebSocket initialization complete");
         } catch (err) {
@@ -65,20 +60,24 @@ const SubscriptionManager = {
         }
     },
 
-    // Global message handler that handles messages from specific queues
-    handleGlobalMessage(message, queueType) {
-        console.log(`[###########################ALMA############################`);
+    // Global message handler that distributes to appropriate handlers based on subscription ID
+    handleGlobalMessage(message) {
         // Parse the message if it's a string
         const data = typeof message === 'string' ? JSON.parse(message) : message;
 
         // Track heartbeats
         if (data.updateType === "HEARTBEAT") {
-            this.recordHeartbeat(data.subscriptionId, queueType);
+            this.recordHeartbeat(data.subscriptionId);
             return; // Skip further processing for heartbeats
         }
 
-        if (queueType === 'chart') {
-            console.log(`[SubscriptionManager] Routing message from chart queue for subscription ${data.subscriptionId || 'unknown'}`);
+        // Determine which subscription this message belongs to
+        const isChartSubscription = data.subscriptionId === this.activeSubscriptions.chart;
+        const isIndicatorSubscription = data.subscriptionId === this.activeSubscriptions.indicator;
+
+        // Route message to appropriate handlers
+        if (isChartSubscription) {
+            console.log(`[SubscriptionManager] Routing message to chart handlers for subscription ${data.subscriptionId}`);
             this.messageHandlers.chart.forEach(handler => {
                 try {
                     handler(data);
@@ -87,8 +86,8 @@ const SubscriptionManager = {
                 }
             });
         }
-        else if (queueType === 'indicator') {
-            console.log(`[SubscriptionManager] Routing message from indicator queue for subscription ${data.subscriptionId || 'unknown'}`);
+        else if (isIndicatorSubscription) {
+            console.log(`[SubscriptionManager] Routing message to indicator handlers for subscription ${data.subscriptionId}`);
             this.messageHandlers.indicator.forEach(handler => {
                 try {
                     handler(data);
@@ -97,30 +96,68 @@ const SubscriptionManager = {
                 }
             });
         }
+        // For subscription responses or initial data without known subscription ID
+        else if (!data.subscriptionId || data.updateType === undefined) {
+            // For new subscriptions, check if we need to parse the response by subscription type
+            if (data.subscriptionType === 'CHART') {
+                this.messageHandlers.chart.forEach(handler => {
+                    try {
+                        handler(data);
+                    } catch (err) {
+                        console.error("[SubscriptionManager] Error in chart message handler:", err);
+                    }
+                });
+            }
+            else if (data.subscriptionType === 'INDICATOR') {
+                this.messageHandlers.indicator.forEach(handler => {
+                    try {
+                        handler(data);
+                    } catch (err) {
+                        console.error("[SubscriptionManager] Error in indicator message handler:", err);
+                    }
+                });
+            }
+            // If no type marker is present, send to both (legacy compatibility)
+            else {
+                console.log("[SubscriptionManager] Unidentified message, routing to all handlers");
+                [...this.messageHandlers.chart, ...this.messageHandlers.indicator].forEach(handler => {
+                    try {
+                        handler(data);
+                    } catch (err) {
+                        console.error("[SubscriptionManager] Error in shared message handler:", err);
+                    }
+                });
+            }
+        }
         else {
-            console.log(`[SubscriptionManager] Message with unknown queue type: ${queueType}`);
+            console.log(`[SubscriptionManager] Message with unknown subscription ID: ${data.subscriptionId}`);
         }
     },
 
     // Record heartbeat information
-    recordHeartbeat(subscriptionId, queueType) {
+    recordHeartbeat(subscriptionId) {
         this.lastHeartbeatTime = new Date();
         this.heartbeatCount++;
 
+        const isChartActive = subscriptionId === this.activeSubscriptions.chart;
+        const isIndicatorActive = subscriptionId === this.activeSubscriptions.indicator;
         const timestamp = new Date().toISOString().substr(11, 12);
-        const isExpectedId = subscriptionId === this.activeSubscriptions[queueType];
 
-        console.log(`[${timestamp}] Heartbeat #${this.heartbeatCount} for ${queueType} subscription: ${subscriptionId}`);
+        let subscriptionType = "stale";
+        if (isChartActive) subscriptionType = "chart";
+        if (isIndicatorActive) subscriptionType = "indicator";
+
+        console.log(`[${timestamp}] Heartbeat #${this.heartbeatCount} for ${subscriptionType} subscription: ${subscriptionId}`);
 
         // Clean up stale subscriptions that are still sending heartbeats
-        if (!isExpectedId && subscriptionId) {
+        if (!isChartActive && !isIndicatorActive && subscriptionId) {
             console.log(`[SubscriptionManager] Cleaning up stale subscription: ${subscriptionId}`);
             webSocketService.safeSend('/app/candles/unsubscribe', {
                 subscriptionId: subscriptionId
             }).catch(() => {});
         }
 
-        return isExpectedId;
+        return isChartActive || isIndicatorActive;
     },
 
     // Set active subscription by type
@@ -178,14 +215,6 @@ const SubscriptionManager = {
             });
 
             this.clearActiveSubscription(type);
-            
-            // If unsubscribing from indicator, also clean up the queue subscription
-            if (type === 'indicator' && this.subscriptions.indicator) {
-                console.log(`[SubscriptionManager] Unsubscribing from indicator queue`);
-                webSocketService.unsubscribe(INDICATOR_CANDLES_QUEUE);
-                this.subscriptions.indicator = null;
-            }
-            
             return true;
         } catch (err) {
             console.error(`[SubscriptionManager] Error unsubscribing ${type}:`, err);
@@ -266,6 +295,8 @@ export function useCandleSubscription() {
 
     // Handle incoming chart candle data
     const handleChartCandleMessage = useCallback((data) => {
+        console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        console.log(data);
         // Skip heartbeats - already handled in SubscriptionManager
         if (data.updateType === "HEARTBEAT") return;
 
@@ -333,6 +364,8 @@ export function useCandleSubscription() {
             setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
             setError(null);
             setIsWaitingForData(false);
+        } else {
+            console.log("!4!Did not hit the spot!4!");
         }
     }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData]);
 
@@ -524,7 +557,7 @@ export function useCandleSubscription() {
                 timeframe,
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
-                destinationQueue: CHART_CANDLES_QUEUE  // Specify destination queue
+                subscriptionType: 'CHART'  // Add type marker for backend differentiation
             };
 
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
@@ -565,16 +598,6 @@ export function useCandleSubscription() {
                 await new Promise(resolve => setTimeout(resolve, 150));
             }
 
-            // Subscribe to the indicator queue if not already subscribed
-            if (!SubscriptionManager.subscriptions.indicator) {
-                console.log("[SubscriptionManager] Setting up indicator queue subscription");
-                SubscriptionManager.subscriptions.indicator = await webSocketService.subscribe(
-                    INDICATOR_CANDLES_QUEUE,
-                    (message) => SubscriptionManager.handleGlobalMessage(message, 'indicator')
-                );
-                console.log("[SubscriptionManager] Subscribed to indicator candles queue");
-            }
-
             // Calculate the required data range for indicators
             const range = calculateRequiredDataRange();
 
@@ -601,7 +624,7 @@ export function useCandleSubscription() {
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
                 resetData: true,  // Always true for indicator data
-                destinationQueue: INDICATOR_CANDLES_QUEUE  // Specify destination queue
+                subscriptionType: 'INDICATOR'  // Add type marker for backend differentiation
             };
 
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
@@ -737,13 +760,6 @@ export function useCandleSubscription() {
             SubscriptionManager.unsubscribe('indicator').catch(err => {
                 console.error("[useCandleSubscription] Failed to remove indicator subscription:", err);
             });
-            
-            // Also unsubscribe from the indicator queue if we're not using it anymore
-            if (SubscriptionManager.subscriptions.indicator) {
-                console.log("[useCandleSubscription] Unsubscribing from indicator queue");
-                webSocketService.unsubscribe(INDICATOR_CANDLES_QUEUE);
-                SubscriptionManager.subscriptions.indicator = null;
-            }
         }
     }, [indicators, subscribeToIndicatorCandles]);
 

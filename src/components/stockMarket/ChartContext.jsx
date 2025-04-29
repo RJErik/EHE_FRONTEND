@@ -43,6 +43,17 @@ export function ChartProvider({ children }) {
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
 
+    // Refs to track first and last candle timestamps
+    const firstCandleTimestampRef = useRef(null);
+    const lastCandleTimestampRef = useRef(null);
+    const lastUpdateReasonRef = useRef("initial");
+
+    // Enhanced setter function with reason tracking
+    const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
+        lastUpdateReasonRef.current = reason;
+        setDisplayCandles(newCandles);
+    }, []);
+
     // Helper function to calculate indicators for a buffer
     const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
         if (!buffer.length || !currentIndicators.length) return buffer;
@@ -168,7 +179,7 @@ export function ChartProvider({ children }) {
         }
 
         // Update the display candles with calculated indicators
-        setDisplayCandles(updatedDisplayCandles);
+        updateDisplayCandles(updatedDisplayCandles, "apply_indicators");
 
         // Log information AFTER processing
         console.log("===== AFTER INDICATOR PROCESSING =====");
@@ -213,8 +224,31 @@ export function ChartProvider({ children }) {
         }
 
         console.log("======================================");
-    }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer]);
+    }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles]);
 
+    // Modified effect to track timestamp changes and their causes
+    useEffect(() => {
+        const firstDisplayCandle = displayCandles[0];
+        const lastDisplayCandle = displayCandles[displayCandles.length - 1];
+
+        const firstTimestamp = firstDisplayCandle?.timestamp;
+        const lastTimestamp = lastDisplayCandle?.timestamp;
+
+        // Only run the effect if either timestamp has changed
+        if (firstTimestamp !== firstCandleTimestampRef.current ||
+            lastTimestamp !== lastCandleTimestampRef.current) {
+
+            console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            console.log(`Timestamp change detected with reason: ${lastUpdateReasonRef.current}`);
+            console.log(`First candle timestamp: ${firstTimestamp ? new Date(firstTimestamp).toISOString() : 'none'} (previous: ${firstCandleTimestampRef.current ? new Date(firstCandleTimestampRef.current).toISOString() : 'none'})`);
+            console.log(`Last candle timestamp: ${lastTimestamp ? new Date(lastTimestamp).toISOString() : 'none'} (previous: ${lastCandleTimestampRef.current ? new Date(lastCandleTimestampRef.current).toISOString() : 'none'})`);
+            console.log(`Total candles: ${displayCandles.length}`);
+
+            // Update refs with current values
+            firstCandleTimestampRef.current = firstTimestamp;
+            lastCandleTimestampRef.current = lastTimestamp;
+        }
+    }, [displayCandles]);
 
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
@@ -422,23 +456,19 @@ export function ChartProvider({ children }) {
     // Monitor indicator changes to update subscription requirements
     useEffect(() => {
         if (displayCandles.length > 0) {
-            // Always recalculate range when indicators change or when explicitly requested
-            if (shouldUpdateSubscription || indicators.length > 0) {
+            // Only recalculate range when indicators change or when explicitly requested
+            if (indicators.length > 0 || shouldUpdateSubscription) {
                 console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
                 const range = calculateRequiredDataRange();
 
-                // Check if range is different from last request or if indicator count changed
+                // Check if range is different from last request
                 const lastRange = lastRequestedRangeRef.current;
                 const isRangeDifferent = !lastRange ||
                     lastRange.start !== range.start ||
-                    lastRange.end !== range.end ||
-                    lastRange.indicatorCount !== indicators.length;
+                    lastRange.end !== range.end;
 
                 if (isRangeDifferent) {
-                    lastRequestedRangeRef.current = { 
-                        ...range,
-                        indicatorCount: indicators.length 
-                    };
+                    lastRequestedRangeRef.current = { ...range };
 
                     const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
                         detail: {
@@ -448,9 +478,9 @@ export function ChartProvider({ children }) {
                     });
                     window.dispatchEvent(indicatorChangeEvent);
 
-                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range or indicator count changed");
+                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
                 } else {
-                    console.log("[WebSocket Prep] Skipping event dispatch - Range and indicator count unchanged");
+                    console.log("[WebSocket Prep] Skipping event dispatch - Range unchanged");
                 }
 
                 // Reset the flag
@@ -525,16 +555,25 @@ export function ChartProvider({ children }) {
         <ChartContext.Provider value={{
             // Data
             displayCandles,
-            setDisplayCandles,
+            setDisplayCandles: updateDisplayCandles, // Use enhanced setter
             indicatorCandles,
-            setIndicatorCandles,
+            setIndicatorCandles: (newCandles) => {
+                lastUpdateReasonRef.current = "update_indicator_candles";
+                setIndicatorCandles(newCandles);
+            },
             candleData,
 
             // View state
             viewStartIndex,
-            setViewStartIndex,
+            setViewStartIndex: (index) => {
+                lastUpdateReasonRef.current = "view_index_change";
+                setViewStartIndex(index);
+            },
             displayedCandles,
-            setDisplayedCandles,
+            setDisplayedCandles: (count) => {
+                lastUpdateReasonRef.current = "display_count_change";
+                setDisplayedCandles(count);
+            },
             isDragging,
             setIsDragging,
 
@@ -554,7 +593,10 @@ export function ChartProvider({ children }) {
             isWaitingForData,
             setIsWaitingForData,
             timeframeInMs,
-            setTimeframeInMs,
+            setTimeframeInMs: (ms) => {
+                lastUpdateReasonRef.current = "timeframe_change";
+                setTimeframeInMs(ms);
+            },
             isDataGenerationEnabled,
             setIsDataGenerationEnabled,
 

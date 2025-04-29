@@ -531,17 +531,6 @@ const CandleChart = () => {
                         >
                             {isLogarithmic ? "Linear" : "Log"} Scale
                         </button>
-                        <button
-                            onClick={() => setIsDataGenerationEnabled(!isDataGenerationEnabled)}
-                            className={`px-2 py-1 text-xs rounded mr-2 whitespace-nowrap hover:opacity-80 ${
-                                isDataGenerationEnabled
-                                    ? "bg-green-200 dark:bg-green-700"
-                                    : "bg-gray-200 dark:bg-gray-700"
-                            }`}
-                            title={isDataGenerationEnabled ? "Pause Data Generation" : "Resume Data Generation"}
-                        >
-                            {isDataGenerationEnabled ? "Live Data" : "Static Data"}
-                        </button>
                     </div>
                 </div>
                 <div

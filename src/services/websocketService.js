@@ -7,10 +7,6 @@ const SOCKET_URL = 'http://localhost:8080/ws';
 const RECONNECT_DELAY_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
-// Queue destinations
-export const CHART_CANDLES_QUEUE = '/user/queue/chart-candles';
-export const INDICATOR_CANDLES_QUEUE = '/user/queue/indicator-candles';
-
 class WebSocketService {
     constructor() {
         this.stompClient = null;
