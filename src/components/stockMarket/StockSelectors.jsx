@@ -22,7 +22,7 @@ const StockSelectors = () => {
         error: stockDataError
     } = useStockData();
 
-    const [selectedTimeframe, setSelectedTimeframe] = useState("1M"); // Default to 1M
+    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // Default to 1M
 
     // Import setTimeframeInMs from ChartContext
     const { setTimeframeInMs } = useContext(ChartContext);
@@ -30,7 +30,7 @@ const StockSelectors = () => {
     // Set default timeframe on mount
     useEffect(() => {
         // Apply default timeframe in milliseconds
-        setTimeframeInMs(timeframeToMilliseconds("1M"));
+        setTimeframeInMs(timeframeToMilliseconds("1D"));
     }, []);
 
     const {

@@ -293,50 +293,16 @@ export function useCandleSubscription() {
         };
     }, []);
 
-    // Handle incoming chart candle data
+// Handle incoming chart candle message
     const handleChartCandleMessage = useCallback((data) => {
         console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         console.log(data);
+
         // Skip heartbeats - already handled in SubscriptionManager
         if (data.updateType === "HEARTBEAT") return;
 
-        // Handle subscription response
-        if (data.subscriptionId && data.updateType === undefined) {
-            if (data.success === false) {
-                console.error("[useCandleSubscription] Chart subscription error:", data.message);
-                setError(data.message);
-
-                toast({
-                    title: "Chart Subscription Error",
-                    description: data.message,
-                    variant: "destructive",
-                    duration: 5000
-                });
-                return;
-            }
-
-            // Store the new subscription ID
-            SubscriptionManager.setActiveSubscription('chart', data.subscriptionId);
-            console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
-        }
-        // Handle candle updates
-        else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
-            console.log("[useCandleSubscription] Received chart candle updates:", data.updatedCandles.length);
-
-            // Get timestamps from first and last candles to log data range received
-            const firstCandleTime = new Date(data.updatedCandles[0].timestamp).toISOString();
-            const lastCandleTime = new Date(data.updatedCandles[data.updatedCandles.length-1].timestamp).toISOString();
-            console.log(`[WebSocket Data] Received chart candle update range: ${firstCandleTime} to ${lastCandleTime}`);
-
-            // Transform backend candles to frontend format
-            const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
-
-            // Update display candles only
-            updateDisplayCandles(newCandles);
-        }
-        // Handle initial data load
-        else if (data.candles) {
+        // UPDATED APPROACH: Check for candles first, regardless of other properties
+        if (data.candles) {
             console.log("[useCandleSubscription] Received initial chart candle data:", data.candles.length);
 
             if (data.success === false) {
@@ -364,10 +330,52 @@ export function useCandleSubscription() {
             setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
             setError(null);
             setIsWaitingForData(false);
+
+            // Also handle subscription ID if present in the same message
+            if (data.subscriptionId) {
+                SubscriptionManager.setActiveSubscription('chart', data.subscriptionId);
+                console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
+            }
+        }
+        // Handle candle updates
+        else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
+            console.log("[useCandleSubscription] Received chart candle updates:", data.updatedCandles.length);
+
+            // Get timestamps from first and last candles to log data range received
+            const firstCandleTime = new Date(data.updatedCandles[0].timestamp).toISOString();
+            const lastCandleTime = new Date(data.updatedCandles[data.updatedCandles.length-1].timestamp).toISOString();
+            console.log(`[WebSocket Data] Received chart candle update range: ${firstCandleTime} to ${lastCandleTime}`);
+
+            // Transform backend candles to frontend format
+            const newCandles = data.updatedCandles.map(candle =>
+                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
+
+            // Update display candles only
+            updateDisplayCandles(newCandles);
+        }
+        // Handle subscription response with no candles
+        else if (data.subscriptionId && data.updateType === undefined) {
+            if (data.success === false) {
+                console.error("[useCandleSubscription] Chart subscription error:", data.message);
+                setError(data.message);
+
+                toast({
+                    title: "Chart Subscription Error",
+                    description: data.message,
+                    variant: "destructive",
+                    duration: 5000
+                });
+                return;
+            }
+
+            // Store the new subscription ID
+            SubscriptionManager.setActiveSubscription('chart', data.subscriptionId);
+            console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
         } else {
-            console.log("!4!Did not hit the spot!4!");
+            console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
     }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData]);
+
 
     // Handle incoming indicator candle data
     const handleIndicatorCandleMessage = useCallback((data) => {
