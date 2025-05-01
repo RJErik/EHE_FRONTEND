@@ -284,7 +284,7 @@ export function ChartProvider({ children }) {
         }
 
         console.log("======================================");
-    }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles, calculateMaxLookback, timeframeInMs]);
+    }, [indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles, calculateMaxLookback, timeframeInMs]);
 
     // Modified effect to track timestamp changes and their causes
     useEffect(() => {
