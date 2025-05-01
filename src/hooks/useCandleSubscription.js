@@ -1,292 +1,27 @@
 // src/hooks/useCandleSubscription.js
 import { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { ChartContext } from '../components/stockMarket/ChartContext';
-import webSocketService from '../services/websocketService';
+import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from './use-toast';
 
-// Global persistent subscription manager - lives outside React lifecycle
-const SubscriptionManager = {
-    // Active subscription tracking for both types
-    activeSubscriptions: {
-        chart: null,     // For display candles
-        indicator: null  // For indicator calculations
-    },
-
-    currentSubscription: {
-        platformName: null,
-        stockSymbol: null,
-        timeframe: null
-    },
-
-    // Heartbeat tracking
-    lastHeartbeatTime: null,
-    heartbeatCount: 0,
-
-    // WebSocket connection state
-    isConnected: false,
-    userQueueSubscription: null,
-
-    // Track initialization and message handlers
-    initialized: false,
-    messageHandlers: {
-        chart: new Set(),
-        indicator: new Set()
-    },
-
-    // Pending subscription requests for deduplication
-    pendingSubscriptionRequests: {},
-
-    // Initialize the global websocket connection (once)
-    async initialize() {
-        if (this.initialized) {
-            console.log("[SubscriptionManager] Already initialized");
-            return;
-        }
-
-        try {
-            // Connect to WebSocket
-            await webSocketService.connect();
-            console.log("[SubscriptionManager] WebSocket connected globally");
-            this.isConnected = true;
-
-            // Subscribe to the user queue for candle data
-            this.userQueueSubscription = await webSocketService.subscribe(
-                '/user/queue/candles',
-                this.handleGlobalMessage.bind(this)
-            );
-
-            this.initialized = true;
-            console.log("[SubscriptionManager] Global WebSocket initialization complete");
-        } catch (err) {
-            console.error("[SubscriptionManager] Failed to initialize global WebSocket:", err);
-            throw err;
-        }
-    },
-
-    // Global message handler that distributes to appropriate handlers based on subscription ID
-    handleGlobalMessage(message) {
-        // Parse the message if it's a string
-        const data = typeof message === 'string' ? JSON.parse(message) : message;
-
-        // Track heartbeats
-        if (data.updateType === "HEARTBEAT") {
-            this.recordHeartbeat(data.subscriptionId);
-            return; // Skip further processing for heartbeats
-        }
-
-        // Determine which subscription this message belongs to
-        const isChartSubscription = data.subscriptionId === this.activeSubscriptions.chart;
-        const isIndicatorSubscription = data.subscriptionId === this.activeSubscriptions.indicator;
-
-        // Route message to appropriate handlers
-        if (isChartSubscription) {
-            console.log(`[SubscriptionManager] Routing message to chart handlers for subscription ${data.subscriptionId}`);
-            this.messageHandlers.chart.forEach(handler => {
-                try {
-                    handler(data);
-                } catch (err) {
-                    console.error("[SubscriptionManager] Error in chart message handler:", err);
-                }
-            });
-        }
-        else if (isIndicatorSubscription) {
-            console.log(`[SubscriptionManager] Routing message to indicator handlers for subscription ${data.subscriptionId}`);
-            this.messageHandlers.indicator.forEach(handler => {
-                try {
-                    handler(data);
-                } catch (err) {
-                    console.error("[SubscriptionManager] Error in indicator message handler:", err);
-                }
-            });
-        }
-        // For subscription responses or initial data without known subscription ID
-        else if (!data.subscriptionId || data.updateType === undefined) {
-            // For new subscriptions, check if we need to parse the response by subscription type
-            if (data.subscriptionType === 'CHART') {
-                this.messageHandlers.chart.forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
-                        console.error("[SubscriptionManager] Error in chart message handler:", err);
-                    }
-                });
-            }
-            else if (data.subscriptionType === 'INDICATOR') {
-                this.messageHandlers.indicator.forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
-                        console.error("[SubscriptionManager] Error in indicator message handler:", err);
-                    }
-                });
-            }
-            // If no type marker is present, send to both (legacy compatibility)
-            else {
-                console.log("[SubscriptionManager] Unidentified message, routing to all handlers");
-                [...this.messageHandlers.chart, ...this.messageHandlers.indicator].forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
-                        console.error("[SubscriptionManager] Error in shared message handler:", err);
-                    }
-                });
-            }
-        }
-        else {
-            console.log(`[SubscriptionManager] Message with unknown subscription ID: ${data.subscriptionId}`);
-        }
-    },
-
-    // Record heartbeat information
-    recordHeartbeat(subscriptionId) {
-        this.lastHeartbeatTime = new Date();
-        this.heartbeatCount++;
-
-        const isChartActive = subscriptionId === this.activeSubscriptions.chart;
-        const isIndicatorActive = subscriptionId === this.activeSubscriptions.indicator;
-        const timestamp = new Date().toISOString().substr(11, 12);
-
-        let subscriptionType = "stale";
-        if (isChartActive) subscriptionType = "chart";
-        if (isIndicatorActive) subscriptionType = "indicator";
-
-        console.log(`[${timestamp}] Heartbeat #${this.heartbeatCount} for ${subscriptionType} subscription: ${subscriptionId}`);
-
-        // Clean up stale subscriptions that are still sending heartbeats
-        if (!isChartActive && !isIndicatorActive && subscriptionId) {
-            console.log(`[SubscriptionManager] Cleaning up stale subscription: ${subscriptionId}`);
-            webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: subscriptionId
-            }).catch(() => {});
-        }
-
-        return isChartActive || isIndicatorActive;
-    },
-
-    // Set active subscription by type
-    setActiveSubscription(type, id) {
-        if (!type || !id) return;
-
-        console.log(`[SubscriptionManager] Setting active ${type} subscription to: ${id}`);
-        this.activeSubscriptions[type] = id;
-    },
-
-    // Clear active subscription by type
-    clearActiveSubscription(type) {
-        if (!type) return;
-
-        console.log(`[SubscriptionManager] Clearing active ${type} subscription: ${this.activeSubscriptions[type]}`);
-        this.activeSubscriptions[type] = null;
-    },
-
-    // Update current symbol/platform/timeframe info
-    updateCurrentSubscriptionInfo(details) {
-        if (details) {
-            this.currentSubscription = { ...details };
-            console.log(`[SubscriptionManager] Updated subscription details:`, this.currentSubscription);
-        }
-    },
-
-    // Register a message handler for a specific type
-    registerHandler(type, handler) {
-        if (!type || !handler) return () => {};
-
-        console.log(`[SubscriptionManager] Registering new ${type} message handler`);
-        this.messageHandlers[type].add(handler);
-        return () => this.unregisterHandler(type, handler);
-    },
-
-    // Unregister a message handler for a specific type
-    unregisterHandler(type, handler) {
-        if (!type || !handler) return;
-
-        console.log(`[SubscriptionManager] Unregistering ${type} message handler`);
-        this.messageHandlers[type].delete(handler);
-    },
-
-    // Request a subscription with deduplication
-    async requestSubscription(type, details) {
-        if (!type || !details) {
-            console.warn(`[SubscriptionManager] Missing parameters for ${type} subscription request`);
-            return Promise.reject(new Error("Missing subscription parameters"));
-        }
-
-        // Create a unique key for this request
-        const requestKey = `${type}:${details.platformName}:${details.stockSymbol}:${details.timeframe}:${details.startDate}:${details.endDate}`;
-
-        // If this exact request is already pending, return the existing promise
-        if (this.pendingSubscriptionRequests[requestKey]) {
-            console.log(`[SubscriptionManager] Duplicate ${type} request detected - reusing existing promise`);
-            return this.pendingSubscriptionRequests[requestKey];
-        }
-
-        console.log(`[SubscriptionManager] Creating new ${type} subscription request: ${requestKey}`);
-
-        // Create and store the promise
-        this.pendingSubscriptionRequests[requestKey] = (async () => {
-            try {
-                await webSocketService.send('/app/candles/subscribe', {
-                    ...details,
-                    subscriptionType: type.toUpperCase()
-                });
-                console.log(`[SubscriptionManager] ${type} subscription request sent successfully`);
-                return "pending";
-            } catch (err) {
-                console.error(`[SubscriptionManager] Error making ${type} subscription request:`, err);
-                throw err;
-            } finally {
-                // Clean up after a short delay (to prevent race conditions if the same request comes in)
-                setTimeout(() => {
-                    delete this.pendingSubscriptionRequests[requestKey];
-                }, 1000);
-            }
-        })();
-
-        return this.pendingSubscriptionRequests[requestKey];
-    },
-
-    // Explicitly unsubscribe a specific type
-    async unsubscribe(type) {
-        if (!type || !this.activeSubscriptions[type]) {
-            return Promise.resolve(true);
-        }
-
-        try {
-            console.log(`[SubscriptionManager] Explicitly unsubscribing ${type} subscription: ${this.activeSubscriptions[type]}`);
-
-            await webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: this.activeSubscriptions[type]
-            });
-
-            this.clearActiveSubscription(type);
-            return true;
-        } catch (err) {
-            console.error(`[SubscriptionManager] Error unsubscribing ${type}:`, err);
-            return false;
-        }
-    },
-
-    // Unsubscribe from all active subscriptions
-    async unsubscribeAll() {
-        const results = [];
-
-        if (this.activeSubscriptions.chart) {
-            results.push(await this.unsubscribe('chart'));
-        }
-
-        if (this.activeSubscriptions.indicator) {
-            results.push(await this.unsubscribe('indicator'));
-        }
-
-        return results.every(success => success);
-    }
-};
-
 export function useCandleSubscription() {
-    const [isConnected, setIsConnected] = useState(SubscriptionManager.isConnected);
     const [isSubscribing, setIsSubscribing] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+
+    // Use the global WebSocket context
+    const {
+        isConnected,
+        registerHandler,
+        unregisterHandler,
+        requestSubscription,
+        unsubscribe,
+        unsubscribeAll,
+        setActiveSubscription,
+        updateCurrentSubscriptionInfo,
+        subscriptionIds,
+        currentSubscription
+    } = useWebSocket();
 
     // Add refs for managing indicator update sequences
     const isUpdatingIndicatorSubscription = useRef(false);
@@ -336,17 +71,17 @@ export function useCandleSubscription() {
             low: backendCandle.lowPrice,
             close: backendCandle.closePrice,
             volume: backendCandle.volume,
-            ticker: stockSymbol || SubscriptionManager.currentSubscription.stockSymbol,
+            ticker: stockSymbol || currentSubscription.stockSymbol,
             indicatorValues: {}
         };
-    }, []);
+    }, [currentSubscription.stockSymbol]);
 
     // Handle incoming chart candle message
     const handleChartCandleMessage = useCallback((data) => {
         console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         console.log(data);
 
-        // Skip heartbeats - already handled in SubscriptionManager
+        // Skip heartbeats - already handled in WebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
         // UPDATED APPROACH: Check for candles first, regardless of other properties
@@ -370,7 +105,7 @@ export function useCandleSubscription() {
 
             // Transform the new candles
             const newCandles = data.candles
-                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
+                .map(c => transformCandleData(c, currentSubscription.stockSymbol));
 
             // Update display candles with new data
             updateDisplayCandles(newCandles, true);
@@ -381,7 +116,7 @@ export function useCandleSubscription() {
 
             // Also handle subscription ID if present in the same message
             if (data.subscriptionId) {
-                SubscriptionManager.setActiveSubscription('chart', data.subscriptionId);
+                setActiveSubscription('chart', data.subscriptionId);
                 console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
             }
         }
@@ -396,7 +131,7 @@ export function useCandleSubscription() {
 
             // Transform backend candles to frontend format
             const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
+                transformCandleData(candle, currentSubscription.stockSymbol));
 
             // Update display candles only
             updateDisplayCandles(newCandles);
@@ -417,12 +152,12 @@ export function useCandleSubscription() {
             }
 
             // Store the new subscription ID
-            SubscriptionManager.setActiveSubscription('chart', data.subscriptionId);
+            setActiveSubscription('chart', data.subscriptionId);
             console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
-    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData]);
+    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol]);
 
 
     // Handle incoming indicator candle data
@@ -430,7 +165,7 @@ export function useCandleSubscription() {
         console.log("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
         console.log(data);
 
-        // Skip heartbeats - already handled in SubscriptionManager
+        // Skip heartbeats - already handled in WebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
         // UPDATED APPROACH: Check for candles first, regardless of other properties
@@ -460,7 +195,7 @@ export function useCandleSubscription() {
 
             // Transform the new candles
             const newCandles = data.candles
-                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
+                .map(c => transformCandleData(c, currentSubscription.stockSymbol));
 
             // Update indicator candles with new data
             updateIndicatorCandles(newCandles, true);
@@ -472,7 +207,7 @@ export function useCandleSubscription() {
 
             // Also handle subscription ID if present in the same message
             if (data.subscriptionId) {
-                SubscriptionManager.setActiveSubscription('indicator', data.subscriptionId);
+                setActiveSubscription('indicator', data.subscriptionId);
                 console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
             }
         }
@@ -487,7 +222,7 @@ export function useCandleSubscription() {
 
             // Transform backend candles to frontend format
             const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, SubscriptionManager.currentSubscription.stockSymbol));
+                transformCandleData(candle, currentSubscription.stockSymbol));
 
             // Update indicator candles only
             updateIndicatorCandles(newCandles);
@@ -507,12 +242,12 @@ export function useCandleSubscription() {
             }
 
             // Store the new subscription ID
-            SubscriptionManager.setActiveSubscription('indicator', data.subscriptionId);
+            setActiveSubscription('indicator', data.subscriptionId);
             console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
-    }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData]);
+    }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol]);
 
     // Helper function to update only display candles
     const updateDisplayCandles = useCallback((newCandles, isInitialLoad = false) => {
@@ -585,13 +320,13 @@ export function useCandleSubscription() {
 
         // If we're already subscribed to this exact combination for chart data, no need to resubscribe
         if (
-            SubscriptionManager.currentSubscription.platformName === platformName &&
-            SubscriptionManager.currentSubscription.stockSymbol === stockSymbol &&
-            SubscriptionManager.currentSubscription.timeframe === timeframe &&
-            SubscriptionManager.activeSubscriptions.chart
+            currentSubscription.platformName === platformName &&
+            currentSubscription.stockSymbol === stockSymbol &&
+            currentSubscription.timeframe === timeframe &&
+            subscriptionIds.chart
         ) {
             console.log("[useCandleSubscription] Already subscribed to this chart data");
-            return Promise.resolve(SubscriptionManager.activeSubscriptions.chart);
+            return Promise.resolve(subscriptionIds.chart);
         }
 
         setIsSubscribing(true);
@@ -599,15 +334,15 @@ export function useCandleSubscription() {
 
         try {
             // First, unsubscribe from any existing chart subscription
-            if (SubscriptionManager.activeSubscriptions.chart) {
+            if (subscriptionIds.chart) {
                 console.log(`[useCandleSubscription] Unsubscribing from current chart subscription before creating new one`);
-                await SubscriptionManager.unsubscribe('chart');
+                await unsubscribe('chart');
                 // Small delay to ensure backend processes the unsubscribe
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             // Update subscription details - store centrally for both subscriptions
-            SubscriptionManager.updateCurrentSubscriptionInfo({
+            updateCurrentSubscriptionInfo({
                 platformName,
                 stockSymbol,
                 timeframe
@@ -636,8 +371,8 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
 
-            // Use the subscription manager's request method for better deduplication
-            await SubscriptionManager.requestSubscription('chart', chartSubscriptionRequest);
+            // Use the WebSocketContext's request method for subscriptions
+            await requestSubscription('chart', chartSubscriptionRequest);
             console.log("[useCandleSubscription] Chart subscription request sent");
 
             return "pending";
@@ -649,7 +384,8 @@ export function useCandleSubscription() {
         } finally {
             setIsSubscribing(false);
         }
-    }, [calculateStartDate, setIsWaitingForData, displayedCandles]);
+    }, [calculateStartDate, setIsWaitingForData, displayedCandles, currentSubscription, 
+        subscriptionIds.chart, unsubscribe, updateCurrentSubscriptionInfo, requestSubscription]);
 
     // Subscribe to candles for indicator calculations
     const subscribeToIndicatorCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
@@ -666,9 +402,9 @@ export function useCandleSubscription() {
 
         try {
             // First, unsubscribe from any existing indicator subscription
-            if (SubscriptionManager.activeSubscriptions.indicator) {
+            if (subscriptionIds.indicator) {
                 console.log(`[useCandleSubscription] Unsubscribing from current indicator subscription before creating new one`);
-                await SubscriptionManager.unsubscribe('indicator');
+                await unsubscribe('indicator');
                 // Longer delay to ensure backend processes the unsubscribe
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
@@ -704,8 +440,8 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
 
-            // Use the subscription manager's request method for better deduplication
-            await SubscriptionManager.requestSubscription('indicator', indicatorSubscriptionRequest);
+            // Use the WebSocketContext's request method for subscriptions
+            await requestSubscription('indicator', indicatorSubscriptionRequest);
             console.log("[useCandleSubscription] Indicator subscription request sent");
 
             return "pending";
@@ -721,17 +457,18 @@ export function useCandleSubscription() {
 
             return null;
         }
-    }, [calculateRequiredDataRange, calculateStartDate, displayedCandles, indicators, toast]);
+    }, [calculateRequiredDataRange, calculateStartDate, displayedCandles, indicators, toast, 
+        subscriptionIds.indicator, unsubscribe, requestSubscription]);
 
     // Update indicator subscription when indicator requirements change - debounced version
     const updateIndicatorSubscription = useCallback(async () => {
         // Only proceed if we have an active chart subscription and indicators
-        if (!SubscriptionManager.activeSubscriptions.chart || indicators.length === 0) {
+        if (!subscriptionIds.chart || indicators.length === 0) {
             console.log("[useCandleSubscription] Skipping indicator update - no chart subscription or no indicators");
             return;
         }
 
-        const { platformName, stockSymbol, timeframe } = SubscriptionManager.currentSubscription;
+        const { platformName, stockSymbol, timeframe } = currentSubscription;
         if (!platformName || !stockSymbol || !timeframe) {
             console.log("[useCandleSubscription] Cannot update indicator subscription - missing details");
             return;
@@ -743,7 +480,7 @@ export function useCandleSubscription() {
         } catch (err) {
             console.error("[useCandleSubscription] Failed to update indicator subscription:", err);
         }
-    }, [indicators, subscribeToIndicatorCandles]);
+    }, [indicators, subscribeToIndicatorCandles, subscriptionIds.chart, currentSubscription]);
 
     // Main subscription function exposed to components
     const subscribeToCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
@@ -803,52 +540,30 @@ export function useCandleSubscription() {
         };
     }, [updateIndicatorSubscription]);
 
-    // Initialize and setup effect
+    // Register message handlers with WebSocketContext on mount
     useEffect(() => {
-        console.log("[useCandleSubscription] Setting up WebSocket connection");
-
-        const setup = async () => {
-            try {
-                // Initialize the global WebSocket if not already done
-                await SubscriptionManager.initialize();
-                setIsConnected(true);
-                setError(null);
-            } catch (err) {
-                console.error("[useCandleSubscription] Setup error:", err);
-                setIsConnected(false);
-                setError("Failed to connect: " + err.message);
-
-                toast({
-                    title: "Connection Error",
-                    description: "Failed to connect to server for live data.",
-                    variant: "destructive",
-                    duration: 5000
-                });
-            }
-        };
-
-        setup();
-
+        console.log("[useCandleSubscription] Registering message handlers with WebSocketContext");
+        
         // Register our handlers
-        const unregisterChartHandler = SubscriptionManager.registerHandler('chart', handleChartCandleMessage);
-        const unregisterIndicatorHandler = SubscriptionManager.registerHandler('indicator', handleIndicatorCandleMessage);
+        const unregChartHandler = registerHandler('chart', handleChartCandleMessage);
+        const unregIndicatorHandler = registerHandler('indicator', handleIndicatorCandleMessage);
 
-        // Cleanup function - just unregister our handlers, don't disconnect
+        // Cleanup function - unregister our handlers when unmounting
         return () => {
-            console.log("[useCandleSubscription] Component unmounting - keeping WebSocket alive");
-            unregisterChartHandler();
-            unregisterIndicatorHandler();
+            console.log("[useCandleSubscription] Unregistering message handlers");
+            unregChartHandler();
+            unregIndicatorHandler();
         };
-    }, [handleChartCandleMessage, handleIndicatorCandleMessage, toast]);
+    }, [handleChartCandleMessage, handleIndicatorCandleMessage, registerHandler]);
 
     // Watch for indicator changes to manage indicator subscription lifecycle
     useEffect(() => {
         // If indicators are added and we have an active chart subscription but no indicator subscription
         if (indicators.length > 0 &&
-            SubscriptionManager.activeSubscriptions.chart &&
-            !SubscriptionManager.activeSubscriptions.indicator) {
+            subscriptionIds.chart &&
+            !subscriptionIds.indicator) {
 
-            const { platformName, stockSymbol, timeframe } = SubscriptionManager.currentSubscription;
+            const { platformName, stockSymbol, timeframe } = currentSubscription;
             if (platformName && stockSymbol && timeframe) {
                 console.log("[useCandleSubscription] Indicators added - creating indicator subscription");
 
@@ -865,27 +580,24 @@ export function useCandleSubscription() {
             }
         }
         // If indicators are removed and we have an active indicator subscription
-        else if (indicators.length === 0 && SubscriptionManager.activeSubscriptions.indicator) {
+        else if (indicators.length === 0 && subscriptionIds.indicator) {
             console.log("[useCandleSubscription] No indicators active - removing indicator subscription");
-            SubscriptionManager.unsubscribe('indicator').catch(err => {
+            unsubscribe('indicator').catch(err => {
                 console.error("[useCandleSubscription] Failed to remove indicator subscription:", err);
             });
         }
-    }, [indicators, subscribeToIndicatorCandles]);
+    }, [indicators, subscribeToIndicatorCandles, currentSubscription, subscriptionIds, unsubscribe]);
 
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
-        return SubscriptionManager.unsubscribeAll();
-    }, []);
+        return unsubscribeAll();
+    }, [unsubscribeAll]);
 
     return {
         isConnected,
         isSubscribing,
         // Return subscription IDs for debugging
-        subscriptionIds: {
-            chart: SubscriptionManager.activeSubscriptions.chart,
-            indicator: SubscriptionManager.activeSubscriptions.indicator
-        },
+        subscriptionIds,
         error,
         subscribeToCandles,
         unsubscribeFromCandles,

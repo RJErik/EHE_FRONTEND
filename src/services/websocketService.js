@@ -192,6 +192,8 @@ class WebSocketService {
 }
 
 // Create a singleton instance
+// Note: This service is now managed at the app level via WebSocketContext,
+// but we maintain this singleton for backward compatibility
 const webSocketService = new WebSocketService();
 
 export default webSocketService;

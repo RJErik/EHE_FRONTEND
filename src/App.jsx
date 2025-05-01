@@ -8,6 +8,7 @@ import AutomaticTransactions from "./pages/AutomaticTransactions.jsx";
 import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
+import { WebSocketProvider } from "./context/WebSocketContext";
 
 function App() {
     // Simple routing implementation
@@ -34,10 +35,10 @@ function App() {
     };
 
     return (
-        <>
+        <WebSocketProvider>
             {renderPage()}
             <Toaster />
-        </>
+        </WebSocketProvider>
     );
 }
 
