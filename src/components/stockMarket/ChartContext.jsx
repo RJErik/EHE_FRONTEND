@@ -361,7 +361,7 @@ export function ChartProvider({ children }) {
 
         // Calculate end date
         const endDate = isViewingLatest && displayCandles.length > 0
-            ? (new Date(displayCandles[displayCandles.length - 1]?.timestamp + 60000)).getTime()
+            ? (new Date(displayCandles[displayCandles.length - 1]?.timestamp + timeframeInMs)).getTime()
             : (currentViewEnd < displayCandles.length)
                 ? displayCandles[currentViewEnd - 1]?.timestamp
                 : (displayCandles.length > 0 ? displayCandles[displayCandles.length - 1].timestamp : null);
@@ -505,7 +505,9 @@ export function ChartProvider({ children }) {
                         const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
                             detail: {
                                 range,
-                                indicatorCount: indicators.length
+                                indicatorCount: indicators.length,
+                                // Include current subscription details if needed
+                                subscriptionDetails: true // this forces the handler to look up current details
                             }
                         });
                         window.dispatchEvent(indicatorChangeEvent);

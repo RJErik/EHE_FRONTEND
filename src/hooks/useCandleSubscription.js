@@ -9,6 +9,13 @@ export function useCandleSubscription() {
     const [error, setError] = useState(null);
     const { toast } = useToast();
 
+    // NEW: Add state to track last valid subscription for fallback
+    const [lastValidSubscription, setLastValidSubscription] = useState({
+        platformName: null,
+        stockSymbol: null,
+        timeframe: null
+    });
+
     // Use the global WebSocket context
     const {
         isConnected,
@@ -26,6 +33,13 @@ export function useCandleSubscription() {
     // Add refs for managing indicator update sequences
     const isUpdatingIndicatorSubscription = useRef(false);
     const pendingUpdateRef = useRef(false);
+
+    // NEW: Create a ref to hold latest subscription details
+    const latestSubscriptionDetailsRef = useRef({
+        platformName: null,
+        stockSymbol: null,
+        timeframe: null
+    });
 
     // Get chart context for data management
     const {
@@ -71,7 +85,7 @@ export function useCandleSubscription() {
             low: backendCandle.lowPrice,
             close: backendCandle.closePrice,
             volume: backendCandle.volume,
-            ticker: stockSymbol || currentSubscription.stockSymbol,
+            ticker: stockSymbol || currentSubscription.stockSymbol || latestSubscriptionDetailsRef.current.stockSymbol,
             indicatorValues: {}
         };
     }, [currentSubscription.stockSymbol]);
@@ -101,11 +115,26 @@ export function useCandleSubscription() {
                 const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
                 console.log(`[WebSocket Data] Received initial chart data range: ${firstCandleTime} to ${lastCandleTime}`);
                 console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
+
+                // NEW: Update latest subscription details when we receive valid data
+                if (data.platformName && data.stockSymbol && data.timeframe) {
+                    const newDetails = {
+                        platformName: data.platformName,
+                        stockSymbol: data.stockSymbol,
+                        timeframe: data.timeframe
+                    };
+
+                    latestSubscriptionDetailsRef.current = newDetails;
+                    setLastValidSubscription(newDetails);
+
+                    // Ensure WebSocketContext is also updated
+                    updateCurrentSubscriptionInfo(newDetails);
+                }
             }
 
             // Transform the new candles
             const newCandles = data.candles
-                .map(c => transformCandleData(c, currentSubscription.stockSymbol));
+                .map(c => transformCandleData(c, data.stockSymbol || currentSubscription.stockSymbol));
 
             // Update display candles with new data
             updateDisplayCandles(newCandles, true);
@@ -131,7 +160,7 @@ export function useCandleSubscription() {
 
             // Transform backend candles to frontend format
             const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, currentSubscription.stockSymbol));
+                transformCandleData(candle, data.stockSymbol || currentSubscription.stockSymbol));
 
             // Update display candles only
             updateDisplayCandles(newCandles);
@@ -154,10 +183,25 @@ export function useCandleSubscription() {
             // Store the new subscription ID
             setActiveSubscription('chart', data.subscriptionId);
             console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
+
+            // NEW: If this contains subscription details, update our reference
+            if (data.platformName && data.stockSymbol && data.timeframe) {
+                const newDetails = {
+                    platformName: data.platformName,
+                    stockSymbol: data.stockSymbol,
+                    timeframe: data.timeframe
+                };
+
+                latestSubscriptionDetailsRef.current = newDetails;
+                setLastValidSubscription(newDetails);
+
+                // Ensure WebSocketContext is also updated
+                updateCurrentSubscriptionInfo(newDetails);
+            }
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
-    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol]);
+    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol, updateCurrentSubscriptionInfo]);
 
 
     // Handle incoming indicator candle data
@@ -191,11 +235,30 @@ export function useCandleSubscription() {
                 const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
                 console.log(`[WebSocket Data] Received initial indicator data range: ${firstCandleTime} to ${lastCandleTime}`);
                 console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
+
+                // NEW: Update latest subscription details if not already set
+                if (data.platformName && data.stockSymbol && data.timeframe &&
+                    (!latestSubscriptionDetailsRef.current.platformName ||
+                        !latestSubscriptionDetailsRef.current.stockSymbol ||
+                        !latestSubscriptionDetailsRef.current.timeframe)) {
+
+                    const newDetails = {
+                        platformName: data.platformName,
+                        stockSymbol: data.stockSymbol,
+                        timeframe: data.timeframe
+                    };
+
+                    latestSubscriptionDetailsRef.current = newDetails;
+                    setLastValidSubscription(newDetails);
+
+                    // Ensure WebSocketContext is also updated
+                    updateCurrentSubscriptionInfo(newDetails);
+                }
             }
 
             // Transform the new candles
             const newCandles = data.candles
-                .map(c => transformCandleData(c, currentSubscription.stockSymbol));
+                .map(c => transformCandleData(c, data.stockSymbol || currentSubscription.stockSymbol));
 
             // Update indicator candles with new data
             updateIndicatorCandles(newCandles, true);
@@ -222,7 +285,7 @@ export function useCandleSubscription() {
 
             // Transform backend candles to frontend format
             const newCandles = data.updatedCandles.map(candle =>
-                transformCandleData(candle, currentSubscription.stockSymbol));
+                transformCandleData(candle, data.stockSymbol || currentSubscription.stockSymbol));
 
             // Update indicator candles only
             updateIndicatorCandles(newCandles);
@@ -247,7 +310,7 @@ export function useCandleSubscription() {
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
-    }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol]);
+    }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol, updateCurrentSubscriptionInfo]);
 
     // Helper function to update only display candles
     const updateDisplayCandles = useCallback((newCandles, isInitialLoad = false) => {
@@ -341,12 +404,18 @@ export function useCandleSubscription() {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
-            // Update subscription details - store centrally for both subscriptions
-            updateCurrentSubscriptionInfo({
+            // NEW: Update our local reference before making the request
+            const subscriptionDetails = {
                 platformName,
                 stockSymbol,
                 timeframe
-            });
+            };
+
+            latestSubscriptionDetailsRef.current = subscriptionDetails;
+            setLastValidSubscription(subscriptionDetails);
+
+            // Update subscription details - store centrally for both subscriptions
+            updateCurrentSubscriptionInfo(subscriptionDetails);
 
             // For chart data, request exactly displayedCandles worth of data
             const now = new Date();
@@ -384,7 +453,7 @@ export function useCandleSubscription() {
         } finally {
             setIsSubscribing(false);
         }
-    }, [calculateStartDate, setIsWaitingForData, displayedCandles, currentSubscription, 
+    }, [calculateStartDate, setIsWaitingForData, displayedCandles, currentSubscription,
         subscriptionIds.chart, unsubscribe, updateCurrentSubscriptionInfo, requestSubscription]);
 
     // Subscribe to candles for indicator calculations
@@ -395,9 +464,43 @@ export function useCandleSubscription() {
             return Promise.resolve(null);
         }
 
+        // NEW: Added fallback to local reference or currentSubscription if parameters not provided
         if (!platformName || !stockSymbol || !timeframe) {
             console.warn("[useCandleSubscription] Missing parameters for indicator subscription");
-            return Promise.reject(new Error("Missing required parameters"));
+
+            // Try to use the latestSubscriptionDetailsRef as fallback
+            if (latestSubscriptionDetailsRef.current.platformName &&
+                latestSubscriptionDetailsRef.current.stockSymbol &&
+                latestSubscriptionDetailsRef.current.timeframe) {
+
+                console.log("[useCandleSubscription] Using latest subscription details as fallback");
+                platformName = latestSubscriptionDetailsRef.current.platformName;
+                stockSymbol = latestSubscriptionDetailsRef.current.stockSymbol;
+                timeframe = latestSubscriptionDetailsRef.current.timeframe;
+            }
+            // Then try currentSubscription as second fallback
+            else if (currentSubscription.platformName &&
+                currentSubscription.stockSymbol &&
+                currentSubscription.timeframe) {
+
+                console.log("[useCandleSubscription] Using current subscription details as fallback");
+                platformName = currentSubscription.platformName;
+                stockSymbol = currentSubscription.stockSymbol;
+                timeframe = currentSubscription.timeframe;
+            }
+            // Lastly try lastValidSubscription state
+            else if (lastValidSubscription.platformName &&
+                lastValidSubscription.stockSymbol &&
+                lastValidSubscription.timeframe) {
+
+                console.log("[useCandleSubscription] Using last valid subscription details as fallback");
+                platformName = lastValidSubscription.platformName;
+                stockSymbol = lastValidSubscription.stockSymbol;
+                timeframe = lastValidSubscription.timeframe;
+            }
+            else {
+                return Promise.reject(new Error("Missing required parameters and no fallback available"));
+            }
         }
 
         try {
@@ -457,8 +560,8 @@ export function useCandleSubscription() {
 
             return null;
         }
-    }, [calculateRequiredDataRange, calculateStartDate, displayedCandles, indicators, toast, 
-        subscriptionIds.indicator, unsubscribe, requestSubscription]);
+    }, [calculateRequiredDataRange, calculateStartDate, displayedCandles, indicators, toast,
+        subscriptionIds.indicator, unsubscribe, requestSubscription, lastValidSubscription, currentSubscription]);
 
     // Update indicator subscription when indicator requirements change - debounced version
     const updateIndicatorSubscription = useCallback(async () => {
@@ -468,23 +571,65 @@ export function useCandleSubscription() {
             return;
         }
 
-        const { platformName, stockSymbol, timeframe } = currentSubscription;
+        // NEW: Get subscription details with fallbacks
+        let platformName = currentSubscription.platformName;
+        let stockSymbol = currentSubscription.stockSymbol;
+        let timeframe = currentSubscription.timeframe;
+
+        // If current subscription is missing details, try using our local reference
+        if (!platformName || !stockSymbol || !timeframe) {
+            if (latestSubscriptionDetailsRef.current.platformName &&
+                latestSubscriptionDetailsRef.current.stockSymbol &&
+                latestSubscriptionDetailsRef.current.timeframe) {
+
+                console.log("[useCandleSubscription] Using latest subscription details from ref for indicator update");
+                platformName = latestSubscriptionDetailsRef.current.platformName;
+                stockSymbol = latestSubscriptionDetailsRef.current.stockSymbol;
+                timeframe = latestSubscriptionDetailsRef.current.timeframe;
+            }
+            // Then try lastValidSubscription state as fallback
+            else if (lastValidSubscription.platformName &&
+                lastValidSubscription.stockSymbol &&
+                lastValidSubscription.timeframe) {
+
+                console.log("[useCandleSubscription] Using last valid subscription for indicator update");
+                platformName = lastValidSubscription.platformName;
+                stockSymbol = lastValidSubscription.stockSymbol;
+                timeframe = lastValidSubscription.timeframe;
+            }
+        }
+
         if (!platformName || !stockSymbol || !timeframe) {
             console.log("[useCandleSubscription] Cannot update indicator subscription - missing details");
+            console.log(`!!!platformName ${platformName}`);
+            console.log(`!!!stockSymbol ${stockSymbol}`);
+            console.log(`!!!timeframe ${timeframe}`);
             return;
         }
 
         console.log("[useCandleSubscription] Updating indicator subscription due to indicator changes");
+        console.log(`Using details: ${platformName}, ${stockSymbol}, ${timeframe}`);
+
         try {
             await subscribeToIndicatorCandles(platformName, stockSymbol, timeframe);
         } catch (err) {
             console.error("[useCandleSubscription] Failed to update indicator subscription:", err);
         }
-    }, [indicators, subscribeToIndicatorCandles, subscriptionIds.chart, currentSubscription]);
+    }, [indicators, subscribeToIndicatorCandles, subscriptionIds.chart, currentSubscription, lastValidSubscription]);
 
     // Main subscription function exposed to components
     const subscribeToCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
         try {
+            // Update our local reference with these parameters
+            const subscriptionDetails = {
+                platformName,
+                stockSymbol,
+                timeframe
+            };
+
+            latestSubscriptionDetailsRef.current = subscriptionDetails;
+            setLastValidSubscription(subscriptionDetails);
+
             // First subscribe to chart data
             await subscribeToChartCandles(platformName, stockSymbol, timeframe);
 
@@ -516,6 +661,19 @@ export function useCandleSubscription() {
             isUpdatingIndicatorSubscription.current = true;
             console.log(`[Indicator Monitor] Detected indicator requirements change event`);
 
+            // NEW: Log if subscription details are available
+            const details = {
+                fromCurrent: Boolean(currentSubscription.platformName && currentSubscription.stockSymbol && currentSubscription.timeframe),
+                fromLatestRef: Boolean(latestSubscriptionDetailsRef.current.platformName &&
+                    latestSubscriptionDetailsRef.current.stockSymbol &&
+                    latestSubscriptionDetailsRef.current.timeframe),
+                fromLastValid: Boolean(lastValidSubscription.platformName &&
+                    lastValidSubscription.stockSymbol &&
+                    lastValidSubscription.timeframe),
+            };
+
+            console.log("[Indicator Monitor] Subscription details availability:", details);
+
             try {
                 await updateIndicatorSubscription();
             } finally {
@@ -538,12 +696,12 @@ export function useCandleSubscription() {
         return () => {
             window.removeEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
         };
-    }, [updateIndicatorSubscription]);
+    }, [updateIndicatorSubscription, currentSubscription, lastValidSubscription]);
 
     // Register message handlers with WebSocketContext on mount
     useEffect(() => {
         console.log("[useCandleSubscription] Registering message handlers with WebSocketContext");
-        
+
         // Register our handlers
         const unregChartHandler = registerHandler('chart', handleChartCandleMessage);
         const unregIndicatorHandler = registerHandler('indicator', handleIndicatorCandleMessage);
@@ -563,7 +721,34 @@ export function useCandleSubscription() {
             subscriptionIds.chart &&
             !subscriptionIds.indicator) {
 
-            const { platformName, stockSymbol, timeframe } = currentSubscription;
+            // NEW: Try getting subscription details with fallbacks
+            let platformName = currentSubscription.platformName;
+            let stockSymbol = currentSubscription.stockSymbol;
+            let timeframe = currentSubscription.timeframe;
+
+            if (!platformName || !stockSymbol || !timeframe) {
+                // Try ref first
+                if (latestSubscriptionDetailsRef.current.platformName &&
+                    latestSubscriptionDetailsRef.current.stockSymbol &&
+                    latestSubscriptionDetailsRef.current.timeframe) {
+
+                    console.log("[Indicator Lifecycle] Using latest subscription details from ref");
+                    platformName = latestSubscriptionDetailsRef.current.platformName;
+                    stockSymbol = latestSubscriptionDetailsRef.current.stockSymbol;
+                    timeframe = latestSubscriptionDetailsRef.current.timeframe;
+                }
+                // Then try lastValidSubscription state
+                else if (lastValidSubscription.platformName &&
+                    lastValidSubscription.stockSymbol &&
+                    lastValidSubscription.timeframe) {
+
+                    console.log("[Indicator Lifecycle] Using last valid subscription");
+                    platformName = lastValidSubscription.platformName;
+                    stockSymbol = lastValidSubscription.stockSymbol;
+                    timeframe = lastValidSubscription.timeframe;
+                }
+            }
+
             if (platformName && stockSymbol && timeframe) {
                 console.log("[useCandleSubscription] Indicators added - creating indicator subscription");
 
@@ -577,6 +762,8 @@ export function useCandleSubscription() {
                         console.log("[useCandleSubscription] Skipping immediate indicator subscription - update already in progress");
                     }
                 }, 100);
+            } else {
+                console.log("[useCandleSubscription] Cannot create indicator subscription - missing details");
             }
         }
         // If indicators are removed and we have an active indicator subscription
@@ -586,7 +773,7 @@ export function useCandleSubscription() {
                 console.error("[useCandleSubscription] Failed to remove indicator subscription:", err);
             });
         }
-    }, [indicators, subscribeToIndicatorCandles, currentSubscription, subscriptionIds, unsubscribe]);
+    }, [indicators, subscribeToIndicatorCandles, currentSubscription, lastValidSubscription, subscriptionIds, unsubscribe]);
 
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
@@ -601,6 +788,10 @@ export function useCandleSubscription() {
         error,
         subscribeToCandles,
         unsubscribeFromCandles,
-        updateIndicatorSubscription
+        updateIndicatorSubscription,
+        // NEW: Expose the current subscription details
+        currentSubscriptionDetails: {
+            ...lastValidSubscription
+        }
     };
 }
