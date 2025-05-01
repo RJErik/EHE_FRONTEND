@@ -37,6 +37,7 @@ export function ChartProvider({ children }) {
     // New state for controlling subscription updates
     const [shouldUpdateSubscription, setShouldUpdateSubscription] = useState(false);
     const lastRequestedRangeRef = useRef(null);
+    const isProcessingIndicatorUpdateRef = useRef(false);
 
     // Constants
     const MIN_DISPLAY_CANDLES = 20;
@@ -52,6 +53,50 @@ export function ChartProvider({ children }) {
     const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
         lastUpdateReasonRef.current = reason;
         setDisplayCandles(newCandles);
+    }, []);
+
+    // Calculate max lookback needed for all indicators
+    const calculateMaxLookback = useCallback((currentIndicators) => {
+        let maxLookback = 0;
+
+        currentIndicators.forEach(indicator => {
+            let indicatorLookback = 0;
+
+            switch (indicator.type) {
+                case "sma":
+                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                    break;
+                case "ema":
+                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                    break;
+                case "rsi":
+                    indicatorLookback = indicator.settings?.period || 14;
+                    // RSI needs one extra candle to calculate first change
+                    indicatorLookback += 1;
+                    break;
+                case "macd":
+                    // MACD needs the slowest period plus signal period
+                    indicatorLookback = Math.max(
+                        indicator.settings?.slowPeriod || 26,
+                        indicator.settings?.fastPeriod || 12
+                    ) + (indicator.settings?.signalPeriod || 9);
+                    break;
+                case "bb":
+                    indicatorLookback = indicator.settings?.period || 20;
+                    break;
+                case "atr":
+                    indicatorLookback = indicator.settings?.period || 14;
+                    // ATR needs one extra candle for previous close
+                    indicatorLookback += 1;
+                    break;
+                default:
+                    indicatorLookback = 50; // Safe default
+            }
+
+            maxLookback = Math.max(maxLookback, indicatorLookback);
+        });
+
+        return maxLookback;
     }, []);
 
     // Helper function to calculate indicators for a buffer
@@ -96,6 +141,21 @@ export function ChartProvider({ children }) {
                 indicatorsCount: indicators.length
             });
             return;
+        }
+
+        // Verify indicator candles have the needed history
+        if (indicatorCandles.length > 0 && displayCandles.length > 0) {
+            const firstDisplayTimestamp = displayCandles[0].timestamp;
+            const firstIndicatorTimestamp = indicatorCandles[0].timestamp;
+
+            // Check if we have sufficient lookback for calculation
+            const maxLookback = calculateMaxLookback(indicators);
+            const firstRequiredTimestamp = firstDisplayTimestamp - (maxLookback * timeframeInMs);
+
+            if (firstIndicatorTimestamp > firstRequiredTimestamp) {
+                console.warn(`[ChartContext] Insufficient indicator history! Need data from ${new Date(firstRequiredTimestamp).toISOString()} but have from ${new Date(firstIndicatorTimestamp).toISOString()}`);
+                // Consider requesting more data or showing a warning
+            }
         }
 
         // Log information about the current candle data (BEFORE processing)
@@ -224,7 +284,7 @@ export function ChartProvider({ children }) {
         }
 
         console.log("======================================");
-    }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles]);
+    }, [displayCandles, indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles, calculateMaxLookback, timeframeInMs]);
 
     // Modified effect to track timestamp changes and their causes
     useEffect(() => {
@@ -262,44 +322,7 @@ export function ChartProvider({ children }) {
         const currentViewEnd = Math.min(viewStartIndex + displayedCandles, displayCandles.length);
 
         // Calculate maximum lookback period needed for indicators
-        let maxLookback = 0;
-
-        indicators.forEach(indicator => {
-            let indicatorLookback = 0;
-
-            switch (indicator.type) {
-                case "sma":
-                    indicatorLookback = indicator.settings?.period -1 || 14;
-                    break;
-                case "ema":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
-                    break;
-                case "rsi":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // RSI needs one extra candle to calculate first change
-                    indicatorLookback += 1;
-                    break;
-                case "macd":
-                    // MACD needs the slowest period plus signal period
-                    indicatorLookback = Math.max(
-                        indicator.settings?.slowPeriod || 26,
-                        indicator.settings?.fastPeriod || 12
-                    ) + (indicator.settings?.signalPeriod || 9);
-                    break;
-                case "bb":
-                    indicatorLookback = indicator.settings?.period || 20;
-                    break;
-                case "atr":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // ATR needs one extra candle for previous close
-                    indicatorLookback += 1;
-                    break;
-                default:
-                    indicatorLookback = 50; // Safe default
-            }
-
-            maxLookback = Math.max(maxLookback, indicatorLookback);
-        });
+        const maxLookback = calculateMaxLookback(indicators);
 
         // Calculate the actual data range needed
         // This should be currentViewStart - maxLookback, but limited to a minimum of 0
@@ -316,15 +339,21 @@ export function ChartProvider({ children }) {
 
         // Calculate start date based on lookback
         let startDate;
-        if (maxLookback > 0 && displayCandles[dataStartIndex]) {
+        if (maxLookback > 0 && dataStartIndex > 0 && displayCandles[dataStartIndex]) {
             // If we have a lookback and data at the start index, use that date
             startDate = displayCandles[dataStartIndex].timestamp - (maxLookback * timeframeInMs);
         } else if (displayCandles[viewStartIndex]) {
             // Otherwise use the view start date
             startDate = displayCandles[viewStartIndex].timestamp;
+            if (maxLookback > 0) {
+                startDate -= (maxLookback * timeframeInMs);
+            }
         } else if (displayCandles.length > 0) {
             // Fallback to first available candle
             startDate = displayCandles[0].timestamp;
+            if (maxLookback > 0) {
+                startDate -= (maxLookback * timeframeInMs);
+            }
         } else {
             // No data available
             startDate = null;
@@ -391,7 +420,7 @@ export function ChartProvider({ children }) {
             extraFutureCandles,
             totalCandlesNeeded: (currentViewEnd - dataStartIndex) + extraFutureCandles
         };
-    }, [displayCandles, viewStartIndex, displayedCandles, indicators, timeframeInMs]);
+    }, [displayCandles, viewStartIndex, displayedCandles, indicators, timeframeInMs, calculateMaxLookback]);
 
     // Create a ref to safely access the latest version of the function
     const calculateRangeRef = useRef(calculateRequiredDataRange);
@@ -432,7 +461,7 @@ export function ChartProvider({ children }) {
             );
 
             console.log("[Window Update] Final Visible Data - Length:", visibleData.length,
-                "First Candle Time:", new Date(visibleData[0]?.timestamp).toISOString(),
+                "First Candle Time:", visibleData[0]?.timestamp ? new Date(visibleData[0].timestamp).toISOString() : "None",
                 "Last Candle Time:", visibleData.length > 0 ?
                     new Date(visibleData[visibleData.length-1]?.timestamp).toISOString() :
                     "None");
@@ -457,7 +486,8 @@ export function ChartProvider({ children }) {
     useEffect(() => {
         if (displayCandles.length > 0) {
             // Only recalculate range when indicators change or when explicitly requested
-            if (indicators.length > 0 || shouldUpdateSubscription) {
+            if ((indicators.length > 0 || shouldUpdateSubscription) && !isProcessingIndicatorUpdateRef.current) {
+                isProcessingIndicatorUpdateRef.current = true;
                 console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
                 const range = calculateRequiredDataRange();
 
@@ -470,17 +500,26 @@ export function ChartProvider({ children }) {
                 if (isRangeDifferent) {
                     lastRequestedRangeRef.current = { ...range };
 
-                    const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
-                        detail: {
-                            range,
-                            indicatorCount: indicators.length
-                        }
-                    });
-                    window.dispatchEvent(indicatorChangeEvent);
+                    // Use setTimeout to prevent immediate consecutive emissions
+                    setTimeout(() => {
+                        const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
+                            detail: {
+                                range,
+                                indicatorCount: indicators.length
+                            }
+                        });
+                        window.dispatchEvent(indicatorChangeEvent);
 
-                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
+                        console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
+
+                        // Reset the processing flag after a delay to allow processing
+                        setTimeout(() => {
+                            isProcessingIndicatorUpdateRef.current = false;
+                        }, 300);
+                    }, 100);
                 } else {
                     console.log("[WebSocket Prep] Skipping event dispatch - Range unchanged");
+                    isProcessingIndicatorUpdateRef.current = false;
                 }
 
                 // Reset the flag
@@ -519,7 +558,10 @@ export function ChartProvider({ children }) {
         });
 
         // Request a subscription update when adding an indicator
-        setShouldUpdateSubscription(true);
+        // Use setTimeout to ensure state is updated first
+        setTimeout(() => {
+            setShouldUpdateSubscription(true);
+        }, 50);
     };
 
     const removeIndicator = (id) => {
@@ -531,7 +573,10 @@ export function ChartProvider({ children }) {
         setIndicators(prev => prev.filter(ind => ind.id !== id));
 
         // Request a subscription update when removing an indicator
-        setShouldUpdateSubscription(true);
+        // Use setTimeout to ensure state is updated first
+        setTimeout(() => {
+            setShouldUpdateSubscription(true);
+        }, 50);
     };
 
     const updateIndicator = (id, updates) => {
@@ -543,7 +588,10 @@ export function ChartProvider({ children }) {
         setIndicators(prev => prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind));
 
         // Request a subscription update when updating an indicator
-        setShouldUpdateSubscription(true);
+        // Use setTimeout to ensure state is updated first
+        setTimeout(() => {
+            setShouldUpdateSubscription(true);
+        }, 50);
     };
 
     // Method to explicitly request a subscription update

@@ -1,5 +1,5 @@
 // src/hooks/useCandleSubscription.js
-import { useState, useEffect, useContext, useCallback } from 'react';
+import { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { ChartContext } from '../components/stockMarket/ChartContext';
 import webSocketService from '../services/websocketService';
 import { useToast } from './use-toast';
@@ -32,6 +32,9 @@ const SubscriptionManager = {
         chart: new Set(),
         indicator: new Set()
     },
+
+    // Pending subscription requests for deduplication
+    pendingSubscriptionRequests: {},
 
     // Initialize the global websocket connection (once)
     async initialize() {
@@ -201,6 +204,47 @@ const SubscriptionManager = {
         this.messageHandlers[type].delete(handler);
     },
 
+    // Request a subscription with deduplication
+    async requestSubscription(type, details) {
+        if (!type || !details) {
+            console.warn(`[SubscriptionManager] Missing parameters for ${type} subscription request`);
+            return Promise.reject(new Error("Missing subscription parameters"));
+        }
+
+        // Create a unique key for this request
+        const requestKey = `${type}:${details.platformName}:${details.stockSymbol}:${details.timeframe}:${details.startDate}:${details.endDate}`;
+
+        // If this exact request is already pending, return the existing promise
+        if (this.pendingSubscriptionRequests[requestKey]) {
+            console.log(`[SubscriptionManager] Duplicate ${type} request detected - reusing existing promise`);
+            return this.pendingSubscriptionRequests[requestKey];
+        }
+
+        console.log(`[SubscriptionManager] Creating new ${type} subscription request: ${requestKey}`);
+
+        // Create and store the promise
+        this.pendingSubscriptionRequests[requestKey] = (async () => {
+            try {
+                await webSocketService.send('/app/candles/subscribe', {
+                    ...details,
+                    subscriptionType: type.toUpperCase()
+                });
+                console.log(`[SubscriptionManager] ${type} subscription request sent successfully`);
+                return "pending";
+            } catch (err) {
+                console.error(`[SubscriptionManager] Error making ${type} subscription request:`, err);
+                throw err;
+            } finally {
+                // Clean up after a short delay (to prevent race conditions if the same request comes in)
+                setTimeout(() => {
+                    delete this.pendingSubscriptionRequests[requestKey];
+                }, 1000);
+            }
+        })();
+
+        return this.pendingSubscriptionRequests[requestKey];
+    },
+
     // Explicitly unsubscribe a specific type
     async unsubscribe(type) {
         if (!type || !this.activeSubscriptions[type]) {
@@ -243,6 +287,10 @@ export function useCandleSubscription() {
     const [isSubscribing, setIsSubscribing] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+
+    // Add refs for managing indicator update sequences
+    const isUpdatingIndicatorSubscription = useRef(false);
+    const pendingUpdateRef = useRef(false);
 
     // Get chart context for data management
     const {
@@ -293,7 +341,7 @@ export function useCandleSubscription() {
         };
     }, []);
 
-// Handle incoming chart candle message
+    // Handle incoming chart candle message
     const handleChartCandleMessage = useCallback((data) => {
         console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         console.log(data);
@@ -379,13 +427,18 @@ export function useCandleSubscription() {
 
     // Handle incoming indicator candle data
     const handleIndicatorCandleMessage = useCallback((data) => {
+        console.log("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
+        console.log(data);
+
         // Skip heartbeats - already handled in SubscriptionManager
         if (data.updateType === "HEARTBEAT") return;
 
-        // Handle subscription response
-        if (data.subscriptionId && data.updateType === undefined) {
+        // UPDATED APPROACH: Check for candles first, regardless of other properties
+        if (data.candles) {
+            console.log("[useCandleSubscription] Received initial indicator candle data:", data.candles.length);
+
             if (data.success === false) {
-                console.error("[useCandleSubscription] Indicator subscription error:", data.message);
+                console.error("[useCandleSubscription] Indicator data fetch error:", data.message);
                 // Don't set global error for indicator data issues
 
                 toast({
@@ -397,9 +450,31 @@ export function useCandleSubscription() {
                 return;
             }
 
-            // Store the new subscription ID
-            SubscriptionManager.setActiveSubscription('indicator', data.subscriptionId);
-            console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
+            // Log the received data range
+            if (data.candles.length > 0) {
+                const firstCandleTime = new Date(data.candles[0].timestamp).toISOString();
+                const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
+                console.log(`[WebSocket Data] Received initial indicator data range: ${firstCandleTime} to ${lastCandleTime}`);
+                console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
+            }
+
+            // Transform the new candles
+            const newCandles = data.candles
+                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
+
+            // Update indicator candles with new data
+            updateIndicatorCandles(newCandles, true);
+
+            // Apply indicators after data is loaded
+            setTimeout(() => {
+                applyIndicatorsToCandleDisplay();
+            }, 50);
+
+            // Also handle subscription ID if present in the same message
+            if (data.subscriptionId) {
+                SubscriptionManager.setActiveSubscription('indicator', data.subscriptionId);
+                console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
+            }
         }
         // Handle candle updates
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
@@ -417,34 +492,25 @@ export function useCandleSubscription() {
             // Update indicator candles only
             updateIndicatorCandles(newCandles);
         }
-        // Handle initial data load
-        else if (data.candles) {
-            console.log("[useCandleSubscription] Received initial indicator candle data:", data.candles.length);
-
+        // Handle subscription response with no candles
+        else if (data.subscriptionId && data.updateType === undefined) {
             if (data.success === false) {
-                console.error("[useCandleSubscription] Indicator data fetch error:", data.message);
-                // Don't set global error for indicator data issues
+                console.error("[useCandleSubscription] Indicator subscription error:", data.message);
+
+                toast({
+                    title: "Indicator Data Error",
+                    description: data.message,
+                    variant: "destructive",
+                    duration: 3000
+                });
                 return;
             }
 
-            // Log the received data range
-            if (data.candles.length > 0) {
-                const firstCandleTime = new Date(data.candles[0].timestamp).toISOString();
-                const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
-                console.log(`[WebSocket Data] Received initial indicator data range: ${firstCandleTime} to ${lastCandleTime}`);
-            }
-
-            // Transform the new candles
-            const newCandles = data.candles
-                .map(c => transformCandleData(c, SubscriptionManager.currentSubscription.stockSymbol));
-
-            // Update indicator candles with new data
-            updateIndicatorCandles(newCandles, true);
-
-            // Apply indicators after data is loaded
-            setTimeout(() => {
-                applyIndicatorsToCandleDisplay();
-            }, 50);
+            // Store the new subscription ID
+            SubscriptionManager.setActiveSubscription('indicator', data.subscriptionId);
+            console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
+        } else {
+            console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
     }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData]);
 
@@ -537,7 +603,7 @@ export function useCandleSubscription() {
                 console.log(`[useCandleSubscription] Unsubscribing from current chart subscription before creating new one`);
                 await SubscriptionManager.unsubscribe('chart');
                 // Small delay to ensure backend processes the unsubscribe
-                await new Promise(resolve => setTimeout(resolve, 150));
+                await new Promise(resolve => setTimeout(resolve, 300));
             }
 
             // Update subscription details - store centrally for both subscriptions
@@ -570,7 +636,8 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
 
-            await webSocketService.send('/app/candles/subscribe', chartSubscriptionRequest);
+            // Use the subscription manager's request method for better deduplication
+            await SubscriptionManager.requestSubscription('chart', chartSubscriptionRequest);
             console.log("[useCandleSubscription] Chart subscription request sent");
 
             return "pending";
@@ -602,8 +669,8 @@ export function useCandleSubscription() {
             if (SubscriptionManager.activeSubscriptions.indicator) {
                 console.log(`[useCandleSubscription] Unsubscribing from current indicator subscription before creating new one`);
                 await SubscriptionManager.unsubscribe('indicator');
-                // Small delay to ensure backend processes the unsubscribe
-                await new Promise(resolve => setTimeout(resolve, 150));
+                // Longer delay to ensure backend processes the unsubscribe
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
 
             // Calculate the required data range for indicators
@@ -637,7 +704,8 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
 
-            await webSocketService.send('/app/candles/subscribe', indicatorSubscriptionRequest);
+            // Use the subscription manager's request method for better deduplication
+            await SubscriptionManager.requestSubscription('indicator', indicatorSubscriptionRequest);
             console.log("[useCandleSubscription] Indicator subscription request sent");
 
             return "pending";
@@ -655,10 +723,11 @@ export function useCandleSubscription() {
         }
     }, [calculateRequiredDataRange, calculateStartDate, displayedCandles, indicators, toast]);
 
-    // Update indicator subscription when indicator requirements change
+    // Update indicator subscription when indicator requirements change - debounced version
     const updateIndicatorSubscription = useCallback(async () => {
         // Only proceed if we have an active chart subscription and indicators
         if (!SubscriptionManager.activeSubscriptions.chart || indicators.length === 0) {
+            console.log("[useCandleSubscription] Skipping indicator update - no chart subscription or no indicators");
             return;
         }
 
@@ -669,7 +738,11 @@ export function useCandleSubscription() {
         }
 
         console.log("[useCandleSubscription] Updating indicator subscription due to indicator changes");
-        await subscribeToIndicatorCandles(platformName, stockSymbol, timeframe);
+        try {
+            await subscribeToIndicatorCandles(platformName, stockSymbol, timeframe);
+        } catch (err) {
+            console.error("[useCandleSubscription] Failed to update indicator subscription:", err);
+        }
     }, [indicators, subscribeToIndicatorCandles]);
 
     // Main subscription function exposed to components
@@ -681,7 +754,7 @@ export function useCandleSubscription() {
             // After subscribing to chart data, also subscribe to indicator data if needed
             if (indicators.length > 0) {
                 // Small delay to ensure backend processes the first subscription
-                await new Promise(resolve => setTimeout(resolve, 200));
+                await new Promise(resolve => setTimeout(resolve, 500));
                 await subscribeToIndicatorCandles(platformName, stockSymbol, timeframe);
             }
 
@@ -692,12 +765,33 @@ export function useCandleSubscription() {
         }
     }, [subscribeToChartCandles, subscribeToIndicatorCandles, indicators]);
 
-    // Listen for indicator requirement changes
+    // Listen for indicator requirement changes with debouncing
     useEffect(() => {
         // Define event handler for indicator requirement changes
         const handleIndicatorRequirementsChanged = async (event) => {
+            // Add debounce handling to prevent multiple rapid updates
+            if (isUpdatingIndicatorSubscription.current) {
+                console.log("[Indicator Monitor] Update already in progress, queueing request");
+                pendingUpdateRef.current = true;
+                return;
+            }
+
+            isUpdatingIndicatorSubscription.current = true;
             console.log(`[Indicator Monitor] Detected indicator requirements change event`);
-            await updateIndicatorSubscription();
+
+            try {
+                await updateIndicatorSubscription();
+            } finally {
+                // Add small delay before allowing next update
+                setTimeout(() => {
+                    isUpdatingIndicatorSubscription.current = false;
+                    if (pendingUpdateRef.current) {
+                        pendingUpdateRef.current = false;
+                        console.log("[Indicator Monitor] Processing queued update request");
+                        handleIndicatorRequirementsChanged({type: 'queued'});
+                    }
+                }, 500);
+            }
         };
 
         // Register event listener for indicator changes
@@ -757,9 +851,17 @@ export function useCandleSubscription() {
             const { platformName, stockSymbol, timeframe } = SubscriptionManager.currentSubscription;
             if (platformName && stockSymbol && timeframe) {
                 console.log("[useCandleSubscription] Indicators added - creating indicator subscription");
-                subscribeToIndicatorCandles(platformName, stockSymbol, timeframe).catch(err => {
-                    console.error("[useCandleSubscription] Failed to create indicator subscription:", err);
-                });
+
+                // Use setTimeout to ensure this doesn't conflict with other indicator updates
+                setTimeout(() => {
+                    if (!isUpdatingIndicatorSubscription.current) {
+                        subscribeToIndicatorCandles(platformName, stockSymbol, timeframe).catch(err => {
+                            console.error("[useCandleSubscription] Failed to create indicator subscription:", err);
+                        });
+                    } else {
+                        console.log("[useCandleSubscription] Skipping immediate indicator subscription - update already in progress");
+                    }
+                }, 100);
             }
         }
         // If indicators are removed and we have an active indicator subscription
