@@ -1,4 +1,4 @@
-import {createContext, useContext, useState, useEffect, useRef, useCallback} from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
 
@@ -320,46 +320,6 @@ export function WebSocketProvider({ children }) {
         };
     }, []);
 
-    // Disconnect and cleanup WebSocket connections
-    const disconnectWebSocket = useCallback(() => {
-        if (SubscriptionManager.isConnected) {
-            console.log("[WebSocketContext] Explicitly disconnecting from WebSocket");
-            
-            // First unsubscribe from all active subscriptions
-            unsubscribeAll().then(() => {
-                console.log("[WebSocketContext] Unsubscribed from all active subscriptions");
-                
-                // Then unsubscribe from the user queue if it exists
-                if (SubscriptionManager.userQueueSubscription) {
-                    console.log("[WebSocketContext] Unsubscribing from user queue");
-                    webSocketService.unsubscribe('/user/queue/candles');
-                    SubscriptionManager.userQueueSubscription = null;
-                }
-                
-                // Finally, disconnect from the WebSocket
-                webSocketService.disconnect();
-                
-                // Update state
-                SubscriptionManager.isConnected = false;
-                setIsConnected(false);
-                initialized.current = false;
-                setIsInitialized(false);
-                
-                console.log("[WebSocketContext] Successfully disconnected from WebSocket");
-            }).catch(err => {
-                console.error("[WebSocketContext] Error during disconnect:", err);
-                // Still try to disconnect even if unsubscribe fails
-                webSocketService.disconnect();
-                SubscriptionManager.isConnected = false;
-                setIsConnected(false);
-                initialized.current = false;
-                setIsInitialized(false);
-            });
-        } else {
-            console.log("[WebSocketContext] Already disconnected from WebSocket");
-        }
-    }, [unsubscribeAll]);
-
     // Context value containing the WebSocket state and operations
     const contextValue = {
         isConnected,
@@ -372,7 +332,6 @@ export function WebSocketProvider({ children }) {
         requestSubscription,
         unsubscribe,
         unsubscribeAll,
-        disconnectWebSocket,
         setActiveSubscription: SubscriptionManager.setActiveSubscription.bind(SubscriptionManager),
         clearActiveSubscription: SubscriptionManager.clearActiveSubscription.bind(SubscriptionManager),
         updateCurrentSubscriptionInfo: SubscriptionManager.updateCurrentSubscriptionInfo.bind(SubscriptionManager),

@@ -1,4 +1,4 @@
-// src/pages/StockMarket.jsx
+// src/pages/StockMarket.jsx (update)
 import Header from "../components/Header";
 import StockSelectors from "../components/stockMarket/StockSelectors.jsx";
 import CandleChart from "../components/stockMarket/CandleChart";
@@ -6,36 +6,9 @@ import IndicatorCharts from "../components/stockMarket/IndicatorCharts.jsx";
 import PortfolioList from "../components/stockMarket/PortfolioList.jsx";
 import PortfolioGraph from "../components/stockMarket/PortfolioGraph.jsx";
 import TradePanel from "../components/stockMarket/TradePanel.jsx";
-import { useCandleSubscription } from "../hooks/useCandleSubscription.js";
-import { useWebSocket } from "../context/WebSocketContext.jsx";
-import { useEffect } from "react";
+import { ChartProvider } from "../components/stockMarket/ChartContext.jsx";
 
 const StockMarket = ({ navigate }) => {
-    const { unsubscribeFromCandles } = useCandleSubscription();
-    const { disconnectWebSocket } = useWebSocket();
-
-    // Cleanup function to run when component unmounts
-    useEffect(() => {
-        // This effect's cleanup function will run when the component unmounts
-        return () => {
-            console.log("[StockMarket] Page unmounting - cleaning up subscriptions and connections");
-            
-            // First unsubscribe from all candle subscriptions
-            unsubscribeFromCandles().then(() => {
-                console.log("[StockMarket] Successfully unsubscribed from all candle subscriptions");
-                
-                // Disconnect from the WebSocket using the dedicated method
-                disconnectWebSocket();
-                console.log("[StockMarket] Requested WebSocket disconnection");
-            }).catch(error => {
-                console.error("[StockMarket] Error during subscription cleanup:", error);
-                
-                // Still try to disconnect even if unsubscribe fails
-                disconnectWebSocket();
-            });
-        };
-    }, [unsubscribeFromCandles, disconnectWebSocket]);
-
     return (
         <div className="min-h-screen flex flex-col">
             <Header navigate={navigate} currentPage="stockMarket" />
@@ -44,6 +17,7 @@ const StockMarket = ({ navigate }) => {
                 <h1 className="text-4xl font-semibold text-center mb-8">Stock Market</h1>
 
                 <div className="container mx-auto">
+                    <ChartProvider>
                         <div className="flex flex-col md:flex-row gap-6">
                             {/* Left section - Charts and controls */}
                             <div className="w-full md:w-2/3 space-y-4">
@@ -68,6 +42,7 @@ const StockMarket = ({ navigate }) => {
                                 <TradePanel />
                             </div>
                         </div>
+                    </ChartProvider>
                 </div>
             </main>
         </div>
