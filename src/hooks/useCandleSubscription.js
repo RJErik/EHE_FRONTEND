@@ -775,10 +775,50 @@ export function useCandleSubscription() {
         }
     }, [indicators, subscribeToIndicatorCandles, currentSubscription, lastValidSubscription, subscriptionIds, unsubscribe]);
 
-    // Expose the unsubscribe function for explicit use
+    // Enhanced unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
-        return unsubscribeAll();
+        console.log("[useCandleSubscription] Unsubscribing from all candle subscriptions");
+        
+        try {
+            // Reset subscription states
+            setIsSubscribing(false);
+            setError(null);
+            setLastValidSubscription({
+                platformName: null,
+                stockSymbol: null,
+                timeframe: null
+            });
+            
+            // Reset our latest subscription details ref
+            latestSubscriptionDetailsRef.current = {
+                platformName: null,
+                stockSymbol: null,
+                timeframe: null
+            };
+            
+            // Use the WebSocketContext's unsubscribeAll method
+            const result = await unsubscribeAll();
+            console.log("[useCandleSubscription] Unsubscribe result:", result);
+            return result;
+        } catch (err) {
+            console.error("[useCandleSubscription] Error while unsubscribing:", err);
+            return false;
+        }
     }, [unsubscribeAll]);
+
+    // Cleanup subscriptions when hook unmounts
+    useEffect(() => {
+        // Return cleanup function
+        return () => {
+            console.log("[useCandleSubscription] Hook unmounting - ensuring subscriptions are cleaned up");
+            
+            // Unregister handlers to avoid memory leaks
+            if (unregisterHandler) {
+                unregisterHandler('chart');
+                unregisterHandler('indicator');
+            }
+        };
+    }, [unregisterHandler]);
 
     return {
         isConnected,
@@ -789,7 +829,7 @@ export function useCandleSubscription() {
         subscribeToCandles,
         unsubscribeFromCandles,
         updateIndicatorSubscription,
-        // NEW: Expose the current subscription details
+        // Expose the current subscription details
         currentSubscriptionDetails: {
             ...lastValidSubscription
         }

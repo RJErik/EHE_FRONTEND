@@ -9,6 +9,7 @@ import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/WebSocketContext";
+import { ChartProvider } from "./components/stockMarket/ChartContext.jsx";
 
 function App() {
     // Simple routing implementation
@@ -36,8 +37,10 @@ function App() {
 
     return (
         <WebSocketProvider>
-            {renderPage()}
-            <Toaster />
+            <ChartProvider>
+                {renderPage()}
+                <Toaster />
+            </ChartProvider>
         </WebSocketProvider>
     );
 }
