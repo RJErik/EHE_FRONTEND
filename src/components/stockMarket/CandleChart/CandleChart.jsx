@@ -12,6 +12,7 @@ const CandleChart = () => {
     const dragStartXRef = useRef(null);
     const dragStartViewIndexRef = useRef(null); // Store viewStartIndex at drag start
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
+    const hoveredTimestampBeforeZoomRef = useRef(null);
 
     // Add mouseX state to track horizontal position for hover recalculation
     const [mouseX, setMouseX] = useState(null);
@@ -44,7 +45,7 @@ const CandleChart = () => {
 
     useEffect(() => {
         if (!data) return; // Guard against undefined data
-        
+
         console.log("[CandleChart] Received updated data - Length:", data.length,
             "ViewIndex:", viewStartIndex,
             "DisplayedCandles:", displayedCandles,
@@ -59,14 +60,22 @@ const CandleChart = () => {
     const { indicators } = useIndicators();
     const mainIndicators = indicators?.filter(ind => ind.category === "main") || [];
 
+    // Helper function to update hovered candle based on timestamp
+    const updateHoveredCandleByTimestamp = (timestamp) => {
+        if (!data || !timestamp) return false;
+
+        const newHoveredIndex = data.findIndex(candle => candle.timestamp === timestamp);
+        if (newHoveredIndex >= 0) {
+            setHoveredIndex(newHoveredIndex);
+            setHoveredCandle(data[newHoveredIndex]);
+            return true;
+        }
+        return false;
+    };
+
     // D3 chart rendering
     useEffect(() => {
         if (!data || !Array.isArray(data) || data.length === 0 || !chartRef.current) return;
-
-        // Before rendering - LOG 10
-        //console.log("[Chart Render] Starting render with - Candles:", data.length,
-            //"First Candle:", data[0]?.timestamp,
-            //"Last Candle:", data[data.length-1]?.timestamp);
 
         renderCandleChart({
             chartRef,
@@ -89,7 +98,7 @@ const CandleChart = () => {
         // Add window resize handler
         const handleResize = () => {
             if (!data || !Array.isArray(data) || data.length === 0) return;
-            
+
             // Re-render on resize
             renderCandleChart({
                 chartRef,
@@ -128,82 +137,100 @@ const CandleChart = () => {
         setHoveredCandle, setCurrentMouseY, setActiveTimestamp, setHoveredIndex
     ]);
 
-    // NEW: Effect to recalculate hover index when displayed candles change (zoom)
+    // Backup mechanism: Effect to recalculate hover based on timestamp when displayed candles change
     useEffect(() => {
-        // Skip if dragging, no data, not hovering or no valid mouse position
-        if (isDragging || !data.length || !isMouseOverChart || mouseX === null || !chartRef.current) {
+        // Skip if dragging, no data, not hovering or no active timestamp
+        if (isDragging || !data?.length || !isMouseOverChart || !activeTimestamp) {
             return;
         }
 
-        // Calculate which candle is under the mouse after zoom
-        const chartRect = chartRef.current.getBoundingClientRect();
-        const marginLeft = 60;
-        const marginRight = 60;
-        const chartWidth = chartRect.width - marginLeft - marginRight;
+        // Try to restore hover state by timestamp
+        updateHoveredCandleByTimestamp(activeTimestamp);
+    }, [displayedCandles, viewStartIndex, data, isDragging, isMouseOverChart, activeTimestamp]);
 
-        // Calculate what percentage across the chart the mouse is
-        const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth));
-
-        // Convert to an index based on current number of displayed candles
-        const newHoveredIndex = Math.floor(mouseXRatio * displayedCandles);
-
-        // Ensure index is within valid bounds
-        if (newHoveredIndex >= 0 && newHoveredIndex < data.length) {
-            // Update hover state
-            setHoveredIndex(newHoveredIndex);
-            setHoveredCandle(data[newHoveredIndex]);
-            setActiveTimestamp(data[newHoveredIndex].timestamp);
-
-            // No need to update currentMouseY as that's handled by mouse move
-        }
-    }, [displayedCandles, data, isDragging, isMouseOverChart, mouseX, setHoveredIndex, setHoveredCandle, setActiveTimestamp]);
-
-    // Zoom control handlers (No changes needed here)
+    // Zoom control handlers with immediate timestamp tracking
     const handleZoomIn = () => {
+        if (!data?.length) return;
+
+        // Store the current timestamp to maintain after zoom
+        const timestampToTrack = activeTimestamp;
+
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP);
 
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
 
+        // Update zoom state
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
             Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
+
+        // Immediately update hover position based on timestamp
+        if (timestampToTrack) {
+            updateHoveredCandleByTimestamp(timestampToTrack);
+        }
     };
 
     const handleZoomOut = () => {
+        if (!data?.length) return;
+
+        // Store the current timestamp to maintain after zoom
+        const timestampToTrack = activeTimestamp;
+
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
 
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
 
+        // Update zoom state
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
             Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
+
+        // Immediately update hover position based on timestamp
+        if (timestampToTrack) {
+            updateHoveredCandleByTimestamp(timestampToTrack);
+        }
     };
 
     const handleResetZoom = () => {
+        if (!data?.length) return;
+
+        // Store the current timestamp to maintain after zoom
+        const timestampToTrack = activeTimestamp;
+
         const newDisplayedCandles = DEFAULT_DISPLAY_CANDLES;
         // Recenter based on the *current* middle, then apply default zoom
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
 
+        // Update zoom state
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(Math.max(
             0,
             // Ensure the reset index is valid with the new candle count
             Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         ));
+
+        // Immediately update hover position based on timestamp
+        if (timestampToTrack) {
+            updateHoveredCandleByTimestamp(timestampToTrack);
+        }
     };
 
-    // Handle zoom functionality (No changes needed here)
+    // Handle zoom functionality with immediate timestamp tracking
     const handleWheel = (e) => {
         e.preventDefault(); // Prevent page scrolling
+        if (!data?.length) return;
+
+        // Store the current timestamp to maintain after zoom
+        const timestampToTrack = activeTimestamp;
 
         const isZoomIn = e.deltaY < 0;
         const chartRect = chartRef.current.getBoundingClientRect();
@@ -235,8 +262,14 @@ const CandleChart = () => {
             Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         );
 
+        // Update zoom state
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(newViewStartIndex);
+
+        // Immediately update hover position based on timestamp
+        if (timestampToTrack) {
+            updateHoveredCandleByTimestamp(timestampToTrack);
+        }
     };
 
     // Setup dragging events
@@ -299,6 +332,9 @@ const CandleChart = () => {
 
             // Handle dragging logic
             if (isDragging && dragStartXRef.current !== null && dragStartViewIndexRef.current !== null) {
+                // Store current timestamp before drag update
+                const timestampToTrack = activeTimestamp;
+
                 const currentX = e.clientX;
                 const deltaX = currentX - dragStartXRef.current; // Total pixel distance dragged
                 const candleWidth = getCandleWidth();
@@ -320,6 +356,11 @@ const CandleChart = () => {
                     // Update state only if the index actually changes to avoid unnecessary re-renders
                     if (boundedIndex !== viewStartIndex) {
                         setViewStartIndex(boundedIndex);
+
+                        // Immediately update hover position based on timestamp while dragging
+                        if (timestampToTrack) {
+                            updateHoveredCandleByTimestamp(timestampToTrack);
+                        }
                     }
                 }
                 // *** DO NOT reset dragStartXRef.current here ***
@@ -328,6 +369,9 @@ const CandleChart = () => {
 
         const handleMouseUp = (e) => {
             if (isDragging) {
+                // Store timestamp before ending drag
+                const timestampToTrack = activeTimestamp;
+
                 setIsDragging(false);
                 dragStartXRef.current = null;
                 dragStartViewIndexRef.current = null; // *** Clear the starting index ***
@@ -359,6 +403,11 @@ const CandleChart = () => {
                         const yRelative = relativeY - marginTop;
                         setMouseX(xRelative);
                         setCurrentMouseY(yRelative);
+
+                        // Make sure hover is updated based on timestamp
+                        if (timestampToTrack) {
+                            updateHoveredCandleByTimestamp(timestampToTrack);
+                        }
                     }
                 }
             }
@@ -480,7 +529,8 @@ const CandleChart = () => {
         displayedCandles, setDisplayedCandles, // Added setDisplayedCandles for zoom/reset
         setCurrentMouseY, isMouseOverChart, setMouseX, // Added setMouseX for tracking X position
         setHoveredCandle, setActiveTimestamp, setHoveredIndex, // Other state setters
-        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES // Constants used in handlers
+        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, // Constants used in handlers
+        activeTimestamp, data // Added for timestamp tracking
     ]);
 
     // Calculate zoom percentage for display
