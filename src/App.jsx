@@ -35,7 +35,7 @@ function App() {
     };
 
     return (
-        <WebSocketProvider>
+        <WebSocketProvider currentPage={currentPage}>
             {renderPage()}
             <Toaster />
         </WebSocketProvider>

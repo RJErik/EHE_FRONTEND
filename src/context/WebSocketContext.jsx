@@ -104,7 +104,7 @@ const SubscriptionManager = {
     },
 };
 
-export function WebSocketProvider({ children }) {
+export function WebSocketProvider({ children, currentPage }) {
     const [isConnected, setIsConnected] = useState(false);
     const [connectionError, setConnectionError] = useState(null);
     const [isInitialized, setIsInitialized] = useState(false);
@@ -341,7 +341,8 @@ export function WebSocketProvider({ children }) {
         currentSubscription: SubscriptionManager.currentSubscription,
         
         // Direct access to WebSocket service
-        webSocketService
+        webSocketService,
+        currentPage
     };
 
     return (

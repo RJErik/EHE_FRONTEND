@@ -8,6 +8,7 @@ export function useCandleSubscription() {
     const [isSubscribing, setIsSubscribing] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+    const previousPage = useRef(null);
 
     // NEW: Add state to track last valid subscription for fallback
     const [lastValidSubscription, setLastValidSubscription] = useState({
@@ -27,7 +28,8 @@ export function useCandleSubscription() {
         setActiveSubscription,
         updateCurrentSubscriptionInfo,
         subscriptionIds,
-        currentSubscription
+        currentSubscription,
+        currentPage
     } = useWebSocket();
 
     // Add refs for managing indicator update sequences
@@ -650,7 +652,7 @@ export function useCandleSubscription() {
     // Listen for indicator requirement changes with debouncing
     useEffect(() => {
         // Define event handler for indicator requirement changes
-        const handleIndicatorRequirementsChanged = async (event) => {
+        const handleIndicatorRequirementsChanged = async () => {
             // Add debounce handling to prevent multiple rapid updates
             if (isUpdatingIndicatorSubscription.current) {
                 console.log("[Indicator Monitor] Update already in progress, queueing request");
@@ -683,7 +685,7 @@ export function useCandleSubscription() {
                     if (pendingUpdateRef.current) {
                         pendingUpdateRef.current = false;
                         console.log("[Indicator Monitor] Processing queued update request");
-                        handleIndicatorRequirementsChanged({type: 'queued'});
+                        handleIndicatorRequirementsChanged();
                     }
                 }, 500);
             }
@@ -713,6 +715,32 @@ export function useCandleSubscription() {
             unregIndicatorHandler();
         };
     }, [handleChartCandleMessage, handleIndicatorCandleMessage, registerHandler]);
+
+    // NEW: Add effect to handle page navigation and cleanup subscriptions when leaving StockMarket
+    useEffect(() => {
+        // Set up subscriptions and handlers...
+
+        // This cleanup function will run when the component unmounts
+        return () => {
+            console.log("[useCandleSubscription] Component unmounting - cleaning up subscriptions");
+
+            // Clean up any active subscriptions
+            if (subscriptionIds.chart) {
+                console.log("[useCandleSubscription] Unsubscribing from chart data");
+                unsubscribe('chart').catch(err => {
+                    console.error("[useCandleSubscription] Error unsubscribing from chart data:", err);
+                });
+            }
+
+            if (subscriptionIds.indicator) {
+                console.log("[useCandleSubscription] Unsubscribing from indicator data");
+                unsubscribe('indicator').catch(err => {
+                    console.error("[useCandleSubscription] Error unsubscribing from indicator data:", err);
+                });
+            }
+        };
+    }, []); // Empty dependency array means this runs on mount and cleanup runs on unmount
+
 
     // Watch for indicator changes to manage indicator subscription lifecycle
     useEffect(() => {
