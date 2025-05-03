@@ -36,17 +36,6 @@ export function ChartProvider({ children }) {
 
     // New state for controlling subscription updates
     const [shouldUpdateSubscription, setShouldUpdateSubscription] = useState(false);
-
-    // New state for handling infinite scrolling
-    const [isLoadingPastData, setIsLoadingPastData] = useState(false);
-    const [isLoadingFutureData, setIsLoadingFutureData] = useState(false);
-    const scrollDirectionRef = useRef(null); // 'past' or 'future'
-    const lastDataRequestRef = useRef({ past: null, future: null });
-    const minTimestampRef = useRef(null);
-    const maxTimestampRef = useRef(null);
-    const loadedRangesRef = useRef([]);
-
-    // Refs for tracking indicator calculations and subscriptions
     const lastRequestedRangeRef = useRef(null);
     const isProcessingIndicatorUpdateRef = useRef(false);
 
@@ -54,8 +43,6 @@ export function ChartProvider({ children }) {
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
-    const SCROLL_BUFFER_THRESHOLD = 0.25; // When to load more (25% from edge)
-    const CANDLES_PER_REQUEST = 100;
 
     // Refs to track first and last candle timestamps
     const firstCandleTimestampRef = useRef(null);
@@ -320,15 +307,6 @@ export function ChartProvider({ children }) {
             // Update refs with current values
             firstCandleTimestampRef.current = firstTimestamp;
             lastCandleTimestampRef.current = lastTimestamp;
-
-            // Update min/max timestamp refs for data range tracking
-            if (firstTimestamp && (!minTimestampRef.current || firstTimestamp < minTimestampRef.current)) {
-                minTimestampRef.current = firstTimestamp;
-            }
-
-            if (lastTimestamp && (!maxTimestampRef.current || lastTimestamp > maxTimestampRef.current)) {
-                maxTimestampRef.current = lastTimestamp;
-            }
         }
     }, [displayCandles]);
 
@@ -444,35 +422,13 @@ export function ChartProvider({ children }) {
         };
     }, [displayCandles, viewStartIndex, displayedCandles, indicators, timeframeInMs, calculateMaxLookback]);
 
-    // New function to check if we need to load more data
-    const checkNeedMoreData = useCallback(() => {
-        if (displayCandles.length === 0 || isWaitingForData) return null;
-
-        const bufferThreshold = Math.floor(displayedCandles * SCROLL_BUFFER_THRESHOLD);
-        const currentEndIndex = viewStartIndex + displayedCandles;
-
-        // Need past data (scrolling back in time)
-        if (viewStartIndex <= bufferThreshold && !isLoadingPastData) {
-            return 'past';
-        }
-
-        // Need future data (scrolling forward in time)
-        if (currentEndIndex >= displayCandles.length - bufferThreshold && !isLoadingFutureData) {
-            return 'future';
-        }
-
-        return null;
-    }, [viewStartIndex, displayCandles.length, displayedCandles, isWaitingForData, isLoadingPastData, isLoadingFutureData]);
-
     // Create a ref to safely access the latest version of the function
     const calculateRangeRef = useRef(calculateRequiredDataRange);
-    const checkNeedMoreDataRef = useRef(checkNeedMoreData);
 
-    // Keep the refs updated with the latest function
+    // Keep the ref updated with the latest function
     useEffect(() => {
         calculateRangeRef.current = calculateRequiredDataRange;
-        checkNeedMoreDataRef.current = checkNeedMoreData;
-    }, [calculateRequiredDataRange, checkNeedMoreData]);
+    }, [calculateRequiredDataRange]);
 
     // Recalculate indicators when indicators list changes or indicator candles change
     useEffect(() => {
@@ -707,21 +663,7 @@ export function ChartProvider({ children }) {
 
             // WebSocket preparation
             calculateRequiredDataRange,
-            requestSubscriptionUpdate,
-
-            // Infinite scroll support
-            isLoadingPastData,
-            setIsLoadingPastData,
-            isLoadingFutureData,
-            setIsLoadingFutureData,
-            checkNeedMoreData,
-            scrollDirectionRef,
-            lastDataRequestRef,
-
-            // Data range tracking
-            minTimestampRef,
-            maxTimestampRef,
-            loadedRangesRef
+            requestSubscriptionUpdate
         }}>
             {children}
         </ChartContext.Provider>
