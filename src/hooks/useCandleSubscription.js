@@ -10,7 +10,7 @@ export function useCandleSubscription() {
     const { toast } = useToast();
     const previousPage = useRef(null);
 
-    // NEW: Add state to track last valid subscription for fallback
+    // Add state to track last valid subscription for fallback
     const [lastValidSubscription, setLastValidSubscription] = useState({
         platformName: null,
         stockSymbol: null,
@@ -35,8 +35,9 @@ export function useCandleSubscription() {
     // Add refs for managing indicator update sequences
     const isUpdatingIndicatorSubscription = useRef(false);
     const pendingUpdateRef = useRef(false);
+    const isProcessingScrollRequest = useRef(false);
 
-    // NEW: Create a ref to hold latest subscription details
+    // Create a ref to hold latest subscription details
     const latestSubscriptionDetailsRef = useRef({
         platformName: null,
         stockSymbol: null,
@@ -49,10 +50,20 @@ export function useCandleSubscription() {
         setIndicatorCandles,
         calculateRequiredDataRange,
         setViewStartIndex,
+        viewStartIndex,
         displayedCandles,
         setIsWaitingForData,
         applyIndicatorsToCandleDisplay,
-        indicators
+        indicators,
+        displayCandles,
+        checkNeedMoreData,
+        isLoadingPastData,
+        setIsLoadingPastData,
+        isLoadingFutureData,
+        setIsLoadingFutureData,
+        scrollDirectionRef,
+        lastDataRequestRef,
+        timeframeInMs
     } = useContext(ChartContext);
 
     // Calculate start date based on timeframe and number of candles
@@ -94,14 +105,11 @@ export function useCandleSubscription() {
 
     // Handle incoming chart candle message
     const handleChartCandleMessage = useCallback((data) => {
-        console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-        console.log(data);
-
         // Skip heartbeats - already handled in WebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
-        // UPDATED APPROACH: Check for candles first, regardless of other properties
-        if (data.candles) {
+        // HANDLE INITIAL LOAD OR RESET DATA
+        if (data.candles && (data.resetData === true || data.resetData === undefined)) {
             console.log("[useCandleSubscription] Received initial chart candle data:", data.candles.length);
 
             if (data.success === false) {
@@ -118,7 +126,7 @@ export function useCandleSubscription() {
                 console.log(`[WebSocket Data] Received initial chart data range: ${firstCandleTime} to ${lastCandleTime}`);
                 console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
 
-                // NEW: Update latest subscription details when we receive valid data
+                // Update latest subscription details when we receive valid data
                 if (data.platformName && data.stockSymbol && data.timeframe) {
                     const newDetails = {
                         platformName: data.platformName,
@@ -145,11 +153,145 @@ export function useCandleSubscription() {
             setError(null);
             setIsWaitingForData(false);
 
+            // Reset any ongoing scroll loading states
+            setIsLoadingPastData(false);
+            setIsLoadingFutureData(false);
+
             // Also handle subscription ID if present in the same message
             if (data.subscriptionId) {
                 setActiveSubscription('chart', data.subscriptionId);
                 console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
             }
+        }
+        // HANDLE SCROLL DATA - detect this by checking if resetData is explicitly false
+        else if (data.candles && data.resetData === false) {
+            console.log(`[Scroll] Received scroll data, direction: ${data.scrollDirection || "unknown"}, count: ${data.candles.length}`);
+
+            if (data.success === false) {
+                console.error("[Scroll] Data fetch error:", data.message);
+                // Reset loading states
+                setIsLoadingPastData(false);
+                setIsLoadingFutureData(false);
+                return;
+            }
+
+            // No data received, nothing to do
+            if (!data.candles.length) {
+                console.log("[Scroll] No candles received for this range");
+                // Reset loading states
+                setIsLoadingPastData(false);
+                setIsLoadingFutureData(false);
+                return;
+            }
+
+            // Log data range received
+            const firstCandleTime = new Date(data.candles[0].timestamp).toISOString();
+            const lastCandleTime = new Date(data.candles[data.candles.length-1].timestamp).toISOString();
+            console.log(`[Scroll] Received data range: ${firstCandleTime} to ${lastCandleTime}`);
+
+            // Transform the candles
+            const newCandles = data.candles.map(c => transformCandleData(c, data.stockSymbol));
+
+            // Get reference to visible area before merge
+            const viewStartTimestamp = displayCandles[viewStartIndex]?.timestamp;
+            const viewEndIndex = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+            const viewEndTimestamp = displayCandles[viewEndIndex]?.timestamp;
+
+            // Note current display boundaries
+            console.log(`[Scroll] Current view: ${viewStartIndex} to ${viewEndIndex}`);
+            console.log(`[Scroll] Current view timestamps: ${new Date(viewStartTimestamp).toISOString()} to ${new Date(viewEndTimestamp).toISOString()}`);
+
+            // Merge with existing candles
+            setDisplayCandles(prevCandles => {
+                // Create a map of existing candles for quick lookup
+                const existingMap = new Map();
+                prevCandles.forEach(candle => {
+                    existingMap.set(candle.timestamp, candle);
+                });
+
+                // Merge new candles
+                const mergedArray = [...prevCandles];
+                let addedCount = 0;
+
+                newCandles.forEach(newCandle => {
+                    if (!existingMap.has(newCandle.timestamp)) {
+                        mergedArray.push(newCandle);
+                        addedCount++;
+                    } else {
+                        // Replace with newer data if timestamp matches
+                        const index = mergedArray.findIndex(c => c.timestamp === newCandle.timestamp);
+                        if (index >= 0) {
+                            mergedArray[index] = newCandle;
+                        }
+                    }
+                });
+
+                console.log(`[Scroll] Added ${addedCount} new candles to display buffer`);
+
+                // Sort the merged array
+                const sortedArray = mergedArray.sort((a, b) => a.timestamp - b.timestamp);
+
+                // If we were loading past data, update the view index to maintain position
+                if (data.scrollDirection === 'past' || scrollDirectionRef.current === 'past') {
+                    // Find the index of the previous view start candle in the updated array
+                    const oldStartIndex = sortedArray.findIndex(c => c.timestamp === viewStartTimestamp);
+
+                    if (oldStartIndex >= 0 && oldStartIndex !== viewStartIndex) {
+                        console.log(`[Scroll] Need to adjust view index from ${viewStartIndex} to ${oldStartIndex} due to past data load`);
+                        // We'll update the view index after the state update
+                        setTimeout(() => {
+                            setViewStartIndex(oldStartIndex);
+                        }, 0);
+                    }
+                }
+
+                return sortedArray;
+            });
+
+            // Ensure we update indicators too if needed
+            if (indicators.length > 0) {
+                // Also merge with indicator candles if we have indicators
+                setIndicatorCandles(prevCandles => {
+                    // Create a map of existing candles for quick lookup
+                    const existingMap = new Map();
+                    prevCandles.forEach(candle => {
+                        existingMap.set(candle.timestamp, candle);
+                    });
+
+                    // Merge new candles
+                    const mergedArray = [...prevCandles];
+
+                    newCandles.forEach(newCandle => {
+                        if (!existingMap.has(newCandle.timestamp)) {
+                            mergedArray.push(newCandle);
+                        } else {
+                            // Replace with newer data if timestamp matches
+                            const index = mergedArray.findIndex(c => c.timestamp === newCandle.timestamp);
+                            if (index >= 0) {
+                                mergedArray[index] = newCandle;
+                            }
+                        }
+                    });
+
+                    // Sort the merged array
+                    return mergedArray.sort((a, b) => a.timestamp - b.timestamp);
+                });
+
+                // Schedule indicator recalculation
+                setTimeout(() => {
+                    applyIndicatorsToCandleDisplay();
+                }, 50);
+            }
+
+            // Reset loading state for this direction
+            if (data.scrollDirection === 'past' || scrollDirectionRef.current === 'past') {
+                setIsLoadingPastData(false);
+            } else {
+                setIsLoadingFutureData(false);
+            }
+
+            // Reset the scroll direction
+            scrollDirectionRef.current = null;
         }
         // Handle candle updates
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
@@ -186,7 +328,7 @@ export function useCandleSubscription() {
             setActiveSubscription('chart', data.subscriptionId);
             console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
 
-            // NEW: If this contains subscription details, update our reference
+            // If this contains subscription details, update our reference
             if (data.platformName && data.stockSymbol && data.timeframe) {
                 const newDetails = {
                     platformName: data.platformName,
@@ -203,14 +345,13 @@ export function useCandleSubscription() {
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
-    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol, updateCurrentSubscriptionInfo]);
-
+    }, [setDisplayCandles, setViewStartIndex, displayedCandles, setIsWaitingForData, toast, transformCandleData,
+        setActiveSubscription, currentSubscription.stockSymbol, updateCurrentSubscriptionInfo, viewStartIndex,
+        displayCandles, indicators, setIndicatorCandles, applyIndicatorsToCandleDisplay,
+        setIsLoadingPastData, setIsLoadingFutureData]);
 
     // Handle incoming indicator candle data
     const handleIndicatorCandleMessage = useCallback((data) => {
-        console.log("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
-        console.log(data);
-
         // Skip heartbeats - already handled in WebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
@@ -238,7 +379,7 @@ export function useCandleSubscription() {
                 console.log(`[WebSocket Data] Received initial indicator data range: ${firstCandleTime} to ${lastCandleTime}`);
                 console.log(`[WebSocket Data] Platform: ${data.platformName}, Symbol: ${data.stockSymbol}, Timeframe: ${data.timeframe}`);
 
-                // NEW: Update latest subscription details if not already set
+                // Update latest subscription details if not already set
                 if (data.platformName && data.stockSymbol && data.timeframe &&
                     (!latestSubscriptionDetailsRef.current.platformName ||
                         !latestSubscriptionDetailsRef.current.stockSymbol ||
@@ -313,6 +454,156 @@ export function useCandleSubscription() {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
     }, [setIndicatorCandles, applyIndicatorsToCandleDisplay, toast, transformCandleData, setActiveSubscription, currentSubscription.stockSymbol, updateCurrentSubscriptionInfo]);
+
+    // New function to request data for a specific range when scrolling
+    const requestDataRange = useCallback(async (direction) => {
+        // Prevent duplicate requests
+        if (isProcessingScrollRequest.current) {
+            console.log("[Scroll] Skipping request - already processing another request");
+            return;
+        }
+
+        // Get parameters with fallbacks
+        let platformName = currentSubscription.platformName;
+        let stockSymbol = currentSubscription.stockSymbol;
+        let timeframe = currentSubscription.timeframe;
+
+        // Try using fallbacks if any value is missing
+        if (!platformName || !stockSymbol || !timeframe) {
+            // Try using the latestSubscriptionDetailsRef as fallback
+            if (latestSubscriptionDetailsRef.current.platformName &&
+                latestSubscriptionDetailsRef.current.stockSymbol &&
+                latestSubscriptionDetailsRef.current.timeframe) {
+
+                console.log("[Scroll] Using latest subscription details as fallback");
+                platformName = latestSubscriptionDetailsRef.current.platformName;
+                stockSymbol = latestSubscriptionDetailsRef.current.stockSymbol;
+                timeframe = latestSubscriptionDetailsRef.current.timeframe;
+            }
+            // Then try lastValidSubscription as second fallback
+            else if (lastValidSubscription.platformName &&
+                lastValidSubscription.stockSymbol &&
+                lastValidSubscription.timeframe) {
+
+                console.log("[Scroll] Using last valid subscription details as fallback");
+                platformName = lastValidSubscription.platformName;
+                stockSymbol = lastValidSubscription.stockSymbol;
+                timeframe = lastValidSubscription.timeframe;
+            }
+            else {
+                console.error("[Scroll] No subscription details available");
+                return;
+            }
+        }
+
+        if (!platformName || !stockSymbol || !timeframe) {
+            console.error("[Scroll] Missing subscription parameters even after fallbacks");
+            return;
+        }
+
+        // Get current boundaries
+        const firstCandle = displayCandles[0];
+        const lastCandle = displayCandles[displayCandles.length - 1];
+
+        if (!firstCandle || !lastCandle) {
+            console.log("[Scroll] No candles available to determine request range");
+            return;
+        }
+
+        let startDate, endDate;
+        // Calculate the timeframe in milliseconds
+        let timeframeDuration = timeframeInMs || 60000; // Default to 1 minute
+
+        // Set loading flag for relevant direction
+        if (direction === 'past') {
+            setIsLoadingPastData(true);
+        } else {
+            setIsLoadingFutureData(true);
+        }
+
+        // Mark that we're processing a request
+        isProcessingScrollRequest.current = true;
+
+        // Set appropriate request parameters based on direction
+        if (direction === 'past') {
+            // Request older data
+            endDate = new Date(firstCandle.timestamp - 1); // Just before first candle
+            startDate = new Date(endDate.getTime() - (timeframeDuration * 100)); // Get 100 candles
+
+            // Don't request if we just requested this range
+            if (lastDataRequestRef.current.past &&
+                Math.abs(lastDataRequestRef.current.past - startDate.getTime()) < timeframeDuration * 10) {
+                console.log("[Scroll] Skipping duplicate past data request");
+                setIsLoadingPastData(false);
+                isProcessingScrollRequest.current = false;
+                return;
+            }
+
+            // Store this request time
+            lastDataRequestRef.current.past = startDate.getTime();
+        } else {
+            // Request newer data
+            startDate = new Date(lastCandle.timestamp + 1); // Just after last candle
+            endDate = new Date(startDate.getTime() + (timeframeDuration * 100)); // Get 100 candles
+
+            // Cap at current time
+            const now = new Date();
+            if (endDate > now) endDate = now;
+
+            // Don't request if we just requested this range
+            if (lastDataRequestRef.current.future &&
+                Math.abs(lastDataRequestRef.current.future - endDate.getTime()) < timeframeDuration * 10) {
+                console.log("[Scroll] Skipping duplicate future data request");
+                setIsLoadingFutureData(false);
+                isProcessingScrollRequest.current = false;
+                return;
+            }
+
+            // Store this request time
+            lastDataRequestRef.current.future = endDate.getTime();
+        }
+
+        console.log(`[Scroll] Requesting ${direction} data from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+        // Track this scroll direction for later reference
+        scrollDirectionRef.current = direction;
+
+        try {
+            await requestSubscription('chart', {
+                platformName,  // Use the local variables, not destructured from currentSubscription
+                stockSymbol,
+                timeframe,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                resetData: false, // IMPORTANT: Don't reset existing data
+                scrollDirection: direction // Add this so we can track on response
+            });
+
+            console.log(`[Scroll] ${direction} data request successfully sent`);
+        } catch (err) {
+            console.error(`[Scroll] Error requesting ${direction} data:`, err);
+            // Reset loading state on error
+            if (direction === 'past') {
+                setIsLoadingPastData(false);
+            } else {
+                setIsLoadingFutureData(false);
+            }
+        } finally {
+            // Reset processing flag after a delay
+            setTimeout(() => {
+                isProcessingScrollRequest.current = false;
+            }, 500);
+        }
+    }, [
+        displayCandles,
+        currentSubscription,
+        timeframeInMs,
+        requestSubscription,
+        setIsLoadingPastData,
+        setIsLoadingFutureData,
+        lastValidSubscription
+    ]);
+
 
     // Helper function to update only display candles
     const updateDisplayCandles = useCallback((newCandles, isInitialLoad = false) => {
@@ -406,7 +697,7 @@ export function useCandleSubscription() {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
-            // NEW: Update our local reference before making the request
+            // Update our local reference before making the request
             const subscriptionDetails = {
                 platformName,
                 stockSymbol,
@@ -437,10 +728,18 @@ export function useCandleSubscription() {
                 timeframe,
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
-                subscriptionType: 'CHART'  // Add type marker for backend differentiation
+                subscriptionType: 'CHART',  // Add type marker for backend differentiation
+                resetData: true // Ensure we clear existing data for a new subscription
             };
 
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
+
+            // Reset loading states for a new subscription
+            setIsLoadingPastData(false);
+            setIsLoadingFutureData(false);
+
+            // Reset data request tracking
+            lastDataRequestRef.current = { past: null, future: null };
 
             // Use the WebSocketContext's request method for subscriptions
             await requestSubscription('chart', chartSubscriptionRequest);
@@ -456,7 +755,8 @@ export function useCandleSubscription() {
             setIsSubscribing(false);
         }
     }, [calculateStartDate, setIsWaitingForData, displayedCandles, currentSubscription,
-        subscriptionIds.chart, unsubscribe, updateCurrentSubscriptionInfo, requestSubscription]);
+        subscriptionIds.chart, unsubscribe, updateCurrentSubscriptionInfo, requestSubscription,
+        setIsLoadingPastData, setIsLoadingFutureData]);
 
     // Subscribe to candles for indicator calculations
     const subscribeToIndicatorCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
@@ -466,7 +766,7 @@ export function useCandleSubscription() {
             return Promise.resolve(null);
         }
 
-        // NEW: Added fallback to local reference or currentSubscription if parameters not provided
+        // Added fallback to local reference or currentSubscription if parameters not provided
         if (!platformName || !stockSymbol || !timeframe) {
             console.warn("[useCandleSubscription] Missing parameters for indicator subscription");
 
@@ -573,7 +873,7 @@ export function useCandleSubscription() {
             return;
         }
 
-        // NEW: Get subscription details with fallbacks
+        // Get subscription details with fallbacks
         let platformName = currentSubscription.platformName;
         let stockSymbol = currentSubscription.stockSymbol;
         let timeframe = currentSubscription.timeframe;
@@ -663,7 +963,7 @@ export function useCandleSubscription() {
             isUpdatingIndicatorSubscription.current = true;
             console.log(`[Indicator Monitor] Detected indicator requirements change event`);
 
-            // NEW: Log if subscription details are available
+            // Log if subscription details are available
             const details = {
                 fromCurrent: Boolean(currentSubscription.platformName && currentSubscription.stockSymbol && currentSubscription.timeframe),
                 fromLatestRef: Boolean(latestSubscriptionDetailsRef.current.platformName &&
@@ -716,7 +1016,7 @@ export function useCandleSubscription() {
         };
     }, [handleChartCandleMessage, handleIndicatorCandleMessage, registerHandler]);
 
-    // NEW: Add effect to handle page navigation and cleanup subscriptions when leaving StockMarket
+    // Add effect to handle page navigation and cleanup subscriptions when leaving StockMarket
     useEffect(() => {
         // Set up subscriptions and handlers...
 
@@ -741,7 +1041,6 @@ export function useCandleSubscription() {
         };
     }, []); // Empty dependency array means this runs on mount and cleanup runs on unmount
 
-
     // Watch for indicator changes to manage indicator subscription lifecycle
     useEffect(() => {
         // If indicators are added and we have an active chart subscription but no indicator subscription
@@ -749,7 +1048,7 @@ export function useCandleSubscription() {
             subscriptionIds.chart &&
             !subscriptionIds.indicator) {
 
-            // NEW: Try getting subscription details with fallbacks
+            // Try getting subscription details with fallbacks
             let platformName = currentSubscription.platformName;
             let stockSymbol = currentSubscription.stockSymbol;
             let timeframe = currentSubscription.timeframe;
@@ -803,6 +1102,23 @@ export function useCandleSubscription() {
         }
     }, [indicators, subscribeToIndicatorCandles, currentSubscription, lastValidSubscription, subscriptionIds, unsubscribe]);
 
+    // Add a new effect for monitoring scrolling position
+    useEffect(() => {
+        const checkAndLoadMoreData = () => {
+            const direction = checkNeedMoreData();
+            if (!direction) return;
+
+            console.log(`[Scroll] Need to load more ${direction} data`);
+            requestDataRange(direction).catch(err => {
+                console.error(`[Scroll] Error requesting ${direction} data:`, err);
+            });
+        };
+
+        // Check when view index changes
+        checkAndLoadMoreData();
+
+    }, [viewStartIndex, checkNeedMoreData, requestDataRange]);
+
     // Expose the unsubscribe function for explicit use
     const unsubscribeFromCandles = useCallback(async () => {
         return unsubscribeAll();
@@ -817,9 +1133,11 @@ export function useCandleSubscription() {
         subscribeToCandles,
         unsubscribeFromCandles,
         updateIndicatorSubscription,
-        // NEW: Expose the current subscription details
+        // Expose the current subscription details
         currentSubscriptionDetails: {
             ...lastValidSubscription
-        }
+        },
+        // Expose scroll-related functions for direct component use if needed
+        requestDataRange
     };
 }
