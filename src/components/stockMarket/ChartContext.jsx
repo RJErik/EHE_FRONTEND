@@ -44,10 +44,20 @@ export function ChartProvider({ children }) {
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
 
+    // Constants for buffer management
+    const BUFFER_SIZE_MULTIPLIER = 20; // How many timeframes to buffer on each side
+    const BUFFER_THRESHOLD_MULTIPLIER = 10; // When to request more data (timeframes left)
+
     // Refs to track first and last candle timestamps
     const firstCandleTimestampRef = useRef(null);
     const lastCandleTimestampRef = useRef(null);
     const lastUpdateReasonRef = useRef("initial");
+
+    // Refs for buffer management
+    const subscriptionStartDateRef = useRef(null);
+    const subscriptionEndDateRef = useRef(null);
+    const isRequestingPastDataRef = useRef(false);
+    const isRequestingFutureDataRef = useRef(false);
 
     // Enhanced setter function with reason tracking
     const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
@@ -310,6 +320,140 @@ export function ChartProvider({ children }) {
         }
     }, [displayCandles]);
 
+    // Track subscription date range when new data is received
+    const updateSubscriptionDateRange = useCallback((startDate, endDate) => {
+        subscriptionStartDateRef.current = startDate;
+        subscriptionEndDateRef.current = endDate;
+        console.log("[Buffer Management] Updated subscription date range:", {
+            start: new Date(startDate).toISOString(),
+            end: new Date(endDate).toISOString()
+        });
+    }, []);
+
+    // Function to check if we need to load more data due to scrolling
+    const checkBufferThresholds = useCallback(() => {
+        if (!displayCandles.length || !subscriptionStartDateRef.current || !subscriptionEndDateRef.current) {
+            return { needsPastData: false, needsFutureData: false };
+        }
+
+        // Get the first and last displayed candles
+        const visibleStartIndex = viewStartIndex;
+        const visibleEndIndex = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+        
+        if (visibleStartIndex < 0 || visibleEndIndex < 0 || visibleStartIndex >= displayCandles.length) {
+            return { needsPastData: false, needsFutureData: false };
+        }
+
+        const firstVisibleCandle = displayCandles[visibleStartIndex];
+        const lastVisibleCandle = displayCandles[visibleEndIndex];
+        
+        if (!firstVisibleCandle || !lastVisibleCandle) {
+            return { needsPastData: false, needsFutureData: false };
+        }
+
+        // Calculate thresholds
+        const thresholdTimeInMs = BUFFER_THRESHOLD_MULTIPLIER * timeframeInMs;
+        
+        // Check if we're close to the beginning of our data
+        const timeFromStart = firstVisibleCandle.timestamp - subscriptionStartDateRef.current;
+        const needsPastData = timeFromStart < thresholdTimeInMs;
+        
+        // Check if we're close to the end of our data
+        const timeToEnd = subscriptionEndDateRef.current - lastVisibleCandle.timestamp;
+        const needsFutureData = timeToEnd < thresholdTimeInMs;
+        
+        console.log("[Buffer Management] Buffer threshold check:", {
+            visibleStartIndex,
+            visibleEndIndex,
+            firstVisibleCandleTime: new Date(firstVisibleCandle.timestamp).toISOString(),
+            lastVisibleCandleTime: new Date(lastVisibleCandle.timestamp).toISOString(),
+            timeFromStart: `${(timeFromStart / 1000 / 60).toFixed(2)} minutes`,
+            timeToEnd: `${(timeToEnd / 1000 / 60).toFixed(2)} minutes`,
+            thresholdTime: `${(thresholdTimeInMs / 1000 / 60).toFixed(2)} minutes`,
+            needsPastData,
+            needsFutureData
+        });
+        
+        return { needsPastData, needsFutureData };
+    }, [displayCandles, viewStartIndex, displayedCandles, timeframeInMs]);
+
+    // Function to calculate new date range when we need more data
+    const calculateNewDateRangeForBuffer = useCallback((direction) => {
+        if (!displayCandles.length || !subscriptionStartDateRef.current || !subscriptionEndDateRef.current) {
+            return null;
+        }
+
+        // Get the first and last displayed candles
+        const visibleStartIndex = viewStartIndex;
+        const visibleEndIndex = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+        
+        if (visibleStartIndex < 0 || visibleEndIndex < 0 || visibleStartIndex >= displayCandles.length) {
+            return null;
+        }
+
+        const firstVisibleCandle = displayCandles[visibleStartIndex];
+        const lastVisibleCandle = displayCandles[visibleEndIndex];
+        
+        if (!firstVisibleCandle || !lastVisibleCandle) {
+            return null;
+        }
+
+        // Buffer size in milliseconds
+        const bufferSizeInMs = BUFFER_SIZE_MULTIPLIER * timeframeInMs;
+        
+        let newStartDate, newEndDate;
+        
+        if (direction === 'past') {
+            // We need more past data
+            // End date is the timestamp of first visible candle plus buffer
+            newEndDate = firstVisibleCandle.timestamp + bufferSizeInMs;
+            // Start date is the threshold for requesting more data
+            newStartDate = subscriptionStartDateRef.current - bufferSizeInMs;
+        } else {
+            // We need more future data
+            // Start date is the timestamp of last visible candle minus buffer
+            newStartDate = lastVisibleCandle.timestamp - bufferSizeInMs;
+            // End date is the threshold for requesting more data
+            newEndDate = subscriptionEndDateRef.current + bufferSizeInMs;
+        }
+        
+        console.log(`[Buffer Management] Calculated new ${direction} date range:`, {
+            start: new Date(newStartDate).toISOString(),
+            end: new Date(newEndDate).toISOString()
+        });
+        
+        return {
+            startDate: newStartDate,
+            endDate: newEndDate,
+            resetData: true
+        };
+    }, [displayCandles, viewStartIndex, displayedCandles, timeframeInMs]);
+
+    // Function to find candle index by timestamp
+    const findCandleIndexByTimestamp = useCallback((timestamp) => {
+        return displayCandles.findIndex(candle => candle.timestamp === timestamp);
+    }, [displayCandles]);
+
+    // Function to recalculate view index after receiving new data
+    const recalculateViewIndex = useCallback((referenceTimestamp) => {
+        // Find the index of the candle with the reference timestamp
+        const newIndex = findCandleIndexByTimestamp(referenceTimestamp);
+        
+        if (newIndex !== -1) {
+            console.log("[Buffer Management] Recalculated view index:", {
+                referenceTimestamp: new Date(referenceTimestamp).toISOString(),
+                newIndex
+            });
+            
+            // Update view index to maintain view position
+            setViewStartIndex(Math.max(0, Math.min(newIndex, displayCandles.length - displayedCandles)));
+            return true;
+        }
+        
+        console.warn("[Buffer Management] Failed to find reference candle after data update");
+        return false;
+    }, [displayCandles, displayedCandles, findCandleIndexByTimestamp]);
+
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
         if (!displayCandles.length) {
@@ -336,6 +480,34 @@ export function ChartProvider({ children }) {
         const isViewingLatest = currentViewEnd >= displayCandles.length;
         // For now, we'll just request 1 candle ahead if we're at the edge
         const extraFutureCandles = isViewingLatest ? 1 : 0;
+
+        // Check buffer thresholds
+        const { needsPastData, needsFutureData } = checkBufferThresholds();
+        
+        // If we need to load more data, calculate the new range
+        if (needsPastData && !isRequestingPastDataRef.current) {
+            const pastRange = calculateNewDateRangeForBuffer('past');
+            if (pastRange) {
+                return {
+                    ...pastRange,
+                    isBufferUpdate: true,
+                    bufferDirection: 'past',
+                    referenceTimestamp: displayCandles[viewStartIndex]?.timestamp
+                };
+            }
+        }
+        
+        if (needsFutureData && !isRequestingFutureDataRef.current) {
+            const futureRange = calculateNewDateRangeForBuffer('future');
+            if (futureRange) {
+                return {
+                    ...futureRange,
+                    isBufferUpdate: true,
+                    bufferDirection: 'future',
+                    referenceTimestamp: displayCandles[Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1)]?.timestamp
+                };
+            }
+        }
 
         // Calculate start date based on lookback
         let startDate;
@@ -420,7 +592,16 @@ export function ChartProvider({ children }) {
             extraFutureCandles,
             totalCandlesNeeded: (currentViewEnd - dataStartIndex) + extraFutureCandles
         };
-    }, [displayCandles, viewStartIndex, displayedCandles, indicators, timeframeInMs, calculateMaxLookback]);
+    }, [
+        displayCandles, 
+        viewStartIndex, 
+        displayedCandles, 
+        indicators, 
+        timeframeInMs, 
+        calculateMaxLookback, 
+        checkBufferThresholds, 
+        calculateNewDateRangeForBuffer
+    ]);
 
     // Create a ref to safely access the latest version of the function
     const calculateRangeRef = useRef(calculateRequiredDataRange);
@@ -429,6 +610,25 @@ export function ChartProvider({ children }) {
     useEffect(() => {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
+
+    // When viewStartIndex changes, check if we need to load more data
+    useEffect(() => {
+        // Don't check while dragging to avoid multiple requests
+        if (isDragging) return;
+        
+        // Don't check if no data is loaded yet
+        if (!displayCandles.length) return;
+        
+        const { needsPastData, needsFutureData } = checkBufferThresholds();
+        
+        if ((needsPastData && !isRequestingPastDataRef.current) || 
+            (needsFutureData && !isRequestingFutureDataRef.current)) {
+            
+            // Request data update through existing subscription mechanism
+            console.log("[Buffer Management] Requesting data update due to scrolling");
+            setShouldUpdateSubscription(true);
+        }
+    }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging]);
 
     // Recalculate indicators when indicators list changes or indicator candles change
     useEffect(() => {
@@ -491,14 +691,23 @@ export function ChartProvider({ children }) {
                 console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
                 const range = calculateRequiredDataRange();
 
-                // Check if range is different from last request
+                // Check if range is different from last request or if it's a buffer update
                 const lastRange = lastRequestedRangeRef.current;
                 const isRangeDifferent = !lastRange ||
                     lastRange.start !== range.start ||
                     lastRange.end !== range.end;
 
-                if (isRangeDifferent) {
+                if (isRangeDifferent || range.isBufferUpdate) {
                     lastRequestedRangeRef.current = { ...range };
+                    
+                    // Update request flags for buffer management
+                    if (range.isBufferUpdate) {
+                        if (range.bufferDirection === 'past') {
+                            isRequestingPastDataRef.current = true;
+                        } else if (range.bufferDirection === 'future') {
+                            isRequestingFutureDataRef.current = true;
+                        }
+                    }
 
                     // Use setTimeout to prevent immediate consecutive emissions
                     setTimeout(() => {
@@ -507,7 +716,10 @@ export function ChartProvider({ children }) {
                                 range,
                                 indicatorCount: indicators.length,
                                 // Include current subscription details if needed
-                                subscriptionDetails: true // this forces the handler to look up current details
+                                subscriptionDetails: true, // this forces the handler to look up current details
+                                isBufferUpdate: range.isBufferUpdate,
+                                bufferDirection: range.bufferDirection,
+                                referenceTimestamp: range.referenceTimestamp
                             }
                         });
                         window.dispatchEvent(indicatorChangeEvent);
@@ -601,70 +813,103 @@ export function ChartProvider({ children }) {
         setShouldUpdateSubscription(true);
     };
 
+    // Method to handle buffer update completion
+    const handleBufferUpdateComplete = useCallback((direction, referenceTimestamp) => {
+        // Reset request flags
+        if (direction === 'past') {
+            isRequestingPastDataRef.current = false;
+        } else if (direction === 'future') {
+            isRequestingFutureDataRef.current = false;
+        }
+        
+        // Recalculate view index if provided a reference timestamp
+        if (referenceTimestamp) {
+            recalculateViewIndex(referenceTimestamp);
+        }
+        
+        console.log(`[Buffer Management] Completed ${direction} buffer update`);
+    }, [recalculateViewIndex]);
+
+    // Create an object with all the context values
+    const contextValue = {
+        // Data
+        displayCandles,
+        setDisplayCandles: updateDisplayCandles, // Use enhanced setter
+        indicatorCandles,
+        setIndicatorCandles: (newCandles) => {
+            lastUpdateReasonRef.current = "update_indicator_candles";
+            setIndicatorCandles(newCandles);
+        },
+        candleData,
+
+        // View state
+        viewStartIndex,
+        setViewStartIndex: (index) => {
+            lastUpdateReasonRef.current = "view_index_change";
+            setViewStartIndex(index);
+        },
+        displayedCandles,
+        setDisplayedCandles: (count) => {
+            lastUpdateReasonRef.current = "display_count_change";
+            setDisplayedCandles(count);
+        },
+        isDragging,
+        setIsDragging,
+
+        // Hover state
+        hoveredIndex,
+        setHoveredIndex,
+        hoveredCandle,
+        setHoveredCandle,
+        currentMouseY,
+        setCurrentMouseY,
+        activeTimestamp,
+        setActiveTimestamp,
+
+        // Configuration
+        isLogarithmic,
+        setIsLogarithmic,
+        isWaitingForData,
+        setIsWaitingForData,
+        timeframeInMs,
+        setTimeframeInMs: (ms) => {
+            lastUpdateReasonRef.current = "timeframe_change";
+            setTimeframeInMs(ms);
+        },
+        isDataGenerationEnabled,
+        setIsDataGenerationEnabled,
+
+        // Indicators
+        indicators,
+        addIndicator,
+        removeIndicator,
+        updateIndicator,
+        applyIndicatorsToCandleDisplay,
+
+        // Constants
+        MIN_DISPLAY_CANDLES,
+        MAX_DISPLAY_CANDLES,
+        BUFFER_SIZE_MULTIPLIER,
+        BUFFER_THRESHOLD_MULTIPLIER,
+
+        // WebSocket preparation
+        calculateRequiredDataRange,
+        requestSubscriptionUpdate,
+        
+        // Buffer management
+        updateSubscriptionDateRange,
+        checkBufferThresholds,
+        handleBufferUpdateComplete,
+        findCandleIndexByTimestamp
+    };
+    
+    // Expose context externally through a global variable
+    if (typeof window !== 'undefined') {
+        window.__chartContextValue = contextValue;
+    }
+    
     return (
-        <ChartContext.Provider value={{
-            // Data
-            displayCandles,
-            setDisplayCandles: updateDisplayCandles, // Use enhanced setter
-            indicatorCandles,
-            setIndicatorCandles: (newCandles) => {
-                lastUpdateReasonRef.current = "update_indicator_candles";
-                setIndicatorCandles(newCandles);
-            },
-            candleData,
-
-            // View state
-            viewStartIndex,
-            setViewStartIndex: (index) => {
-                lastUpdateReasonRef.current = "view_index_change";
-                setViewStartIndex(index);
-            },
-            displayedCandles,
-            setDisplayedCandles: (count) => {
-                lastUpdateReasonRef.current = "display_count_change";
-                setDisplayedCandles(count);
-            },
-            isDragging,
-            setIsDragging,
-
-            // Hover state
-            hoveredIndex,
-            setHoveredIndex,
-            hoveredCandle,
-            setHoveredCandle,
-            currentMouseY,
-            setCurrentMouseY,
-            activeTimestamp,
-            setActiveTimestamp,
-
-            // Configuration
-            isLogarithmic,
-            setIsLogarithmic,
-            isWaitingForData,
-            setIsWaitingForData,
-            timeframeInMs,
-            setTimeframeInMs: (ms) => {
-                lastUpdateReasonRef.current = "timeframe_change";
-                setTimeframeInMs(ms);
-            },
-            isDataGenerationEnabled,
-            setIsDataGenerationEnabled,
-
-            // Indicators
-            indicators,
-            addIndicator,
-            removeIndicator,
-            updateIndicator,
-            applyIndicatorsToCandleDisplay,
-
-            // Constants
-            MIN_DISPLAY_CANDLES,
-            MAX_DISPLAY_CANDLES,
-
-            // WebSocket preparation
-            calculateRequiredDataRange,
-            requestSubscriptionUpdate
-        }}>
+        <ChartContext.Provider value={contextValue} data-chart-context>
             {children}
         </ChartContext.Provider>
     );

@@ -77,6 +77,13 @@ const CandleChart = () => {
     useEffect(() => {
         if (!data || !Array.isArray(data) || data.length === 0 || !chartRef.current) return;
 
+        // Check if this is a buffer update - if buffer size changed but we still have data
+        const possibleBufferUpdate = displayCandles.length > data.length + displayedCandles;
+        
+        if (possibleBufferUpdate) {
+            console.log("[CandleChart] Detected possible buffer update - maintaining view position");
+        }
+
         renderCandleChart({
             chartRef,
             data,
@@ -92,7 +99,8 @@ const CandleChart = () => {
             hoveredIndex,
             setHoveredIndex,
             viewStartIndex, // Pass the current viewStartIndex
-            isMouseOverChart // Added this parameter
+            isMouseOverChart, // Added this parameter
+            isBufferUpdate: possibleBufferUpdate // Indicate this may be a buffer update
         });
 
         // Add window resize handler
@@ -115,7 +123,8 @@ const CandleChart = () => {
                 hoveredIndex,
                 setHoveredIndex,
                 viewStartIndex, // Pass the current viewStartIndex
-                isMouseOverChart // Also pass mouse over state
+                isMouseOverChart, // Also pass mouse over state
+                isBufferUpdate: true // Always preserve position on resize
             });
         };
 

@@ -64,7 +64,7 @@ const SubscriptionManager = {
     registerHandler(type, handler) {
         if (!type || !handler) return () => {};
 
-        console.log(`[SubscriptionManager] Registering new ${type} message handler`);
+        //console.log(`[SubscriptionManager] Registering new ${type} message handler`);
         this.messageHandlers[type].add(handler);
         return () => this.unregisterHandler(type, handler);
     },
@@ -73,7 +73,7 @@ const SubscriptionManager = {
     unregisterHandler(type, handler) {
         if (!type || !handler) return;
 
-        console.log(`[SubscriptionManager] Unregistering ${type} message handler`);
+        //console.log(`[SubscriptionManager] Unregistering ${type} message handler`);
         this.messageHandlers[type].delete(handler);
     },
 
