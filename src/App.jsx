@@ -9,6 +9,8 @@ import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/WebSocketContext";
+import WatchlistTicker from "./components/watchlist/WatchlistTicker";
+import { WatchlistProvider } from "./context/WatchlistContext";
 
 function App() {
     // Simple routing implementation
@@ -36,8 +38,18 @@ function App() {
 
     return (
         <WebSocketProvider currentPage={currentPage}>
-            {renderPage()}
-            <Toaster />
+            <WatchlistProvider>
+                <div className="flex flex-col min-h-screen">
+                    {/* The main content with padding for both header and ticker */}
+                    <div className="pt-[81px]"> {/* 60px header + 21px ticker collapsed height */}
+                        {renderPage()}
+                    </div>
+
+                    {/* The watchlist ticker appears below the header */}
+                    <WatchlistTicker />
+                </div>
+                <Toaster />
+            </WatchlistProvider>
         </WebSocketProvider>
     );
 }

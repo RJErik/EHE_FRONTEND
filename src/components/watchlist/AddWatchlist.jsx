@@ -1,11 +1,47 @@
+import { useState } from "react";
 import { Button } from "../ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.jsx";
+import { useStockData } from "../../hooks/useStockData.js";
+import { useWatchlist } from "../../context/WatchlistContext";
+import { Loader2 } from "lucide-react";
 
 const AddWatchlist = () => {
-    // Mock data for platforms and stocks
-    const platforms = ["NYSE", "NASDAQ", "LSE", "TSE"];
-    const stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"];
+    const [isAdding, setIsAdding] = useState(false);
+
+    const {
+        platforms,
+        stocks,
+        selectedPlatform,
+        setSelectedPlatform,
+        selectedStock,
+        setSelectedStock,
+        isLoadingPlatforms,
+        isLoadingStocks
+    } = useStockData();
+
+    const { addWatchlistItem, fetchWatchlistItems } = useWatchlist();
+
+    const handleAdd = async () => {
+        if (!selectedPlatform || !selectedStock) {
+            return;
+        }
+
+        setIsAdding(true);
+        try {
+            const success = await addWatchlistItem(selectedPlatform, selectedStock);
+            if (success) {
+                // Reset stock selection after successful add
+                setSelectedStock("");
+
+                // Force refresh the watchlist
+                console.log("Add successful - forcing refresh");
+                await fetchWatchlistItems();
+            }
+        } finally {
+            setIsAdding(false);
+        }
+    };
 
     return (
         <Card className="w-full mt-4">
@@ -15,9 +51,13 @@ const AddWatchlist = () => {
             <CardContent className="space-y-4">
                 <div>
                     <p className="text-xs mb-1">Platform</p>
-                    <Select>
+                    <Select
+                        value={selectedPlatform}
+                        onValueChange={setSelectedPlatform}
+                        disabled={isLoadingPlatforms || isAdding}
+                    >
                         <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select" />
+                            <SelectValue placeholder="Select platform" />
                         </SelectTrigger>
                         <SelectContent>
                             {platforms.map((platform) => (
@@ -29,9 +69,13 @@ const AddWatchlist = () => {
 
                 <div>
                     <p className="text-xs mb-1">Stock</p>
-                    <Select>
+                    <Select
+                        value={selectedStock}
+                        onValueChange={setSelectedStock}
+                        disabled={isLoadingStocks || isAdding || !selectedPlatform}
+                    >
                         <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select" />
+                            <SelectValue placeholder={selectedPlatform ? "Select stock" : "Select platform first"} />
                         </SelectTrigger>
                         <SelectContent>
                             {stocks.map((stock) => (
@@ -41,8 +85,19 @@ const AddWatchlist = () => {
                     </Select>
                 </div>
 
-                <Button className="w-full">
-                    Add
+                <Button
+                    className="w-full"
+                    onClick={handleAdd}
+                    disabled={!selectedPlatform || !selectedStock || isAdding}
+                >
+                    {isAdding ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Adding...
+                        </>
+                    ) : (
+                        "Add"
+                    )}
                 </Button>
             </CardContent>
         </Card>

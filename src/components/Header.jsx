@@ -26,7 +26,7 @@ const Header = ({ navigate, currentPage, userName = "User" }) => {
 
     return (
         <>
-            <Menubar className="py-7 px-7 flex items-center justify-between">
+            <Menubar className="py-7 px-7 flex items-center justify-between fixed w-full z-50 top-0 left-0 right-0 bg-background">
                 <Button
                     variant="outline"
                     size="icon"
