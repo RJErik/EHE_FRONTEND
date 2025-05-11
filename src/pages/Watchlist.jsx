@@ -1,13 +1,10 @@
-import Header from "../components/Header";
 import SearchWatchlist from "../components/watchlist/SearchWatchlist.jsx";
 import AddWatchlist from "../components/watchlist/AddWatchlist.jsx";
 import WatchlistDisplay from "../components/watchlist/WatchlistDisplay.jsx";
 
-const Watchlist = ({ navigate }) => {
+const Watchlist = () => {
     return (
-        <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="watchlist" />
-
+        <div className="flex flex-col">
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Watchlist</h1>
 

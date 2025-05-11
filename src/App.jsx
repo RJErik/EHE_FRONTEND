@@ -11,6 +11,7 @@ import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/WebSocketContext";
 import WatchlistTicker from "./components/watchlist/WatchlistTicker";
 import { WatchlistProvider } from "./context/WatchlistContext";
+import Header from "./components/Header";
 
 function App() {
     // Simple routing implementation
@@ -22,7 +23,7 @@ function App() {
     };
 
     // Render the appropriate page
-    const renderPage = () => {
+    const renderContent = () => {
         switch (currentPage) {
             case "home": return <Home navigate={navigate} />;
             case "account": return <Account navigate={navigate} />;
@@ -40,13 +41,21 @@ function App() {
         <WebSocketProvider currentPage={currentPage}>
             <WatchlistProvider>
                 <div className="flex flex-col min-h-screen">
-                    {/* The main content with padding for both header and ticker */}
-                    <div className="pt-[81px]"> {/* 60px header + 21px ticker collapsed height */}
-                        {renderPage()}
+                    {/* Fixed header */}
+                    <div className="fixed top-0 left-0 right-0 z-50">
+                        <Header navigate={navigate} currentPage={currentPage} />
                     </div>
 
-                    {/* The watchlist ticker appears below the header */}
-                    <WatchlistTicker />
+                    {/* Main content with proper spacing */}
+                    <div className="pt-[60px]"> {/* Space for header */}
+                        {/* Ticker now part of the main flow */}
+                        <WatchlistTicker />
+
+                        {/* Page content */}
+                        <div className="flex-1">
+                            {renderContent()}
+                        </div>
+                    </div>
                 </div>
                 <Toaster />
             </WatchlistProvider>

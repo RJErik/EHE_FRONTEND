@@ -35,7 +35,7 @@ const WatchlistTicker = () => {
         return () => {
             cancelAnimationFrame(animationFrameId);
         };
-    }, [isOpen, watchlistItems, lastUpdate]); // Added lastUpdate dependency
+    }, [isOpen, watchlistItems, lastUpdate]);
 
     // Refresh candles periodically when ticker is open
     useEffect(() => {
@@ -46,16 +46,15 @@ const WatchlistTicker = () => {
 
         const interval = setInterval(() => {
             fetchWatchlistCandles();
-        }, 30000); // Refresh every 30 seconds for better responsiveness
+        }, 30000);
 
         return () => clearInterval(interval);
-    }, [isOpen, fetchWatchlistCandles, watchlistItems, lastUpdate]); // Added lastUpdate dependency
+    }, [isOpen, fetchWatchlistCandles, watchlistItems, lastUpdate]);
 
     return (
         <div className={cn(
-            "fixed left-0 right-0 bg-background border-b z-40 transition-all duration-300",
-            "top-[60px]", // Position below header
-            isOpen ? "h-14" : "h-7"
+            "sticky top-[60px] w-full bg-background border-b z-40 transition-all duration-300",
+            isOpen ? "h-18" : "h-7" // Increased height when open
         )}>
             <div className="container mx-auto h-full flex flex-col">
                 {/* Toggle button */}
@@ -72,7 +71,7 @@ const WatchlistTicker = () => {
                 {isOpen && (
                     <div
                         ref={scrollRef}
-                        className="ticker-scroll flex-1 flex items-center overflow-x-auto"
+                        className="ticker-scroll flex-1 flex items-center overflow-x-auto py-2"
                     >
                         {watchlistItems.length === 0 ? (
                             <div className="mx-auto text-sm text-muted-foreground">
