@@ -47,8 +47,8 @@ export function useApiKeys() {
         }
     };
 
-    // Add API key
-    const addApiKey = async (platformName, apiKeyValue) => {
+    // Add API key with secret key
+    const addApiKey = async (platformName, apiKeyValue, secretKey) => {
         setIsLoading(true);
         setError(null);
 
@@ -59,7 +59,7 @@ export function useApiKeys() {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ platformName, apiKeyValue }),
+                body: JSON.stringify({ platformName, apiKeyValue, secretKey }),
             });
 
             const data = await response.json();
@@ -91,8 +91,8 @@ export function useApiKeys() {
         }
     };
 
-    // Update API key
-    const updateApiKey = async (apiKeyId, platformName, apiKeyValue) => {
+    // Update API key with optional secret key
+    const updateApiKey = async (apiKeyId, platformName, apiKeyValue, secretKey) => {
         setIsLoading(true);
         setError(null);
 
@@ -103,7 +103,7 @@ export function useApiKeys() {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ apiKeyId, platformName, apiKeyValue }),
+                body: JSON.stringify({ apiKeyId, platformName, apiKeyValue, secretKey }),
             });
 
             const data = await response.json();

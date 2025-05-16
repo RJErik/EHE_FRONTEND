@@ -52,13 +52,13 @@ const ApiKeyManager = () => {
         setDeleteDialogOpen(true);
     };
 
-    const handleAddKey = async (platformName, apiKeyValue) => {
-        await addApiKey(platformName, apiKeyValue);
+    const handleAddKey = async (platformName, apiKeyValue, secretKey) => {
+        await addApiKey(platformName, apiKeyValue, secretKey);
         setAddDialogOpen(false);
     };
 
-    const handleUpdateKey = async (apiKeyId, platformName, apiKeyValue) => {
-        await updateApiKey(apiKeyId, platformName, apiKeyValue);
+    const handleUpdateKey = async (apiKeyId, platformName, apiKeyValue, secretKey) => {
+        await updateApiKey(apiKeyId, platformName, apiKeyValue, secretKey);
         setUpdateDialogOpen(false);
     };
 
