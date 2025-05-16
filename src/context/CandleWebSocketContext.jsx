@@ -3,7 +3,7 @@ import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
 
 // Create WebSocket Context
-const WebSocketContext = createContext(null);
+const CandleWebSocketContext = createContext(null);
 
 // Global persistent subscription manager for tracking active subscriptions
 const SubscriptionManager = {
@@ -133,7 +133,7 @@ export function WebSocketProvider({ children, currentPage }) {
                 try {
                     handler(data);
                 } catch (err) {
-                    console.error("[WebSocketContext] Error in chart message handler:", err);
+                    console.error("[CandleWebSocketContext] Error in chart message handler:", err);
                 }
             });
         }
@@ -143,7 +143,7 @@ export function WebSocketProvider({ children, currentPage }) {
                 try {
                     handler(data);
                 } catch (err) {
-                    console.error("[WebSocketContext] Error in indicator message handler:", err);
+                    console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
                 }
             });
         }
@@ -155,7 +155,7 @@ export function WebSocketProvider({ children, currentPage }) {
                     try {
                         handler(data);
                     } catch (err) {
-                        console.error("[WebSocketContext] Error in chart message handler:", err);
+                        console.error("[CandleWebSocketContext] Error in chart message handler:", err);
                     }
                 });
             }
@@ -164,18 +164,18 @@ export function WebSocketProvider({ children, currentPage }) {
                     try {
                         handler(data);
                     } catch (err) {
-                        console.error("[WebSocketContext] Error in indicator message handler:", err);
+                        console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
                     }
                 });
             }
             // If no type marker is present, send to both (legacy compatibility)
             else {
-                console.log("[WebSocketContext] Unidentified message, routing to all handlers");
+                console.log("[CandleWebSocketContext] Unidentified message, routing to all handlers");
                 [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
                     try {
                         handler(data);
                     } catch (err) {
-                        console.error("[WebSocketContext] Error in shared message handler:", err);
+                        console.error("[CandleWebSocketContext] Error in shared message handler:", err);
                     }
                 });
             }
@@ -188,14 +188,14 @@ export function WebSocketProvider({ children, currentPage }) {
     // Initialize WebSocket connection
     const initializeWebSocket = async () => {
         if (initialized.current) {
-            console.log("[WebSocketContext] Already initialized");
+            console.log("[CandleWebSocketContext] Already initialized");
             return;
         }
 
         try {
             // Connect to WebSocket
             await webSocketService.connect();
-            console.log("[WebSocketContext] WebSocket connected globally");
+            console.log("[CandleWebSocketContext] WebSocket connected globally");
             SubscriptionManager.isConnected = true;
             setIsConnected(true);
             setConnectionError(null);
@@ -208,9 +208,9 @@ export function WebSocketProvider({ children, currentPage }) {
 
             initialized.current = true;
             setIsInitialized(true);
-            console.log("[WebSocketContext] Global WebSocket initialization complete");
+            console.log("[CandleWebSocketContext] Global WebSocket initialization complete");
         } catch (err) {
-            console.error("[WebSocketContext] Failed to initialize global WebSocket:", err);
+            console.error("[CandleWebSocketContext] Failed to initialize global WebSocket:", err);
             setConnectionError(err.message);
             setIsConnected(false);
             
@@ -304,11 +304,11 @@ export function WebSocketProvider({ children, currentPage }) {
 
     // Connect WebSocket on component mount
     useEffect(() => {
-        console.log("[WebSocketContext] Setting up global WebSocket connection");
+        console.log("[CandleWebSocketContext] Setting up global WebSocket connection");
         
         if (!initialized.current) {
             initializeWebSocket().catch(err => {
-                console.error("[WebSocketContext] Initialization error:", err);
+                console.error("[CandleWebSocketContext] Initialization error:", err);
             });
         }
 
@@ -316,7 +316,7 @@ export function WebSocketProvider({ children, currentPage }) {
         return () => {
             // Note: We intentionally don't disconnect from WebSocket on unmount
             // as we want the connection to persist throughout the app
-            console.log("[WebSocketContext] Provider unmounting - keeping connection alive");
+            console.log("[CandleWebSocketContext] Provider unmounting - keeping connection alive");
         };
     }, []);
 
@@ -346,19 +346,19 @@ export function WebSocketProvider({ children, currentPage }) {
     };
 
     return (
-        <WebSocketContext.Provider value={contextValue}>
+        <CandleWebSocketContext.Provider value={contextValue}>
             {children}
-        </WebSocketContext.Provider>
+        </CandleWebSocketContext.Provider>
     );
 }
 
 // Custom hook to use the WebSocket context
 export function useWebSocket() {
-    const context = useContext(WebSocketContext);
+    const context = useContext(CandleWebSocketContext);
     if (!context) {
         throw new Error('useWebSocket must be used within a WebSocketProvider');
     }
     return context;
 }
 
-export { WebSocketContext };
+export { CandleWebSocketContext };

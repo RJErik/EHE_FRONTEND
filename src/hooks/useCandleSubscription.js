@@ -1,7 +1,7 @@
 // src/hooks/useCandleSubscription.js
 import { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { ChartContext } from '../components/stockMarket/ChartContext';
-import { useWebSocket } from '../context/WebSocketContext';
+import { useWebSocket } from '../context/CandleWebSocketContext.jsx';
 import { useToast } from './use-toast';
 
 export function useCandleSubscription() {
@@ -97,7 +97,7 @@ export function useCandleSubscription() {
         console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         console.log(data);
 
-        // Skip heartbeats - already handled in WebSocketContext
+        // Skip heartbeats - already handled in CandleWebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
         // UPDATED APPROACH: Check for candles first, regardless of other properties
@@ -129,7 +129,7 @@ export function useCandleSubscription() {
                     latestSubscriptionDetailsRef.current = newDetails;
                     setLastValidSubscription(newDetails);
 
-                    // Ensure WebSocketContext is also updated
+                    // Ensure CandleWebSocketContext is also updated
                     updateCurrentSubscriptionInfo(newDetails);
                     
                     // Update the buffer date range in ChartContext
@@ -256,7 +256,7 @@ export function useCandleSubscription() {
                 latestSubscriptionDetailsRef.current = newDetails;
                 setLastValidSubscription(newDetails);
 
-                // Ensure WebSocketContext is also updated
+                // Ensure CandleWebSocketContext is also updated
                 updateCurrentSubscriptionInfo(newDetails);
             }
         } else {
@@ -270,7 +270,7 @@ export function useCandleSubscription() {
         console.log("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
         console.log(data);
 
-        // Skip heartbeats - already handled in WebSocketContext
+        // Skip heartbeats - already handled in CandleWebSocketContext
         if (data.updateType === "HEARTBEAT") return;
 
         // UPDATED APPROACH: Check for candles first, regardless of other properties
@@ -312,7 +312,7 @@ export function useCandleSubscription() {
                     latestSubscriptionDetailsRef.current = newDetails;
                     setLastValidSubscription(newDetails);
 
-                    // Ensure WebSocketContext is also updated
+                    // Ensure CandleWebSocketContext is also updated
                     updateCurrentSubscriptionInfo(newDetails);
                 }
             }
@@ -521,7 +521,7 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
 
-            // Use the WebSocketContext's request method for subscriptions
+            // Use the CandleWebSocketContext's request method for subscriptions
             await requestSubscription('chart', chartSubscriptionRequest);
             console.log("[useCandleSubscription] Chart subscription request sent");
 
@@ -624,7 +624,7 @@ export function useCandleSubscription() {
 
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
 
-            // Use the WebSocketContext's request method for subscriptions
+            // Use the CandleWebSocketContext's request method for subscriptions
             await requestSubscription('indicator', indicatorSubscriptionRequest);
             console.log("[useCandleSubscription] Indicator subscription request sent");
 
@@ -862,9 +862,9 @@ export function useCandleSubscription() {
         };
     }, [updateIndicatorSubscription, currentSubscription, lastValidSubscription, unsubscribe, requestSubscription, subscriptionIds.chart]);
 
-    // Register message handlers with WebSocketContext on mount
+    // Register message handlers with CandleWebSocketContext on mount
     useEffect(() => {
-        //console.log("[useCandleSubscription] Registering message handlers with WebSocketContext");
+        //console.log("[useCandleSubscription] Registering message handlers with CandleWebSocketContext");
 
         // Register our handlers
         const unregChartHandler = registerHandler('chart', handleChartCandleMessage);

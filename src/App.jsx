@@ -1,3 +1,4 @@
+// App.jsx
 import { useState } from "react";
 import Home from "./pages/Home";
 import Account from "./pages/Account";
@@ -8,7 +9,8 @@ import AutomaticTransactions from "./pages/AutomaticTransactions.jsx";
 import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
-import { WebSocketProvider } from "./context/WebSocketContext";
+import { WebSocketProvider } from "./context/CandleWebSocketContext";
+import { AlertWebSocketProvider } from "./context/AlertWebSocketContext"; // Import the new provider
 import WatchlistTicker from "./components/watchlist/WatchlistTicker";
 import { WatchlistProvider } from "./context/WatchlistContext";
 import Header from "./components/Header";
@@ -39,26 +41,25 @@ function App() {
 
     return (
         <WebSocketProvider currentPage={currentPage}>
-            <WatchlistProvider>
-                <div className="flex flex-col min-h-screen">
-                    {/* Fixed header */}
-                    <div className="fixed top-0 left-0 right-0 z-50">
-                        <Header navigate={navigate} currentPage={currentPage} />
-                    </div>
+            <AlertWebSocketProvider> {/* Add the new provider */}
+                <WatchlistProvider>
+                    <div className="flex flex-col min-h-screen">
+                        {/* Fixed header */}
+                        <div className="fixed top-0 left-0 right-0 z-50">
+                            <Header navigate={navigate} currentPage={currentPage} />
+                        </div>
 
-                    {/* Main content with proper spacing */}
-                    <div className="pt-[60px]"> {/* Space for header */}
-                        {/* Ticker now part of the main flow */}
-                        <WatchlistTicker />
-
-                        {/* Page content */}
-                        <div className="flex-1">
-                            {renderContent()}
+                        {/* Main content with proper spacing */}
+                        <div className="pt-[60px]">
+                            <WatchlistTicker />
+                            <div className="flex-1">
+                                {renderContent()}
+                            </div>
                         </div>
                     </div>
-                </div>
-                <Toaster />
-            </WatchlistProvider>
+                    <Toaster />
+                </WatchlistProvider>
+            </AlertWebSocketProvider>
         </WebSocketProvider>
     );
 }
