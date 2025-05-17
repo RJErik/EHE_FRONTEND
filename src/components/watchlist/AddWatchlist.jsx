@@ -20,7 +20,7 @@ const AddWatchlist = () => {
         isLoadingStocks
     } = useStockData();
 
-    const { addWatchlistItem, fetchWatchlistItems } = useWatchlist();
+    const { addWatchlistItem, refreshLatestSearch } = useWatchlist();
 
     const handleAdd = async () => {
         if (!selectedPlatform || !selectedStock) {
@@ -34,9 +34,9 @@ const AddWatchlist = () => {
                 // Reset stock selection after successful add
                 setSelectedStock("");
 
-                // Force refresh the watchlist
+                // Force refresh using the last search
                 console.log("Add successful - forcing refresh");
-                await fetchWatchlistItems();
+                refreshLatestSearch();
             }
         } finally {
             setIsAdding(false);

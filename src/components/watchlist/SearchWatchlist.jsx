@@ -7,7 +7,6 @@ import { useWatchlist } from "../../context/WatchlistContext";
 import { Loader2, RefreshCw } from "lucide-react";
 
 const SearchWatchlist = () => {
-    // Rest of your code stays the same, just change the import
     const [isSearching, setIsSearching] = useState(false);
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [searchSymbol, setSearchSymbol] = useState("_any_");
@@ -22,7 +21,7 @@ const SearchWatchlist = () => {
         isLoadingStocks
     } = useStockData();
 
-    const { searchWatchlistItems, fetchWatchlistItems } = useWatchlist();
+    const { searchWatchlistItems, fetchWatchlistItems, refreshLatestSearch } = useWatchlist();
 
     const handleSearch = async () => {
         setIsSearching(true);
@@ -51,13 +50,7 @@ const SearchWatchlist = () => {
     };
 
     const handleRefresh = () => {
-        if (hasSearched) {
-            // Repeat the last search
-            handleSearch();
-        } else {
-            // Just refresh all items
-            fetchWatchlistItems();
-        }
+        refreshLatestSearch();
     };
 
     // Update the platform in stock data hook when search platform changes

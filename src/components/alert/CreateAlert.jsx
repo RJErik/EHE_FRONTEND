@@ -24,7 +24,7 @@ const CreateAlert = () => {
         isLoadingStocks
     } = useStockData();
 
-    const { addAlert, fetchAlerts } = useAlert();
+    const { addAlert, refreshLatestSearch  } = useAlert();
 
     const handleCreate = async () => {
         if (!selectedPlatform || !selectedStock || !selectedConditionType || !thresholdValue) {
@@ -48,7 +48,7 @@ const CreateAlert = () => {
 
                 // Force refresh the alerts list
                 console.log("Alert created successfully - forcing refresh");
-                await fetchAlerts();
+                refreshLatestSearch();
             }
         } finally {
             setIsCreating(false);
