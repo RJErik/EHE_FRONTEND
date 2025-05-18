@@ -1,11 +1,75 @@
-import { Card, CardContent } from "../ui/card.jsx";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "../ui/card.jsx";
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+} from "../ui/chart";
 
-const PortfolioCompositionList = () => {
+const PortfolioCompositionList = ({ portfolioData }) => {
+    if (!portfolioData || !portfolioData.stocks || portfolioData.stocks.length === 0) {
+        return (
+            <Card className="h-full">
+                <CardContent className="flex items-center justify-center p-6 h-full min-h-[320px]">
+                    <p className="text-xl text-center">No stocks data available</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    // Sort stocks by value in descending order and format for the chart
+    const chartData = [...portfolioData.stocks]
+        .sort((a, b) => parseFloat(b.value) - parseFloat(a.value))
+        .map(stock => ({
+            month: stock.symbol, // Using 'month' to match the expected format
+            desktop: parseFloat(stock.value), // Using 'desktop' to match the expected format
+        }));
+
+    // Define chart configuration
+    const chartConfig = {
+        desktop: {
+            label: "Value",
+            color: "hsl(var(--chart-1))",
+        },
+    };
+
     return (
         <Card className="h-full">
-            <CardContent className="flex items-center justify-center p-6 h-full min-h-[320px]">
-                <p className="text-xl text-center">List of the composition of the portfolio</p>
+            <CardHeader>
+                <CardTitle>Holdings Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ChartContainer config={chartConfig}>
+                    <BarChart
+                        accessibilityLayer
+                        data={chartData}
+                        layout="vertical"
+                        margin={{
+                            left: -20,
+                        }}
+                    >
+                        <XAxis type="number" dataKey="desktop" hide />
+                        <YAxis
+                            dataKey="month"
+                            type="category"
+                            tickLine={false}
+                            tickMargin={10}
+                            axisLine={false}
+                            width={60}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel />}
+                        />
+                        <Bar dataKey="desktop" fill="var(--color-desktop)" radius={5} />
+                    </BarChart>
+                </ChartContainer>
             </CardContent>
+            <CardFooter className="flex-col items-start gap-2 text-sm">
+                <div className="leading-none text-muted-foreground">
+                    Stocks sorted by value (highest to lowest)
+                </div>
+            </CardFooter>
         </Card>
     );
 };

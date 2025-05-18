@@ -6,47 +6,76 @@ import {
     ChartTooltipContent,
 } from "../ui/chart";
 
-const PortfolioCompositionChart = ({ portfolioData }) => {
-    if (!portfolioData || !portfolioData.stocks || portfolioData.stocks.length === 0) {
+const PortfolioDivisionChart = ({ portfolioData }) => {
+    if (!portfolioData) {
         return (
             <Card className="h-full">
                 <CardContent className="flex items-center justify-center p-6 h-full min-h-[320px]">
-                    <p className="text-xl text-center">No stocks data available</p>
+                    <p className="text-xl text-center">No portfolio data available</p>
                 </CardContent>
             </Card>
         );
     }
 
-    // Prepare data for the pie chart
-    const chartData = portfolioData.stocks.map((stock, index) => ({
-        browser: stock.symbol, // Using 'browser' to match the expected format
-        visitors: parseFloat(stock.value), // Using 'visitors' to match the expected format
-        fill: `hsl(${(index * 40) % 360}, 70%, 50%)`
-    }));
+    // Calculate total stocks value
+    const stocksValue = portfolioData.stocks?.reduce((sum, stock) => sum + parseFloat(stock.value), 0) || 0;
 
-    // Calculate total value for center label
-    const totalStocksValue = chartData.reduce((sum, item) => sum + item.visitors, 0);
+    // Get reserved cash value (handle either object format or direct value)
+    let reservedCashValue = 0;
+    if (portfolioData.reservedCash) {
+        if (typeof portfolioData.reservedCash === 'object' && portfolioData.reservedCash.value !== undefined) {
+            reservedCashValue = parseFloat(portfolioData.reservedCash.value);
+        } else if (!isNaN(parseFloat(portfolioData.reservedCash))) {
+            reservedCashValue = parseFloat(portfolioData.reservedCash);
+        }
+    }
+
+    // Total portfolio value
+    const totalValue = stocksValue + reservedCashValue;
+
+    // Prepare data for the pie chart - stocks vs cash
+    const chartData = [
+        {
+            browser: "Stocks",
+            visitors: stocksValue,
+            fill: "hsl(210, 70%, 50%)" // Blue for stocks
+        },
+        {
+            browser: "Reserved Cash",
+            visitors: reservedCashValue,
+            fill: "hsl(120, 70%, 50%)" // Green for cash
+        }
+    ].filter(item => item.visitors > 0); // Only include non-zero values
 
     // Define chart configuration
     const chartConfig = {
         visitors: {
             label: "Value",
         },
-        ...Object.fromEntries(
-            chartData.map((item, index) => [
-                item.browser,
-                {
-                    label: item.browser,
-                    color: `hsl(${(index * 40) % 360}, 70%, 50%)`,
-                }
-            ])
-        )
+        Stocks: {
+            label: "Stocks",
+            color: "hsl(210, 70%, 50%)",
+        },
+        "Reserved Cash": {
+            label: "Reserved Cash",
+            color: "hsl(120, 70%, 50%)",
+        },
     };
+
+    if (chartData.length === 0) {
+        return (
+            <Card className="h-full">
+                <CardContent className="flex items-center justify-center p-6 h-full min-h-[320px]">
+                    <p className="text-xl text-center">No value data available</p>
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <Card className="flex flex-col h-full">
             <CardHeader className="items-center pb-0">
-                <CardTitle>Portfolio Composition</CardTitle>
+                <CardTitle>Cash vs. Investments</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 pb-0">
                 <ChartContainer
@@ -66,6 +95,9 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
                             outerRadius={80}
                             strokeWidth={5}
                         >
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
                             <Label
                                 content={({ viewBox }) => {
                                     if (viewBox && "cx" in viewBox && "cy" in viewBox) {
@@ -81,14 +113,14 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
                                                     y={viewBox.cy}
                                                     className="fill-foreground text-3xl font-bold"
                                                 >
-                                                    ${totalStocksValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </tspan>
                                                 <tspan
                                                     x={viewBox.cx}
                                                     y={(viewBox.cy || 0) + 24}
                                                     className="fill-muted-foreground"
                                                 >
-                                                    Stocks Value
+                                                    Total Value
                                                 </tspan>
                                             </text>
                                         );
@@ -102,11 +134,11 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
             </CardContent>
             <CardFooter className="flex-col gap-2 text-sm">
                 <div className="leading-none text-muted-foreground">
-                    Distribution of investments by stock
+                    Distribution between cash reserves and investments
                 </div>
             </CardFooter>
         </Card>
     );
 };
 
-export default PortfolioCompositionChart;
+export default PortfolioDivisionChart;
