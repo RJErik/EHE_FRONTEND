@@ -9,29 +9,58 @@ import TimeIntervalButtons from "./TimeIntervalButtons.jsx";
 import { useCandleSubscription } from "../../hooks/useCandleSubscription.js";
 import { ChartContext } from "./ChartContext.jsx";
 
+// Create a simple event system to share stock/platform selection
+// This is a workaround since we can't rely on context for these values
+const stockSelectionEvents = {
+    listeners: [],
+    subscribe: (callback) => {
+        stockSelectionEvents.listeners.push(callback);
+        return () => {
+            stockSelectionEvents.listeners = stockSelectionEvents.listeners
+                .filter(cb => cb !== callback);
+        };
+    },
+    notify: (platform, stock) => {
+        stockSelectionEvents.listeners.forEach(callback =>
+            callback(platform, stock)
+        );
+    }
+};
+
+// Export the event system so other components can subscribe
+export { stockSelectionEvents };
+
 const StockSelectors = () => {
     const {
         platforms,
         stocks,
         selectedPlatform,
-        setSelectedPlatform,
+        setSelectedPlatform: setStockDataPlatform,
         selectedStock,
-        setSelectedStock,
+        setSelectedStock: setStockDataStock,
         isLoadingPlatforms,
         isLoadingStocks,
         error: stockDataError
     } = useStockData();
 
-    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // Default to 1M
+    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // Default to 1D
 
-    // Import setTimeframeInMs from ChartContext
+    // Import only setTimeframeInMs from ChartContext - it's the only one we're sure exists
     const { setTimeframeInMs } = useContext(ChartContext);
-    
+
     // Set default timeframe on mount
     useEffect(() => {
         // Apply default timeframe in milliseconds
         setTimeframeInMs(timeframeToMilliseconds("1D"));
-    }, []);
+    }, [setTimeframeInMs]);
+
+    // Notify other components when platform or stock changes
+    useEffect(() => {
+        if (selectedPlatform && selectedStock) {
+            console.log("[StockSelectors] Broadcasting selection:", selectedPlatform, selectedStock);
+            stockSelectionEvents.notify(selectedPlatform, selectedStock);
+        }
+    }, [selectedPlatform, selectedStock]);
 
     const {
         isConnected,
@@ -130,7 +159,7 @@ const StockSelectors = () => {
                     <p className="text-sm text-muted-foreground mb-1">Platform</p>
                     <Select
                         value={selectedPlatform}
-                        onValueChange={setSelectedPlatform}
+                        onValueChange={setStockDataPlatform}
                         disabled={isLoadingPlatforms || isSubscribing}
                     >
                         <SelectTrigger className="w-full">
@@ -155,7 +184,7 @@ const StockSelectors = () => {
                     <p className="text-sm text-muted-foreground mb-1">Stock</p>
                     <Select
                         value={selectedStock}
-                        onValueChange={setSelectedStock}
+                        onValueChange={setStockDataStock}
                         disabled={isLoadingStocks || !selectedPlatform || isSubscribing}
                     >
                         <SelectTrigger className="w-full">
