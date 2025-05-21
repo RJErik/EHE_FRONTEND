@@ -10,10 +10,12 @@ import Portfolio from "./pages/Portfolio";
 import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/CandleWebSocketContext";
-import { AlertWebSocketProvider } from "./context/AlertWebSocketContext"; // Import the new provider
+import { AlertWebSocketProvider } from "./context/AlertWebSocketContext";
 import WatchlistTicker from "./components/watchlist/WatchlistTicker";
 import { WatchlistProvider } from "./context/WatchlistContext";
 import Header from "./components/Header";
+import { AutomaticTradeProvider } from "@/context/AutomaticTradeContext.jsx";
+import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeWebSocketContext"; // Import here
 
 function App() {
     // Simple routing implementation
@@ -41,23 +43,27 @@ function App() {
 
     return (
         <WebSocketProvider currentPage={currentPage}>
-            <AlertWebSocketProvider> {/* Add the new provider */}
+            <AlertWebSocketProvider>
                 <WatchlistProvider>
-                    <div className="flex flex-col min-h-screen">
-                        {/* Fixed header */}
-                        <div className="fixed top-0 left-0 right-0 z-50">
-                            <Header navigate={navigate} currentPage={currentPage} />
-                        </div>
+                    <AutomaticTradeProvider>
+                        <AutomatedTradeWebSocketProvider> {/* Move provider here */}
+                            <div className="flex flex-col min-h-screen">
+                                {/* Fixed header */}
+                                <div className="fixed top-0 left-0 right-0 z-50">
+                                    <Header navigate={navigate} currentPage={currentPage} />
+                                </div>
 
-                        {/* Main content with proper spacing */}
-                        <div className="pt-[60px]">
-                            <WatchlistTicker />
-                            <div className="flex-1">
-                                {renderContent()}
+                                {/* Main content with proper spacing */}
+                                <div className="pt-[60px]">
+                                    <WatchlistTicker />
+                                    <div className="flex-1">
+                                        {renderContent()}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <Toaster />
+                            <Toaster />
+                        </AutomatedTradeWebSocketProvider>
+                    </AutomaticTradeProvider>
                 </WatchlistProvider>
             </AlertWebSocketProvider>
         </WebSocketProvider>

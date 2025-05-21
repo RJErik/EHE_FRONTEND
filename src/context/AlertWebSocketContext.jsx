@@ -63,11 +63,11 @@ export function AlertWebSocketProvider({ children }) {
                     console.log('[AlertWebSocket] Successfully subscribed to alerts');
 
                     // Display success toast on initial connection
-                    toast({
-                        title: 'Alert System Connected',
-                        description: 'You will now receive price alerts in real-time',
-                        duration: 3000,
-                    });
+                    // toast({
+                    //     title: 'Alert System Connected',
+                    //     description: 'You will now receive price alerts in real-time',
+                    //     duration: 3000,
+                    // });
                 }
             } catch (error) {
                 console.error('[AlertWebSocket] Setup error:', error);
