@@ -69,7 +69,7 @@ export function useAutomaticTrade() {
 
         try {
             console.log(`Adding automatic trade rule for ${symbol} from ${platform}...`);
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules/add", {
+            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -95,12 +95,12 @@ export function useAutomaticTrade() {
             console.log("Add response:", data);
 
             if (data.success) {
+                // ✨ CHANGE: Add the new rule directly to the local state
+                setAutomaticTradeRules(prevRules => [...prevRules, data.automatedTradeRule]);
                 toast({
                     title: "Success",
-                    description: `Added automatic trade rule for ${symbol} from ${platform}`,
+                    description: data.message || `Added automatic trade rule for ${symbol} from ${platform}`,
                 });
-
-                await fetchAutomaticTradeRules();
                 return true;
             } else {
                 toast({
@@ -132,7 +132,7 @@ export function useAutomaticTrade() {
 
         try {
             console.log(`Removing automatic trade rule ${id}...`);
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules/remove", {
+            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -149,15 +149,13 @@ export function useAutomaticTrade() {
             console.log("Remove response:", data);
 
             if (data.success) {
-                // Update local state
-                setAutomaticTradeRules(prev => prev.filter(rule => rule.id !== id));
+                // ✨ CHANGE: Filter out the deleted rule from the local state
+                setAutomaticTradeRules(prevRules => prevRules.filter(rule => rule.id !== id));
 
                 toast({
                     title: "Success",
-                    description: "Automatic trade rule removed successfully",
+                    description: data.message || "Automatic trade rule removed successfully",
                 });
-
-                await fetchAutomaticTradeRules();
                 return true;
             } else {
                 toast({

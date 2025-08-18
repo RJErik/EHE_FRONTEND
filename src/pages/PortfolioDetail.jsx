@@ -4,61 +4,23 @@ import PortfolioDetailHeader from "../components/portfolioDetail/PortfolioDetail
 import PortfolioCompositionChart from "../components/portfolioDetail/PortfolioCompositionChart.jsx";
 import PortfolioCompositionList from "../components/portfolioDetail/PortfolioCompositionList.jsx";
 import PortfolioDivisionChart from "../components/portfolioDetail/PortfolioDivisionChart.jsx";
-import { useToast } from "../hooks/use-toast";
+import { usePortfolio } from "../hooks/usePortfolio";
 import { Loader2 } from "lucide-react";
 
 const PortfolioDetail = ({ navigate, portfolioId }) => {
     const [portfolioData, setPortfolioData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const { toast } = useToast();
+    const { isLoading, error, fetchPortfolioDetails } = usePortfolio();
 
     useEffect(() => {
-        const fetchPortfolioDetails = async () => {
-            setIsLoading(true);
-            try {
-                const response = await fetch(`http://localhost:8080/api/user/portfolio/${portfolioId}/details`, {
-                    method: "GET",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                console.log("Portfolio details received:", data);
-
-                if (data.success) {
-                    setPortfolioData(data.portfolio);
-                } else {
-                    setError(data.message || "Failed to fetch portfolio details");
-                    toast({
-                        title: "Error",
-                        description: data.message || "Failed to fetch portfolio details",
-                        variant: "destructive",
-                    });
-                }
-            } catch (err) {
-                console.error("Error fetching portfolio details:", err);
-                setError("Failed to connect to server. Please try again later.");
-                toast({
-                    title: "Connection Error",
-                    description: "Failed to fetch portfolio details. Server may be unavailable.",
-                    variant: "destructive",
-                });
-            } finally {
-                setIsLoading(false);
+        const loadPortfolioDetails = async () => {
+            if (portfolioId) {
+                const data = await fetchPortfolioDetails(portfolioId);
+                setPortfolioData(data);
             }
         };
 
-        if (portfolioId) {
-            fetchPortfolioDetails();
-        }
-    }, [portfolioId, toast]);
+        loadPortfolioDetails();
+    }, [portfolioId, fetchPortfolioDetails]);
 
     // If loading, show a loading indicator
     if (isLoading) {

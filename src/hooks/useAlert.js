@@ -69,7 +69,7 @@ export function useAlert() {
 
         try {
             console.log(`Adding alert for ${symbol} from ${platform}...`);
-            const response = await fetch("http://localhost:8080/api/user/alerts/add", {
+            const response = await fetch("http://localhost:8080/api/user/alerts", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -91,12 +91,12 @@ export function useAlert() {
             console.log("Add response:", data);
 
             if (data.success) {
+                // ✨ CHANGE: Update state directly instead of re-fetching
+                setAlerts(prevAlerts => [...prevAlerts, data.alert]);
                 toast({
                     title: "Success",
-                    description: `Added alert for ${symbol} from ${platform}`,
+                    description: data.message || `Added alert for ${symbol} from ${platform}`,
                 });
-
-                await fetchAlerts();
                 return true;
             } else {
                 toast({
@@ -128,7 +128,7 @@ export function useAlert() {
 
         try {
             console.log(`Removing alert ${id}...`);
-            const response = await fetch("http://localhost:8080/api/user/alerts/remove", {
+            const response = await fetch("http://localhost:8080/api/user/alerts", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -146,14 +146,12 @@ export function useAlert() {
 
             if (data.success) {
                 // Update local state
-                setAlerts(prev => prev.filter(alert => alert.id !== id));
+                setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== id));
 
                 toast({
                     title: "Success",
-                    description: "Alert removed successfully",
+                    description: data.message || "Alert removed successfully",
                 });
-
-                await fetchAlerts();
                 return true;
             } else {
                 toast({

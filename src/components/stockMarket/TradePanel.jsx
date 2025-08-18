@@ -48,6 +48,7 @@ const TradePanel = () => {
     // Local state
     const [selectedPortfolioId, setSelectedPortfolioId] = useState("");
     const [isBuyMode, setIsBuyMode] = useState(true);
+    const [selectedQuantityType, setSelectedQuantityType] = useState("QUOTE_ORDER_QTY"); // Default to QUOTE_ORDER_QTY for buy
     const [quantity, setQuantity] = useState(0);
     const [inputValue, setInputValue] = useState("0");
     const [isInputFocused, setIsInputFocused] = useState(false);
@@ -98,30 +99,41 @@ const TradePanel = () => {
             getTradingCapacity(selectedPortfolioId, selectedStock)
                 .then(capacity => {
                     if (capacity) {
-                        // Set max value based on buy/sell mode
+                        // Set max value based on buy/sell mode and quantity type
                         updateMaxValue(capacity);
                     }
                 });
         }
     }, [selectedPortfolioId, selectedStock]);
 
-    // Update max value whenever trading capacity changes
+    // Update max value whenever trading capacity, buy/sell mode, or quantity type changes
     useEffect(() => {
         if (tradingCapacity) {
             updateMaxValue(tradingCapacity);
         }
-    }, [tradingCapacity, isBuyMode]);
+    }, [tradingCapacity, isBuyMode, selectedQuantityType]);
 
-    // Update max value based on buy/sell mode
+    // Update max value based on buy/sell mode and quantity type
     const updateMaxValue = (capacity) => {
         if (!capacity) return;
 
         if (isBuyMode) {
-            // Buy mode - use reserved cash
-            setMaxValue(capacity.reservedCash);
+            if (selectedQuantityType === "QUANTITY") {
+                // Buy mode, Quantity - use max buy quantity (cash/price)
+                setMaxValue(capacity.maxBuyQuantity);
+            } else {
+                // Buy mode, Quote Order Qty - use reserved cash
+                setMaxValue(capacity.reservedCash);
+            }
         } else {
-            // Sell mode - use current holdings
-            setMaxValue(capacity.currentHolding);
+            if (selectedQuantityType === "QUANTITY") {
+                // Sell mode, Quantity - use current holdings
+                setMaxValue(capacity.currentHolding);
+            } else {
+                // Sell mode, Quote Order Qty - use current holdings * price
+                const holdingValue = capacity.currentHolding * capacity.currentPrice;
+                setMaxValue(holdingValue);
+            }
         }
 
         // Reset quantity to 0 when updating max values
@@ -137,7 +149,15 @@ const TradePanel = () => {
     // Handle buy/sell toggle
     const handleModeToggle = (mode) => {
         setIsBuyMode(mode === 'buy');
-        // Max value will be updated by the useEffect that watches tradingCapacity and isBuyMode
+        // Set a sensible default for the quantity type based on the action
+        setSelectedQuantityType(mode === 'buy' ? 'QUOTE_ORDER_QTY' : 'QUANTITY');
+        // Max value will be updated by the useEffect
+    };
+
+    // Handle quantity type change
+    const handleQuantityTypeChange = (value) => {
+        setSelectedQuantityType(value);
+        // Max value will be updated by the useEffect
     };
 
     // Handle quantity changes from slider
@@ -189,20 +209,46 @@ const TradePanel = () => {
         }
     };
 
+    // Get the appropriate slider label
+    const getSliderLabel = () => {
+        if (isBuyMode) {
+            if (selectedQuantityType === "QUANTITY") {
+                return `Amount to Buy (${getBaseCurrency(selectedStock)})`;
+            } else {
+                return 'Cash to Spend ($)';
+            }
+        } else {
+            if (selectedQuantityType === "QUANTITY") {
+                return `Amount to Sell (${getBaseCurrency(selectedStock)})`;
+            } else {
+                return 'Cash Value to Sell ($)';
+            }
+        }
+    };
+
+    // Format the max value display
+    const getFormattedMaxValue = () => {
+        if (selectedQuantityType === "QUANTITY") {
+            // For quantity, use more decimal places for crypto
+            return maxValue.toFixed(8);
+        } else {
+            // For cash values, use 2 decimal places
+            return `$${maxValue.toFixed(2)}`;
+        }
+    };
+
     // Execute trade
     const handleTrade = async () => {
         if (!isTradingEnabled) return;
 
         const action = isBuyMode ? "BUY" : "SELL";
 
-        // For buy, we send the cash amount directly
-        // For sell, we send the stock quantity
         const result = await executeTrade(
             selectedPortfolioId,
             selectedStock,
             action,
-            quantity, // Always use the raw quantity value from input/slider
-            isBuyMode ? "QUOTE_ORDER_QTY" : "QUANTITY" // Use QUOTE_ORDER_QTY for buy mode, QUANTITY for sell mode
+            quantity,
+            selectedQuantityType
         );
 
         if (result) {
@@ -212,24 +258,40 @@ const TradePanel = () => {
         }
     };
 
-    // Calculate display values based on mode
+    // Calculate display values based on mode and quantity type
     const calculateTradeValues = () => {
         if (!tradingCapacity || quantity <= 0) {
             return { displayValue: 0, stockQuantity: 0 };
         }
 
         if (isBuyMode) {
-            // Buy mode - quantity is cash amount
-            return {
-                displayValue: quantity, // Money to spend
-                stockQuantity: quantity / tradingCapacity.currentPrice // How many stocks that buys
-            };
+            if (selectedQuantityType === "QUOTE_ORDER_QTY") {
+                // Buy mode with QUOTE_ORDER_QTY - quantity is cash amount
+                return {
+                    displayValue: quantity, // Money to spend
+                    stockQuantity: quantity / tradingCapacity.currentPrice // How many stocks that buys
+                };
+            } else {
+                // Buy mode with QUANTITY - quantity is stock amount
+                return {
+                    displayValue: quantity * tradingCapacity.currentPrice, // Money to spend
+                    stockQuantity: quantity // How many stocks to buy
+                };
+            }
         } else {
-            // Sell mode - quantity is stock amount
-            return {
-                displayValue: quantity * tradingCapacity.currentPrice, // Money to receive
-                stockQuantity: quantity // How many stocks to sell
-            };
+            if (selectedQuantityType === "QUANTITY") {
+                // Sell mode with QUANTITY - quantity is stock amount
+                return {
+                    displayValue: quantity * tradingCapacity.currentPrice, // Money to receive
+                    stockQuantity: quantity // How many stocks to sell
+                };
+            } else {
+                // Sell mode with QUOTE_ORDER_QTY - quantity is cash amount
+                return {
+                    displayValue: quantity, // Money to receive
+                    stockQuantity: quantity / tradingCapacity.currentPrice // How many stocks that sells
+                };
+            }
         }
     };
 
@@ -325,21 +387,43 @@ const TradePanel = () => {
                                                 </button>
                                             </div>
 
+                                            {/* Quantity Type selection */}
+                                            <div className="mt-4">
+                                                <Label htmlFor="quantity-type-select">Order Type</Label>
+                                                <Select
+                                                    id="quantity-type-select"
+                                                    value={selectedQuantityType}
+                                                    onValueChange={handleQuantityTypeChange}
+                                                >
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue placeholder="Select quantity type" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="QUANTITY">
+                                                            Quantity
+                                                        </SelectItem>
+                                                        <SelectItem value="QUOTE_ORDER_QTY">
+                                                            Quote Order Quantity
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
                                             {/* Quantity selection */}
                                             <div className="mt-4">
                                                 <div className="flex justify-between mb-1">
                                                     <Label>
-                                                        {isBuyMode ? 'Cash to Spend ($)' : `Quantity (${getBaseCurrency(selectedStock)})`}
+                                                        {getSliderLabel()}
                                                     </Label>
                                                     <span className="text-sm text-muted-foreground">
-                                                        Max: {isBuyMode ? `$${maxValue.toFixed(2)}` : maxValue.toFixed(8)}
+                                                        Max: {getFormattedMaxValue()}
                                                     </span>
                                                 </div>
                                                 <Slider
                                                     value={[quantity]}
                                                     onValueChange={handleQuantitySlider}
                                                     max={maxValue}
-                                                    step={1}
+                                                    step={maxValue > 1 ? 0.01 : 0.00000001}
                                                     className="mt-2"
                                                     disabled={maxValue <= 0}
                                                 />
@@ -358,17 +442,17 @@ const TradePanel = () => {
 
                                             {/* Trade information */}
                                             <div className="mt-2 text-right">
-                                                {isBuyMode ? (
+                                                {selectedQuantityType === "QUOTE_ORDER_QTY" ? (
                                                     <div>
-                                                        <Label>You will get:</Label>
-                                                        <Badge className="ml-2" variant="default">
+                                                        <Label>{isBuyMode ? "You will get:" : "You will sell:"}</Label>
+                                                        <Badge className={`ml-2 ${isBuyMode ? "bg-green-600" : "bg-red-600"}`}>
                                                             {stockQuantity.toFixed(8)} {getBaseCurrency(selectedStock)}
                                                         </Badge>
                                                     </div>
                                                 ) : (
                                                     <div>
-                                                        <Label>You will receive:</Label>
-                                                        <Badge className="ml-2" variant="destructive">
+                                                        <Label>{isBuyMode ? "Cost:" : "You will receive:"}</Label>
+                                                        <Badge className={`ml-2 ${isBuyMode ? "bg-green-600" : "bg-red-600"}`}>
                                                             ${displayValue.toFixed(2)}
                                                         </Badge>
                                                     </div>

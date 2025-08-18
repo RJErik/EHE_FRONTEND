@@ -65,11 +65,12 @@ export function useApiKeys() {
             const data = await response.json();
 
             if (data.success) {
+                // ✨ CHANGE: Add the new key to the local state
+                setApiKeys(prevKeys => [...prevKeys, data.apiKey]);
                 toast({
                     title: "Success",
-                    description: "API key added successfully",
+                    description: data.message || "API key added successfully",
                 });
-                await fetchApiKeys(); // Refresh the list
             } else {
                 setError(data.message || "Failed to add API key");
                 toast({
@@ -111,7 +112,7 @@ export function useApiKeys() {
             if (data.success) {
                 toast({
                     title: "Success",
-                    description: "API key updated successfully",
+                    description: data.message || "API key updated successfully",
                 });
                 await fetchApiKeys(); // Refresh the list
             } else {
@@ -153,11 +154,12 @@ export function useApiKeys() {
             const data = await response.json();
 
             if (data.success) {
+                // ✨ CHANGE: Filter out the deleted key from the local state
+                setApiKeys(prevKeys => prevKeys.filter(key => key.id !== apiKeyId));
                 toast({
                     title: "Success",
-                    description: "API key deleted successfully",
+                    description: data.message || "API key deleted successfully",
                 });
-                await fetchApiKeys(); // Refresh the list
             } else {
                 setError(data.message || "Failed to delete API key");
                 toast({

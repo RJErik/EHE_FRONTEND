@@ -19,7 +19,7 @@ export function useTrading() {
         setError(null);
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/portfolio/by-platform", {
+            const response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -146,7 +146,7 @@ export function useTrading() {
             if (data.success) {
                 toast({
                     title: "Success",
-                    description: `${action} order executed successfully!`,
+                    description: data.message || `${action} order executed successfully!`,
                 });
                 return true;
             } else {

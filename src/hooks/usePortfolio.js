@@ -15,7 +15,7 @@ export function usePortfolio() {
 
         try {
             console.log("Fetching portfolios...");
-            const response = await fetch("http://localhost:8080/api/user/portfolio", {
+            const response = await fetch("http://localhost:8080/api/user/portfolios", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -53,6 +53,65 @@ export function usePortfolio() {
         }
     }, [toast]);
 
+    // Fetch portfolio details
+    const fetchPortfolioDetails = useCallback(async (portfolioId) => {
+        if (!portfolioId) {
+            toast({
+                title: "Validation Error",
+                description: "Portfolio ID is required",
+                variant: "destructive",
+            });
+            return null;
+        }
+
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            console.log(`Fetching portfolio details for ID: ${portfolioId}...`);
+            const response = await fetch(`http://localhost:8080/api/user/portfolios/details`, {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    portfolioId: portfolioId
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log("Portfolio details received:", data);
+
+            if (data.success) {
+                return data.portfolio;
+            } else {
+                toast({
+                    title: "Error",
+                    description: data.message || "Failed to fetch portfolio details",
+                    variant: "destructive",
+                });
+                setError(data.message || "Failed to fetch portfolio details");
+                return null;
+            }
+        } catch (err) {
+            console.error("Error fetching portfolio details:", err);
+            setError("Failed to connect to server. Please try again later.");
+            toast({
+                title: "Connection Error",
+                description: "Failed to fetch portfolio details. Server may be unavailable.",
+                variant: "destructive",
+            });
+            return null;
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
     // Add a new portfolio
     const createPortfolio = async (portfolioName, apiKeyId) => {
         if (!portfolioName || !apiKeyId) {
@@ -69,7 +128,7 @@ export function usePortfolio() {
 
         try {
             console.log(`Creating portfolio ${portfolioName} with API key ID ${apiKeyId}...`);
-            const response = await fetch("http://localhost:8080/api/user/portfolio/create", {
+            const response = await fetch("http://localhost:8080/api/user/portfolios", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -88,7 +147,7 @@ export function usePortfolio() {
             if (data.success) {
                 toast({
                     title: "Success",
-                    description: `Created portfolio: ${portfolioName}`,
+                    description: data.message || `Created portfolio: ${portfolioName}`,
                 });
 
                 // Add the new portfolio to the state
@@ -127,7 +186,7 @@ export function usePortfolio() {
 
         try {
             console.log(`Deleting portfolio ${portfolioId}...`);
-            const response = await fetch("http://localhost:8080/api/user/portfolio/delete", {
+            const response = await fetch("http://localhost:8080/api/user/portfolios", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -149,7 +208,7 @@ export function usePortfolio() {
 
                 toast({
                     title: "Success",
-                    description: "Portfolio deleted successfully",
+                    description: data.message || "Portfolio deleted successfully",
                 });
 
                 return true;
@@ -183,7 +242,7 @@ export function usePortfolio() {
 
         try {
             console.log(`Searching portfolios: type=${type}, platform=${platform}, minValue=${minValue}, maxValue=${maxValue}`);
-            const response = await fetch("http://localhost:8080/api/user/portfolio/search", {
+            const response = await fetch("http://localhost:8080/api/user/portfolios/search", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -241,6 +300,7 @@ export function usePortfolio() {
         isLoading,
         error,
         fetchPortfolios,
+        fetchPortfolioDetails,
         createPortfolio,
         deletePortfolio,
         searchPortfolios,

@@ -7,67 +7,21 @@ import LogoutDialog from "../LogoutDialog";
 import ChangeEmailDialog from "./ChangeEmailDialog.jsx";
 import { useLogout } from "../../hooks/useLogout";
 import { useChangeEmail } from "../../hooks/useChangeEmail";
+import { useAccountProfile } from "../../hooks/useAccountProfile";
 import { useToast } from "@/hooks/use-toast.js";
 
 const AccountProfile = ({ navigate }) => {
     const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
     const [changeEmailDialogOpen, setChangeEmailDialogOpen] = useState(false);
-    const [isRequestingReset, setIsRequestingReset] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-    const [userData, setUserData] = useState({
-        name: "Your_Name",
-        email: "Your_Email"
-    });
 
     const { logout, isLoading: isLoggingOut } = useLogout();
     const { changeEmail, resendChangeEmail, isLoading: isChangingEmail, lastEmailRequested } = useChangeEmail();
+    const { userData, isLoading, isRequestingReset, fetchUserInfo, requestPasswordReset } = useAccountProfile();
     const { toast } = useToast();
 
     useEffect(() => {
-        const fetchUserInfo = async () => {
-            setIsLoading(true);
-            try {
-                const response = await fetch("http://localhost:8080/api/user/info", {
-                    method: "GET",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                });
-
-                if (!response.ok) {
-                    throw new Error("Failed to fetch user data");
-                }
-
-                const data = await response.json();
-
-                if (data.success) {
-                    setUserData({
-                        name: data.userName || "Your_Name",
-                        email: data.email || "Your_Email"
-                    });
-                } else {
-                    toast({
-                        title: "Error",
-                        description: data.message || "Failed to load user information",
-                        variant: "destructive",
-                    });
-                }
-            } catch (error) {
-                console.error("Error fetching user data:", error);
-                toast({
-                    title: "Error",
-                    description: "Failed to load user information. Using placeholder data.",
-                    variant: "destructive",
-                });
-                // Keep the default placeholder data
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchUserInfo();
-    }, [toast]);
+    }, [fetchUserInfo]);
 
     const handleLogoutClick = () => {
         setLogoutDialogOpen(true);
@@ -136,46 +90,26 @@ const AccountProfile = ({ navigate }) => {
     };
 
     const handleChangePassword = async () => {
-        if (isRequestingReset) return;
+        const result = await requestPasswordReset();
 
-        setIsRequestingReset(true);
-
-        try {
-            const response = await fetch("http://localhost:8080/api/user/request-password-reset", {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            });
-
-            const data = await response.json();
-
+        // Show resend button in toast if the API indicates it should be shown
+        if (result.showResendButton) {
             toast({
-                title: data.success ? "Success" : "Error",
-                description: data.message,
-                variant: data.success ? "default" : "destructive",
-                action: data.showResendButton ? (
+                title: result.success ? "Success" : "Error",
+                description: result.message,
+                variant: result.success ? "default" : "destructive",
+                action: (
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={handleChangePassword}
                         className="mt-2"
+                        disabled={isRequestingReset}
                     >
                         Resend Reset Email
                     </Button>
-                ) : undefined,
+                ),
             });
-
-        } catch (err) {
-            console.error("Password reset request error:", err);
-            toast({
-                title: "Error",
-                description: "Failed to request password reset. Please try again later.",
-                variant: "destructive",
-            });
-        } finally {
-            setIsRequestingReset(false);
         }
     };
 

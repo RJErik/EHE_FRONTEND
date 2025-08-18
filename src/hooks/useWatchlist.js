@@ -16,7 +16,7 @@ export function useWatchlist() {
 
         try {
             console.log("Fetching watchlist items...");
-            const response = await fetch("http://localhost:8080/api/user/watchlist", {
+            const response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -32,10 +32,10 @@ export function useWatchlist() {
             console.log("Watchlist items received:", data);
 
             if (data.success) {
-                setWatchlistItems(data.items || []);
+                setWatchlistItems(data.watchlists || []);
 
                 // Explicitly fetch candles after items are updated
-                if (data.items && data.items.length > 0) {
+                if (data.watchlists && data.watchlists.length > 0) {
                     console.log("Fetching candles for updated watchlist...");
                     await fetchWatchlistCandles();
                 }
@@ -76,7 +76,7 @@ export function useWatchlist() {
 
         try {
             console.log(`Adding ${symbol} from ${platform} to watchlist...`);
-            const response = await fetch("http://localhost:8080/api/user/watchlist/add", {
+            const response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -93,14 +93,14 @@ export function useWatchlist() {
             console.log("Add response:", data);
 
             if (data.success) {
+                setWatchlistItems(prev => [...prev, data.watchlistItem]); // Update state with the new item
+
+                // Fetch candles for the new item if needed
+                await fetchWatchlistCandles();
                 toast({
                     title: "Success",
-                    description: `Added ${symbol} from ${platform} to watchlist`,
+                    description: data.message || `Added ${symbol} from ${platform} to watchlist`,
                 });
-
-                // Explicitly await the fetch to ensure it completes
-                console.log("Refreshing watchlist after add...");
-                await fetchWatchlistItems();
 
                 return true;
             } else {
@@ -133,7 +133,7 @@ export function useWatchlist() {
 
         try {
             console.log(`Removing item ${id} from watchlist...`);
-            const response = await fetch("http://localhost:8080/api/user/watchlist/remove", {
+            const response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -160,12 +160,8 @@ export function useWatchlist() {
 
                 toast({
                     title: "Success",
-                    description: "Item removed from watchlist",
+                    description: data.message || "Item removed from watchlist",
                 });
-
-                // Then refresh from server to ensure consistency
-                console.log("Refreshing watchlist after remove...");
-                await fetchWatchlistItems();
 
                 return true;
             } else {
@@ -241,7 +237,7 @@ export function useWatchlist() {
             const apiSymbol = symbol === "_any_" ? "" : symbol;
 
             console.log(`Searching watchlist: platform=${apiPlatform}, symbol=${apiSymbol}`);
-            const response = await fetch("http://localhost:8080/api/user/watchlist/search", {
+            const response = await fetch("http://localhost:8080/api/user/watchlists/search", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -261,13 +257,13 @@ export function useWatchlist() {
             console.log("Search results:", data);
 
             if (data.success) {
-                setWatchlistItems(data.items || []);
+                setWatchlistItems(data.watchlists || []);
 
-                if (data.items && data.items.length > 0) {
+                if (data.watchlists && data.watchlists.length > 0) {
                     await fetchWatchlistCandles();
                 }
 
-                return data.items || [];
+                return data.watchlists || [];
             } else {
                 toast({
                     title: "Error",
