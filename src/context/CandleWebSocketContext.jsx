@@ -94,8 +94,10 @@ const SubscriptionManager = {
 
         // Clean up stale subscriptions that are still sending heartbeats
         if (!isChartActive && !isIndicatorActive && subscriptionId) {
-            console.log(`[SubscriptionManager] Cleaning up stale subscription: ${subscriptionId}`);
-            webSocketService.safeSend('/app/candles/unsubscribe', subscriptionId).catch(() => {});
+            console.log("[SubscriptionManager] Cleaning up stale subscription with ID:", subscriptionId);
+            webSocketService.safeSend('/app/candles/unsubscribe', {
+                subscriptionId: subscriptionId
+            }).catch(() => {});
         }
 
         return isChartActive || isIndicatorActive;
@@ -155,13 +157,13 @@ export function WebSocketProvider({ children, currentPage }) {
                 });
 
                 // Send response to all handlers since we don't know the type
-                [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
+                /* [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
                     try {
                         handler(data);
                     } catch (err) {
                         console.error("[CandleWebSocketContext] Error in unsubscription handler:", err);
                     }
-                });
+                }); */
                 return;
             }
 
@@ -333,9 +335,11 @@ export function WebSocketProvider({ children, currentPage }) {
         }
 
         try {
-            console.log(`[WebSocketContext] Explicitly unsubscribing ${type} subscription: ${SubscriptionManager.activeSubscriptions[type]}`);
+            console.log(`[WebSocketContext] Explicitly unsubscribing ${type} subscription with ID:`, SubscriptionManager.activeSubscriptions[type]);
 
-            await webSocketService.safeSend('/app/candles/unsubscribe', SubscriptionManager.activeSubscriptions[type]);
+            await webSocketService.safeSend('/app/candles/unsubscribe', {
+                subscriptionId: SubscriptionManager.activeSubscriptions[type]
+            });
             return true;
         } catch (err) {
             console.error(`[WebSocketContext] Error unsubscribing ${type}:`, err);
