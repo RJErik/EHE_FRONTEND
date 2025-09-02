@@ -93,7 +93,7 @@ export function useWatchlist() {
             console.log("Add response:", data);
 
             if (data.success) {
-                setWatchlistItems(prev => [...prev, data.watchlistItem]); // Update state with the new item
+                setWatchlistItems(prev => [...prev, data.watchlist]); // Update state with the new item
 
                 // Fetch candles for the new item if needed
                 await fetchWatchlistCandles();
@@ -193,7 +193,7 @@ export function useWatchlist() {
 
         try {
             console.log("Fetching candles for watchlist items...");
-            const response = await fetch("http://localhost:8080/api/user/watchlist/candles", {
+            const response = await fetch("http://localhost:8080/api/user/watchlists/candles", {
                 method: "GET",
                 credentials: "include",
                 headers: {

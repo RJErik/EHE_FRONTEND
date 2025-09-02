@@ -14,7 +14,7 @@ export function useDeactivateAccount() {
         setError(null);
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/deactivate", {
+            const response = await fetch("http://localhost:8080/api/user/deactivate-account", {
                 method: "POST",
                 credentials: "include",
                 headers: {

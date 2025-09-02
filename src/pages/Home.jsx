@@ -1,13 +1,11 @@
-import Header from "../components/Header";
-import HeroSection from "../components/home/HeroSection.jsx";
-import InfoCard from "../components/home/InfoCard.jsx";
+import HeroSection from "@/feature/home/HeroSection.jsx";
+import InfoCard from "@/feature/home/InfoCard.jsx";
 
-const Home = ({ navigate }) => {
+const Home = () => {
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="home"/>
             <main className="flex-1">
-                <HeroSection navigate={navigate} />
+                <HeroSection />
 
                 <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 p-4 mb-12">
                     <InfoCard title="Latest trades by Our Customers">

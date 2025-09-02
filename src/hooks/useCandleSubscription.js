@@ -1,6 +1,6 @@
 // src/hooks/useCandleSubscription.js
 import { useState, useEffect, useContext, useCallback, useRef } from 'react';
-import { ChartContext } from '../components/stockMarket/ChartContext';
+import { ChartContext } from '@/feature/stockMarket/ChartContext';
 import { useWebSocket } from '../context/CandleWebSocketContext.jsx';
 import { useToast } from './use-toast';
 
@@ -751,7 +751,10 @@ export function useCandleSubscription() {
 
             // Log if this is a buffer update
             if (isBufferUpdate) {
-                console.log(`[Indicator Monitor] Processing buffer update for ${bufferDirection} data with reference timestamp: ${new Date(referenceTimestamp).toISOString()}`);
+                const refTimestampStr = referenceTimestamp && !isNaN(referenceTimestamp)
+                    ? new Date(referenceTimestamp).toISOString()
+                    : 'invalid';
+                console.log(`[Indicator Monitor] Processing buffer update for ${bufferDirection} data with reference timestamp: ${refTimestampStr}`);
             }
 
             // NEW: Log if subscription details are available
@@ -771,7 +774,7 @@ export function useCandleSubscription() {
                 // For buffer updates with range details, use that directly
                 if (isBufferUpdate && range) {
                     console.log("[Buffer Manager] Processing buffer update request");
-                    
+
                     // Get subscription details
                     let platformName = currentSubscription.platformName;
                     let stockSymbol = currentSubscription.stockSymbol;
@@ -801,45 +804,71 @@ export function useCandleSubscription() {
                         return;
                     }
 
-                    // Extract range data
+                    // Extract range data with validation
                     const { start, end } = range;
-                    
-                    console.log(`[Buffer Manager] Requesting ${bufferDirection} buffer data from ${new Date(start).toISOString()} to ${new Date(end).toISOString()}`);
-                    
+
+                    // Validate the timestamps before using them
+                    if (!start || !end || isNaN(start) || isNaN(end)) {
+                        console.error("[Buffer Manager] Invalid range timestamps:", { start, end });
+                        console.error("[Buffer Manager] Range object:", range);
+                        return;
+                    }
+
+                    // Additional validation to ensure the dates are reasonable
+                    const startDate = new Date(start);
+                    const endDate = new Date(end);
+
+                    if (!startDate.getTime() || !endDate.getTime()) {
+                        console.error("[Buffer Manager] Invalid Date objects created from:", { start, end });
+                        return;
+                    }
+
+                    if (startDate >= endDate) {
+                        console.error("[Buffer Manager] Start date is not before end date:", {
+                            start: startDate.toISOString(),
+                            end: endDate.toISOString()
+                        });
+                        return;
+                    }
+
+                    console.log(`[Buffer Manager] Requesting ${bufferDirection} buffer data from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
                     // First unsubscribe from current subscription
                     if (subscriptionIds.chart) {
                         console.log(`[Buffer Manager] Unsubscribing from current chart subscription before buffer update`);
                         await unsubscribe('chart');
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
-                    
+
                     // Create buffer update request
                     const bufferUpdateRequest = {
                         platformName,
                         stockSymbol,
                         timeframe,
-                        startDate: new Date(start).toISOString(),
-                        endDate: new Date(end).toISOString(),
+                        startDate: startDate.toISOString(),
+                        endDate: endDate.toISOString(),
                         resetData: true,  // Always true for buffer updates
                         subscriptionType: 'CHART'
                     };
-                    
+
                     console.log("[Buffer Manager] Sending buffer update request:", bufferUpdateRequest);
-                    
+
                     // Send the request
                     await requestSubscription('chart', bufferUpdateRequest);
-                    
+
                     // Store the reference timestamp for position restoration
-                    if (referenceTimestamp) {
+                    if (referenceTimestamp && !isNaN(referenceTimestamp)) {
                         console.log(`[Buffer Manager] Stored reference timestamp: ${new Date(referenceTimestamp).toISOString()}`);
                         // We'll handle the actual view index update when we receive the data
                     }
-                    
+
                     console.log("[Buffer Manager] Buffer update request sent");
                 } else {
                     // If not a buffer update, use the regular indicator subscription update
                     await updateIndicatorSubscription();
                 }
+            } catch (error) {
+                console.error("[Buffer Manager] Error in handleIndicatorRequirementsChanged:", error);
             } finally {
                 // Add small delay before allowing next update
                 setTimeout(() => {

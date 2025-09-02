@@ -1,5 +1,5 @@
 // App.jsx
-import { useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Account from "./pages/Account";
 import StockMarket from "./pages/StockMarket";
@@ -11,62 +11,52 @@ import Watchlist from "./pages/Watchlist";
 import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/CandleWebSocketContext";
 import { AlertWebSocketProvider } from "./context/AlertWebSocketContext";
-import WatchlistTicker from "./components/watchlist/WatchlistTicker";
+import WatchlistTicker from "@/feature/watchlist/WatchlistTicker";
 import { WatchlistProvider } from "./context/WatchlistContext";
-import Header from "./components/Header";
+import Header from "./feature/Header.jsx";
 import { AutomaticTradeProvider } from "@/context/AutomaticTradeContext.jsx";
-import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeWebSocketContext"; // Import here
+import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeWebSocketContext";
 
 function App() {
-    // Simple routing implementation
-    const [currentPage, setCurrentPage] = useState("home");
-
-    // Function to navigate between pages
-    const navigate = (page) => {
-        setCurrentPage(page);
-    };
-
-    // Render the appropriate page
-    const renderContent = () => {
-        switch (currentPage) {
-            case "home": return <Home navigate={navigate} />;
-            case "account": return <Account navigate={navigate} />;
-            case "stockMarket": return <StockMarket navigate={navigate} />;
-            case "paperTrading": return <PaperTrading navigate={navigate} />;
-            case "alerts": return <Alerts navigate={navigate} />;
-            case "automaticTransactions": return <AutomaticTransactions navigate={navigate} />;
-            case "portfolio": return <Portfolio navigate={navigate} />;
-            case "watchlist": return <Watchlist navigate={navigate} />;
-            default: return <Home navigate={navigate} />;
-        }
-    };
-
     return (
-        <WebSocketProvider currentPage={currentPage}>
-            <AlertWebSocketProvider>
-                <WatchlistProvider>
-                    <AutomaticTradeProvider>
-                        <AutomatedTradeWebSocketProvider> {/* Move provider here */}
-                            <div className="flex flex-col min-h-screen">
-                                {/* Fixed header */}
-                                <div className="fixed top-0 left-0 right-0 z-50">
-                                    <Header navigate={navigate} currentPage={currentPage} />
-                                </div>
+        <BrowserRouter>
+            <WebSocketProvider>
+                <AlertWebSocketProvider>
+                    <WatchlistProvider>
+                        <AutomaticTradeProvider>
+                            <AutomatedTradeWebSocketProvider>
+                                <div className="flex flex-col min-h-screen">
+                                    {/* Fixed header */}
+                                    <div className="fixed top-0 left-0 right-0 z-50">
+                                        <Header />
+                                    </div>
 
-                                {/* Main content with proper spacing */}
-                                <div className="pt-[60px]">
-                                    <WatchlistTicker />
-                                    <div className="flex-1">
-                                        {renderContent()}
+                                    {/* Main content with proper spacing */}
+                                    <div className="pt-[60px]">
+                                        <WatchlistTicker />
+                                        <div className="flex-1">
+                                            <Routes>
+                                                <Route path="/" element={<Home />} />
+                                                <Route path="/account" element={<Account />} />
+                                                <Route path="/portfolio" element={<Portfolio />} />
+                                                <Route path="/stock-market" element={<StockMarket />} />
+                                                <Route path="/paper-trading" element={<PaperTrading />} />
+                                                <Route path="/alerts" element={<Alerts />} />
+                                                <Route path="/automatic-transactions" element={<AutomaticTransactions />} />
+                                                <Route path="/watchlist" element={<Watchlist />} />
+                                                {/* Redirect any unknown routes to home */}
+                                                <Route path="*" element={<Navigate to="/" replace />} />
+                                            </Routes>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <Toaster />
-                        </AutomatedTradeWebSocketProvider>
-                    </AutomaticTradeProvider>
-                </WatchlistProvider>
-            </AlertWebSocketProvider>
-        </WebSocketProvider>
+                                <Toaster />
+                            </AutomatedTradeWebSocketProvider>
+                        </AutomaticTradeProvider>
+                    </WatchlistProvider>
+                </AlertWebSocketProvider>
+            </WebSocketProvider>
+        </BrowserRouter>
     );
 }
 

@@ -118,7 +118,10 @@ export function AlertWebSocketProvider({ children }) {
 
             // Cancel subscription on the server if we have an ID
             if (subscriptionId) {
-                webSocketService.safeSend('/app/alerts/unsubscribe', { subscriptionId });
+                // Send unsubscription request with the new DTO structure
+                webSocketService.safeSend('/app/alerts/unsubscribe', {
+                    subscriptionId: subscriptionId
+                });
             }
 
             // Clean up local subscription
@@ -177,8 +180,11 @@ export function AlertWebSocketProvider({ children }) {
         if (message.success) {
             // This is a subscription confirmation
             if (message.subscriptionId && !message.alertId) {
-                setSubscriptionId(message.subscriptionId);
-                console.log('[AlertWebSocket] Subscription confirmed, ID:', message.subscriptionId);
+                // Extract the actual subscription ID from the response object
+                const actualSubscriptionId = message.subscriptionId.subscriptionId;
+
+                setSubscriptionId(actualSubscriptionId);
+                console.log('[AlertWebSocket] Subscription confirmed, ID:', actualSubscriptionId);
             }
             // This is an actual alert notification
             else if (message.alertId) {

@@ -66,7 +66,7 @@ export function useStockData() {
         setStocks([]); // Clear previous stocks while loading
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/stocks", {
+            const response = await fetch("http://localhost:8080/api/user/stocks-by-platform", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -78,7 +78,15 @@ export function useStockData() {
             const data = await response.json();
 
             if (data.success) {
-                setStocks(data.stocks || []);
+                // FIX: Access the stocks array from the StocksByPlatformResponse object
+                // data.stocks is a StocksByPlatformResponse object with structure:
+                // { platformName: "...", stocks: ["AAPL", "GOOGL", ...] }
+                const stocksArray = data.stocks?.stocks || [];
+                setStocks(stocksArray);
+
+                // Optional: Log for debugging
+                console.log("Received stocks data:", data.stocks);
+                console.log("Extracted stocks array:", stocksArray);
             } else {
                 setError(data.message || "Failed to fetch stocks");
                 setStocks([]);

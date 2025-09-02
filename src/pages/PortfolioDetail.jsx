@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
-import Header from "../components/Header";
-import PortfolioDetailHeader from "../components/portfolioDetail/PortfolioDetailHeader.jsx";
-import PortfolioCompositionChart from "../components/portfolioDetail/PortfolioCompositionChart.jsx";
-import PortfolioCompositionList from "../components/portfolioDetail/PortfolioCompositionList.jsx";
-import PortfolioDivisionChart from "../components/portfolioDetail/PortfolioDivisionChart.jsx";
+import PortfolioDetailHeader from "@/feature/portfolioDetail/PortfolioDetailHeader.jsx";
+import PortfolioCompositionChart from "@/feature/portfolioDetail/PortfolioCompositionChart.jsx";
+import PortfolioCompositionList from "@/feature/portfolioDetail/PortfolioCompositionList.jsx";
+import PortfolioDivisionChart from "@/feature/portfolioDetail/PortfolioDivisionChart.jsx";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { Loader2 } from "lucide-react";
 
-const PortfolioDetail = ({ navigate, portfolioId }) => {
+const PortfolioDetail = ({portfolioId }) => {
     const [portfolioData, setPortfolioData] = useState(null);
     const { isLoading, error, fetchPortfolioDetails } = usePortfolio();
 
@@ -26,7 +25,6 @@ const PortfolioDetail = ({ navigate, portfolioId }) => {
     if (isLoading) {
         return (
             <div className="min-h-screen flex flex-col">
-                <Header navigate={navigate} currentPage="portfolio" />
                 <main className="flex-1 flex items-center justify-center">
                     <Loader2 className="h-12 w-12 animate-spin" />
                 </main>
@@ -38,7 +36,6 @@ const PortfolioDetail = ({ navigate, portfolioId }) => {
     if (error) {
         return (
             <div className="min-h-screen flex flex-col">
-                <Header navigate={navigate} currentPage="portfolio" />
                 <main className="flex-1 p-4">
                     <div className="container mx-auto text-center">
                         <h1 className="text-4xl font-semibold mb-4">Error</h1>
@@ -53,7 +50,6 @@ const PortfolioDetail = ({ navigate, portfolioId }) => {
     if (!portfolioData) {
         return (
             <div className="min-h-screen flex flex-col">
-                <Header navigate={navigate} currentPage="portfolio" />
                 <main className="flex-1 p-4">
                     <div className="container mx-auto text-center">
                         <h1 className="text-4xl font-semibold mb-4">No Data</h1>
@@ -66,7 +62,6 @@ const PortfolioDetail = ({ navigate, portfolioId }) => {
 
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="portfolio" />
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Portfolio Details</h1>
 

@@ -1,14 +1,15 @@
 // src/pages/Portfolio.jsx
 import { useState } from "react";
-import Header from "../components/Header";
-import SearchPortfolio from "../components/portfolio/SearchPortfolio.jsx";
-import AddPortfolio from "../components/portfolio/AddPortfolio.jsx";
-import PortfoliosDisplay from "../components/portfolio/PortfoliosDisplay.jsx";
+import SearchPortfolio from "@/feature/portfolio/SearchPortfolio.jsx";
+import AddPortfolio from "@/feature/portfolio/AddPortfolio.jsx";
+import PortfoliosDisplay from "@/feature/portfolio/PortfoliosDisplay.jsx";
 import PortfolioDetail from "./PortfolioDetail";
 import { Button } from "../components/ui/button";
 import { PortfolioProvider } from "../context/PortfolioContext";
+import { useNavigate } from "react-router-dom";
 
-const Portfolio = ({ navigate }) => {
+const Portfolio = () => {
+    const navigate = useNavigate();
     const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
 
     const handlePortfolioSelect = (portfolioId) => {
@@ -23,8 +24,6 @@ const Portfolio = ({ navigate }) => {
     if (selectedPortfolioId) {
         return (
             <div className="min-h-screen flex flex-col">
-                <Header navigate={navigate} currentPage="portfolio" />
-
                 <main className="flex-1 p-4">
                     <div className="container mx-auto">
                         <Button
@@ -36,7 +35,6 @@ const Portfolio = ({ navigate }) => {
                         </Button>
 
                         <PortfolioDetail
-                            navigate={navigate}
                             portfolioId={selectedPortfolioId}
                         />
                     </div>
@@ -48,7 +46,6 @@ const Portfolio = ({ navigate }) => {
     // Otherwise, show the list view
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="portfolio" />
 
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Portfolio</h1>

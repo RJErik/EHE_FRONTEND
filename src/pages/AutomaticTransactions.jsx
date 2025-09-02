@@ -1,9 +1,9 @@
 // src/pages/AutomaticTransactions.jsx
-import SearchAutomaticTransactions from "@/components/automaticTransaction/SearchAutomaticTransactions.jsx";
-import CreateAutomaticTransaction from "@/components/automaticTransaction/CreateAutomaticTransaction.jsx";
-import AutomaticTransactionList from "@/components/automaticTransaction/AutomaticTransactionList.jsx";
+import SearchAutomaticTransactions from "@/feature/automaticTransaction/SearchAutomaticTransactions.jsx";
+import CreateAutomaticTransaction from "@/feature/automaticTransaction/CreateAutomaticTransaction.jsx";
+import AutomaticTransactionList from "@/feature/automaticTransaction/AutomaticTransactionList.jsx";
 
-const AutomaticTransactions = ({ navigate }) => {
+const AutomaticTransactions = () => {
     return (
         <div className="min-h-screen flex flex-col">
             <main className="flex-1 p-4">

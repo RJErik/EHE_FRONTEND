@@ -1,13 +1,10 @@
-import Header from "../components/Header";
-import AccountProfile from "../components/account/AccountProfile.jsx";
-import ApiKeyManager from "../components/account/ApiKeyManager.jsx";
+import AccountProfile from "@/feature/account/AccountProfile.jsx";
+import ApiKeyManager from "@/feature/account/ApiKeyManager.jsx";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 
-const Account = ({ navigate }) => {
+const Account = () => {
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="account" />
-
             <main className="flex-1 p-4">
                 <div className="flex flex-col items-center mb-8">
                     <Avatar className="h-16 w-16 mb-4">
@@ -33,10 +30,10 @@ const Account = ({ navigate }) => {
 
                 <div className="container mx-auto flex flex-col md:flex-row">
                     <div className="w-full md:w-1/2 md:pr-8 mb-8 md:mb-0">
-                        <AccountProfile navigate={navigate} />
+                        <AccountProfile  />
                     </div>
 
-                    <div className="w-full md:w-1/2 md:border-t md:border-t-0 md:border-l pt-8 md:pt-0 md:pl-8">
+                    <div className="w-full md:w-1/2 md:border-t md:border-l pt-8 md:pt-0 md:pl-8">
                         <ApiKeyManager />
                     </div>
                 </div>

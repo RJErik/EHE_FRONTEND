@@ -1,13 +1,10 @@
-import Header from "../components/Header";
-import SearchPaperTrading from "../components/paperTrading/SearchPaperTrading.jsx";
-import CreatePaperTrading from "../components/paperTrading/CreatePaperTrading.jsx";
-import PaperTradingList from "../components/paperTrading/PaperTradingList.jsx";
+import SearchPaperTrading from "@/feature/paperTrading/SearchPaperTrading.jsx";
+import CreatePaperTrading from "@/feature/paperTrading/CreatePaperTrading.jsx";
+import PaperTradingList from "@/feature/paperTrading/PaperTradingList.jsx";
 
-const PaperTrading = ({ navigate }) => {
+const PaperTrading = () => {
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="paperTrading" />
-
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Paper Trading</h1>
 

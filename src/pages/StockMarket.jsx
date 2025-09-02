@@ -1,18 +1,15 @@
 // src/pages/StockMarket.jsx (update)
-import Header from "../components/Header";
-import StockSelectors from "../components/stockMarket/StockSelectors.jsx";
-import CandleChart from "../components/stockMarket/CandleChart";
-import IndicatorCharts from "../components/stockMarket/IndicatorCharts.jsx";
-import PortfolioList from "../components/stockMarket/PortfolioList.jsx";
-import PortfolioGraph from "../components/stockMarket/PortfolioGraph.jsx";
-import TradePanel from "../components/stockMarket/TradePanel.jsx";
-import { ChartProvider } from "../components/stockMarket/ChartContext.jsx";
+import StockSelectors from "@/feature/stockMarket/StockSelectors.jsx";
+import CandleChart from "@/feature/stockMarket/CandleChart";
+import IndicatorCharts from "@/feature/stockMarket/IndicatorCharts.jsx";
+import PortfolioList from "@/feature/stockMarket/PortfolioList.jsx";
+import PortfolioGraph from "@/feature/stockMarket/PortfolioGraph.jsx";
+import TradePanel from "@/feature/stockMarket/TradePanel.jsx";
+import { ChartProvider } from "@/feature/stockMarket/ChartContext.jsx";
 
-const StockMarket = ({ navigate }) => {
+const StockMarket = () => {
     return (
         <div className="min-h-screen flex flex-col">
-            <Header navigate={navigate} currentPage="stockMarket" />
-
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Stock Market</h1>
 

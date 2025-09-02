@@ -19,7 +19,7 @@ export function useAccountProfile() {
 
         try {
             console.log("Fetching user information...");
-            const response = await fetch("http://localhost:8080/api/user/info", {
+            const response = await fetch("http://localhost:8080/api/user/user-info", {
                 method: "GET",
                 credentials: "include",
                 headers: {

@@ -65,12 +65,21 @@ export function useApiKeys() {
             const data = await response.json();
 
             if (data.success) {
-                // ✨ CHANGE: Add the new key to the local state
-                setApiKeys(prevKeys => [...prevKeys, data.apiKey]);
+                // Create a properly formatted API key object for the local state
+                // The backend now returns the full response with masked values
+                const newApiKey = {
+                    apiKeyId: data.apiKey.apiKeyId,
+                    platformName: data.apiKey.platformName,
+                    maskedApiKeyValue: data.apiKey.maskedApiKeyValue,
+                    maskedSecretKey: data.apiKey.maskedSecretKey
+                };
+
+                setApiKeys(prevKeys => [...prevKeys, newApiKey]);
                 toast({
                     title: "Success",
                     description: data.message || "API key added successfully",
                 });
+                return true; // Return success indicator
             } else {
                 setError(data.message || "Failed to add API key");
                 toast({
@@ -78,6 +87,7 @@ export function useApiKeys() {
                     description: data.message || "Failed to add API key",
                     variant: "destructive",
                 });
+                return false;
             }
         } catch (err) {
             console.error("Error adding API key:", err);
@@ -87,6 +97,7 @@ export function useApiKeys() {
                 description: "Failed to add API key. Please try again later.",
                 variant: "destructive",
             });
+            return false;
         } finally {
             setIsLoading(false);
         }
@@ -110,11 +121,26 @@ export function useApiKeys() {
             const data = await response.json();
 
             if (data.success) {
+                // Update the local state with the updated API key data
+                // The backend now returns the full response with masked values
+                setApiKeys(prevKeys =>
+                    prevKeys.map(key =>
+                        key.apiKeyId === apiKeyId
+                            ? {
+                                apiKeyId: data.apiKey.apiKeyId,
+                                platformName: data.apiKey.platformName,
+                                maskedApiKeyValue: data.apiKey.maskedApiKeyValue,
+                                maskedSecretKey: data.apiKey.maskedSecretKey
+                            }
+                            : key
+                    )
+                );
+
                 toast({
                     title: "Success",
                     description: data.message || "API key updated successfully",
                 });
-                await fetchApiKeys(); // Refresh the list
+                return true; // Return success indicator
             } else {
                 setError(data.message || "Failed to update API key");
                 toast({
@@ -122,6 +148,7 @@ export function useApiKeys() {
                     description: data.message || "Failed to update API key",
                     variant: "destructive",
                 });
+                return false;
             }
         } catch (err) {
             console.error("Error updating API key:", err);
@@ -131,6 +158,7 @@ export function useApiKeys() {
                 description: "Failed to update API key. Please try again later.",
                 variant: "destructive",
             });
+            return false;
         } finally {
             setIsLoading(false);
         }
@@ -154,12 +182,13 @@ export function useApiKeys() {
             const data = await response.json();
 
             if (data.success) {
-                // ✨ CHANGE: Filter out the deleted key from the local state
-                setApiKeys(prevKeys => prevKeys.filter(key => key.id !== apiKeyId));
+                // Filter out the deleted key from the local state
+                setApiKeys(prevKeys => prevKeys.filter(key => key.apiKeyId !== apiKeyId));
                 toast({
                     title: "Success",
                     description: data.message || "API key deleted successfully",
                 });
+                return true; // Return success indicator
             } else {
                 setError(data.message || "Failed to delete API key");
                 toast({
@@ -167,6 +196,7 @@ export function useApiKeys() {
                     description: data.message || "Failed to delete API key",
                     variant: "destructive",
                 });
+                return false;
             }
         } catch (err) {
             console.error("Error deleting API key:", err);
@@ -176,6 +206,7 @@ export function useApiKeys() {
                 description: "Failed to delete API key. Please try again later.",
                 variant: "destructive",
             });
+            return false;
         } finally {
             setIsLoading(false);
         }

@@ -111,15 +111,77 @@ export function WebSocketProvider({ children, currentPage }) {
     const { toast } = useToast();
     const initialized = useRef(false);
 
-    // Global message handler that distributes to appropriate handlers based on subscription ID
+// Updated handleGlobalMessage function to handle new DTO structure
     const handleGlobalMessage = (message) => {
         // Parse the message if it's a string
         const data = typeof message === 'string' ? JSON.parse(message) : message;
 
-        // Track heartbeats
+        // Handle subscription/unsubscription/update responses (wrapped in success/message structure)
+        if (data.success !== undefined) {
+            // Handle subscription response
+            if (data.subscription && data.subscription.subscriptionId) {
+                const subscriptionResponse = data.subscription;
+
+                // Set the subscription ID in the SubscriptionManager based on type
+                if (subscriptionResponse.subscriptionType) {
+                    const type = subscriptionResponse.subscriptionType.toLowerCase();
+                    SubscriptionManager.setActiveSubscription(type, subscriptionResponse.subscriptionId);
+
+                    // Route to appropriate handlers with the full response
+                    const responseData = {
+                        ...data,
+                        subscriptionId: subscriptionResponse.subscriptionId,
+                        subscriptionType: subscriptionResponse.subscriptionType
+                    };
+
+                    SubscriptionManager.messageHandlers[type].forEach(handler => {
+                        try {
+                            handler(responseData);
+                        } catch (err) {
+                            console.error(`[CandleWebSocketContext] Error in ${type} message handler:`, err);
+                        }
+                    });
+                }
+                return;
+            }
+
+            // Handle unsubscription response
+            if (data.subscriptionId && data.subscriptionId.subscriptionId) {
+                const unsubResponse = data.subscriptionId;
+
+                // Clear from both types since we don't know which one it was
+                Object.keys(SubscriptionManager.activeSubscriptions).forEach(type => {
+                    if (SubscriptionManager.activeSubscriptions[type] === unsubResponse.subscriptionId) {
+                        SubscriptionManager.clearActiveSubscription(type);
+                    }
+                });
+
+                // Send response to all handlers since we don't know the type
+                [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
+                    try {
+                        handler(data);
+                    } catch (err) {
+                        console.error("[CandleWebSocketContext] Error in unsubscription handler:", err);
+                    }
+                });
+                return;
+            }
+
+            // If neither subscription nor subscriptionId fields are present, route to all handlers
+            [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
+                try {
+                    handler(data);
+                } catch (err) {
+                    console.error("[CandleWebSocketContext] Error in general response handler:", err);
+                }
+            });
+            return;
+        }
+
+        // Handle ongoing data updates and heartbeats (existing logic)
         if (data.updateType === "HEARTBEAT") {
             SubscriptionManager.recordHeartbeat(data.subscriptionId);
-            return; // Skip further processing for heartbeats
+            return;
         }
 
         // Determine which subscription this message belongs to
@@ -147,9 +209,9 @@ export function WebSocketProvider({ children, currentPage }) {
                 }
             });
         }
-        // For subscription responses or initial data without known subscription ID
+        // Handle initial data responses or messages without known subscription ID
         else if (!data.subscriptionId || data.updateType === undefined) {
-            // For new subscriptions, check if we need to parse the response by subscription type
+            // Check for subscription type in the data
             if (data.subscriptionType === 'CHART') {
                 SubscriptionManager.messageHandlers.chart.forEach(handler => {
                     try {
@@ -168,7 +230,7 @@ export function WebSocketProvider({ children, currentPage }) {
                     }
                 });
             }
-            // If no type marker is present, send to both (legacy compatibility)
+            // If no type marker, send to both (legacy compatibility)
             else {
                 console.log("[CandleWebSocketContext] Unidentified message, routing to all handlers");
                 [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
@@ -278,8 +340,6 @@ export function WebSocketProvider({ children, currentPage }) {
             await webSocketService.safeSend('/app/candles/unsubscribe', {
                 subscriptionId: SubscriptionManager.activeSubscriptions[type]
             });
-
-            SubscriptionManager.clearActiveSubscription(type);
             return true;
         } catch (err) {
             console.error(`[WebSocketContext] Error unsubscribing ${type}:`, err);

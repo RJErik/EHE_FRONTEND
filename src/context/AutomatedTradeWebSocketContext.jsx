@@ -80,10 +80,13 @@ export function AutomatedTradeWebSocketProvider({ children }) {
                     notifySubscribers(data);
                 }
 
-                // If this is the subscription confirmation
+                // If this is the subscription confirmation - handle both string and object format
                 if (data.subscriptionId && !subscriptionId) {
-                    console.log('[AutomatedTradeWebSocket] Subscription confirmed:', data.subscriptionId);
-                    setSubscriptionId(data.subscriptionId);
+                    // Extract the actual subscription ID from the response object
+                    const actualSubscriptionId = data.subscriptionId.subscriptionId;
+
+                    console.log('[AutomatedTradeWebSocket] Subscription confirmed:', actualSubscriptionId);
+                    setSubscriptionId(actualSubscriptionId);
                     setIsSubscribed(true);
                     return;
                 }
@@ -111,10 +114,10 @@ export function AutomatedTradeWebSocketProvider({ children }) {
         try {
             console.log('[AutomatedTradeWebSocket] Unsubscribing from automated trades');
 
-            // Send unsubscription request
+            // Send unsubscription request with the new DTO structure
             await webSocketService.send(
                 '/app/automated-trades/unsubscribe',
-                { subscriptionId }
+                { subscriptionId: subscriptionId }
             );
 
             // Unsubscribe from the destination

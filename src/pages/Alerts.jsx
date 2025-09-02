@@ -1,10 +1,10 @@
 // src/pages/Alerts.jsx
-import SearchAlerts from "../components/alert/SearchAlerts.jsx";
-import CreateAlert from "../components/alert/CreateAlert.jsx";
-import AlertsList from "../components/alert/AlertsList.jsx";
+import SearchAlerts from "@/feature/alert/SearchAlerts.jsx";
+import CreateAlert from "@/feature/alert/CreateAlert.jsx";
+import AlertsList from "@/feature/alert/AlertsList.jsx";
 import { AlertProvider } from "../context/AlertContext";
 
-const Alerts = ({ navigate }) => {
+const Alerts = () => {
     return (
         <AlertProvider>
             <div className="min-h-screen flex flex-col">

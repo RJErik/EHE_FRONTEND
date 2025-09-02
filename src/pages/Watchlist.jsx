@@ -1,6 +1,6 @@
-import SearchWatchlist from "../components/watchlist/SearchWatchlist.jsx";
-import AddWatchlist from "../components/watchlist/AddWatchlist.jsx";
-import WatchlistDisplay from "../components/watchlist/WatchlistDisplay.jsx";
+import SearchWatchlist from "@/feature/watchlist/SearchWatchlist.jsx";
+import AddWatchlist from "@/feature/watchlist/AddWatchlist.jsx";
+import WatchlistDisplay from "@/feature/watchlist/WatchlistDisplay.jsx";
 
 const Watchlist = () => {
     return (
