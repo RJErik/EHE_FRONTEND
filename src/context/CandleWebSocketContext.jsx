@@ -95,9 +95,7 @@ const SubscriptionManager = {
         // Clean up stale subscriptions that are still sending heartbeats
         if (!isChartActive && !isIndicatorActive && subscriptionId) {
             console.log(`[SubscriptionManager] Cleaning up stale subscription: ${subscriptionId}`);
-            webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: subscriptionId
-            }).catch(() => {});
+            webSocketService.safeSend('/app/candles/unsubscribe', subscriptionId).catch(() => {});
         }
 
         return isChartActive || isIndicatorActive;
@@ -337,9 +335,7 @@ export function WebSocketProvider({ children, currentPage }) {
         try {
             console.log(`[WebSocketContext] Explicitly unsubscribing ${type} subscription: ${SubscriptionManager.activeSubscriptions[type]}`);
 
-            await webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: SubscriptionManager.activeSubscriptions[type]
-            });
+            await webSocketService.safeSend('/app/candles/unsubscribe', SubscriptionManager.activeSubscriptions[type]);
             return true;
         } catch (err) {
             console.error(`[WebSocketContext] Error unsubscribing ${type}:`, err);
