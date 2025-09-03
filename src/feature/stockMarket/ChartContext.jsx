@@ -489,7 +489,9 @@ export function ChartProvider({ children }) {
             const pastRange = calculateNewDateRangeForBuffer('past');
             if (pastRange) {
                 return {
-                    ...pastRange,
+                    start: pastRange.startDate,
+                    end: pastRange.endDate,
+                    resetData: pastRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'past',
                     referenceTimestamp: displayCandles[viewStartIndex]?.timestamp
@@ -501,7 +503,9 @@ export function ChartProvider({ children }) {
             const futureRange = calculateNewDateRangeForBuffer('future');
             if (futureRange) {
                 return {
-                    ...futureRange,
+                    start: futureRange.startDate,
+                    end: futureRange.endDate,
+                    resetData: futureRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'future',
                     referenceTimestamp: displayCandles[Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1)]?.timestamp

@@ -35,6 +35,7 @@ export function useCandleSubscription() {
     // Add refs for managing indicator update sequences
     const isUpdatingIndicatorSubscription = useRef(false);
     const pendingUpdateRef = useRef(false);
+    const isRequestingBufferUpdate = useRef(false);
 
     // NEW: Create a ref to hold latest subscription details
     const latestSubscriptionDetailsRef = useRef({
@@ -160,7 +161,10 @@ export function useCandleSubscription() {
                 .map(c => transformCandleData(c, data.stockSymbol || currentSubscription.stockSymbol));
 
             // Check if this is a buffer update
-            const isBufferUpdate = data.isBufferUpdate || (data.resetData === true);
+            const isBufferUpdate = (data.isBufferUpdate || data.resetData === true) || isRequestingBufferUpdate.current;
+            if (isRequestingBufferUpdate.current) {
+                isRequestingBufferUpdate.current = false; // Reset the flag immediately after use
+            }
             
             if (isBufferUpdate) {
                 console.log("[Buffer Manager] Processing buffer update response");
@@ -170,7 +174,7 @@ export function useCandleSubscription() {
                 const referenceTimestamp = data.referenceTimestamp;
                 
                 // Update display candles with new data
-                updateDisplayCandles(newCandles, true);
+                updateDisplayCandles(newCandles, false);
                 
                 if (referenceTimestamp) {
                     // Attempt to find the reference candle index
@@ -852,6 +856,9 @@ export function useCandleSubscription() {
                     };
 
                     console.log("[Buffer Manager] Sending buffer update request:", bufferUpdateRequest);
+
+                    // Set the flag before sending the request
+                    isRequestingBufferUpdate.current = true;
 
                     // Send the request
                     await requestSubscription('chart', bufferUpdateRequest);
