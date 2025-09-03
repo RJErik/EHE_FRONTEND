@@ -35,6 +35,7 @@ export function useCandleSubscription() {
     // Add refs for managing indicator update sequences
     const isUpdatingIndicatorSubscription = useRef(false);
     const pendingUpdateRef = useRef(false);
+    const referenceTimestampRef = useRef(null);
     const isRequestingBufferUpdate = useRef(false);
 
     // NEW: Create a ref to hold latest subscription details
@@ -171,7 +172,12 @@ export function useCandleSubscription() {
                 
                 // Get the buffer direction and reference timestamp if available
                 const bufferDirection = data.bufferDirection || 'unknown';
-                const referenceTimestamp = data.referenceTimestamp;
+                const referenceTimestamp = referenceTimestampRef.current; // Use the ref
+
+                // Reset the ref after use
+                if (referenceTimestampRef.current) {
+                    referenceTimestampRef.current = null;
+                }
                 
                 // Update display candles with new data
                 updateDisplayCandles(newCandles, false);
@@ -866,7 +872,7 @@ export function useCandleSubscription() {
                     // Store the reference timestamp for position restoration
                     if (referenceTimestamp && !isNaN(referenceTimestamp)) {
                         console.log(`[Buffer Manager] Stored reference timestamp: ${new Date(referenceTimestamp).toISOString()}`);
-                        // We'll handle the actual view index update when we receive the data
+                        referenceTimestampRef.current = referenceTimestamp;
                     }
 
                     console.log("[Buffer Manager] Buffer update request sent");
