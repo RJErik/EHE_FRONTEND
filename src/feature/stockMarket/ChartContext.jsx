@@ -56,6 +56,8 @@ export function ChartProvider({ children }) {
     // Refs for buffer management
     const subscriptionStartDateRef = useRef(null);
     const subscriptionEndDateRef = useRef(null);
+    // Track if we've reached the earliest available candle – avoid endless past requests
+    const isStartReachedRef = useRef(false);
     const isRequestingPastDataRef = useRef(false);
     const isRequestingFutureDataRef = useRef(false);
 
@@ -322,11 +324,29 @@ export function ChartProvider({ children }) {
 
     // Track subscription date range when new data is received
     const updateSubscriptionDateRange = useCallback((startDate, endDate) => {
-        subscriptionStartDateRef.current = startDate;
-        subscriptionEndDateRef.current = endDate;
+        const prevStart = subscriptionStartDateRef.current;
+        const prevEnd = subscriptionEndDateRef.current;
+
+        if (prevStart != null && prevEnd != null) {
+            // If the new window does not overlap the existing known window,
+            // treat it as a reset (e.g., new symbol/timeframe), otherwise extend.
+            const disjoint = endDate < prevStart || startDate > prevEnd;
+            if (disjoint) {
+                subscriptionStartDateRef.current = startDate;
+                subscriptionEndDateRef.current = endDate;
+            } else {
+                subscriptionStartDateRef.current = Math.min(prevStart, startDate);
+                subscriptionEndDateRef.current = Math.max(prevEnd, endDate);
+            }
+        } else {
+            subscriptionStartDateRef.current = startDate;
+            subscriptionEndDateRef.current = endDate;
+        }
         console.log("[Buffer Management] Updated subscription date range:", {
-            start: new Date(startDate).toISOString(),
-            end: new Date(endDate).toISOString()
+            prevStart: prevStart ? new Date(prevStart).toISOString() : "none",
+            prevEnd: prevEnd ? new Date(prevEnd).toISOString() : "none",
+            start: new Date(subscriptionStartDateRef.current).toISOString(),
+            end: new Date(subscriptionEndDateRef.current).toISOString()
         });
     }, []);
 
@@ -416,6 +436,23 @@ export function ChartProvider({ children }) {
             // End date is the threshold for requesting more data
             newEndDate = subscriptionEndDateRef.current + bufferSizeInMs;
         }
+
+        // Guard against invalid ranges caused by stale subscription refs
+        if (newStartDate >= newEndDate) {
+            console.warn(`[Buffer Management] Adjusting invalid ${direction} buffer range (start >= end)`, {
+                start: new Date(newStartDate).toISOString(),
+                end: new Date(newEndDate).toISOString(),
+                firstVisible: new Date(firstVisibleCandle.timestamp).toISOString(),
+                lastVisible: new Date(lastVisibleCandle.timestamp).toISOString()
+            });
+            if (direction === 'past') {
+                newStartDate = firstVisibleCandle.timestamp - bufferSizeInMs;
+                newEndDate = firstVisibleCandle.timestamp + bufferSizeInMs;
+            } else {
+                newStartDate = lastVisibleCandle.timestamp - bufferSizeInMs;
+                newEndDate = lastVisibleCandle.timestamp + bufferSizeInMs;
+            }
+        }
         
         console.log(`[Buffer Management] Calculated new ${direction} date range:`, {
             start: new Date(newStartDate).toISOString(),
@@ -484,8 +521,8 @@ export function ChartProvider({ children }) {
         // Check buffer thresholds
         const { needsPastData, needsFutureData } = checkBufferThresholds();
         
-        // If we need to load more data, calculate the new range
-        if (needsPastData && !isRequestingPastDataRef.current) {
+        // Past data request – stop if we already hit the earliest known candle
+        if (needsPastData && !isRequestingPastDataRef.current && !isStartReachedRef.current) {
             const pastRange = calculateNewDateRangeForBuffer('past');
             if (pastRange) {
                 return {
@@ -498,7 +535,7 @@ export function ChartProvider({ children }) {
                 };
             }
         }
-        
+
         if (needsFutureData && !isRequestingFutureDataRef.current) {
             const futureRange = calculateNewDateRangeForBuffer('future');
             if (futureRange) {

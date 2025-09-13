@@ -37,6 +37,8 @@ export function useCandleSubscription() {
     const pendingUpdateRef = useRef(false);
     const referenceTimestampRef = useRef(null);
     const isRequestingBufferUpdate = useRef(false);
+    // Controls whether the next indicator candles message should replace buffer (true) or merge (false)
+    const expectIndicatorResetRef = useRef(false);
 
     // NEW: Create a ref to hold latest subscription details
     const latestSubscriptionDetailsRef = useRef({
@@ -170,8 +172,33 @@ export function useCandleSubscription() {
             if (isBufferUpdate) {
                 console.log("[Buffer Manager] Processing buffer update response");
                 
-                // Get the buffer direction and reference timestamp if available
-                const bufferDirection = data.bufferDirection || 'unknown';
+                // Infer buffer direction by comparing received range to current known buffer
+                let bufferDirection = 'unknown';
+                try {
+                    const prevCandles = (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                    const prevStart = prevCandles.length ? prevCandles[0].timestamp : null;
+                    const prevEnd = prevCandles.length ? prevCandles[prevCandles.length - 1].timestamp : null;
+                    const newStart = Math.min(...newCandles.map(c => c.timestamp));
+                    const newEnd = Math.max(...newCandles.map(c => c.timestamp));
+                    const epsilon = (window.__chartContextValue && window.__chartContextValue.timeframeInMs) || 60_000;
+
+                    if (prevStart != null && prevEnd != null && Number.isFinite(newStart) && Number.isFinite(newEnd)) {
+                        const touchesPast = newEnd <= (prevStart + epsilon);
+                        const touchesFuture = newStart >= (prevEnd - epsilon);
+                        if (touchesPast && !touchesFuture) bufferDirection = 'past';
+                        else if (touchesFuture && !touchesPast) bufferDirection = 'future';
+                        else if (newStart < prevStart && newEnd > prevEnd) bufferDirection = 'both';
+                        else if (newStart >= prevStart && newEnd <= prevEnd) bufferDirection = 'unknown'; // overlap/refresh
+                    }
+
+                    // After inferring, update the known subscription date range using the new slice
+                    if (window.__chartContextValue && window.__chartContextValue.updateSubscriptionDateRange && Number.isFinite(newStart) && Number.isFinite(newEnd)) {
+                        window.__chartContextValue.updateSubscriptionDateRange(newStart, newEnd);
+                    }
+                } catch (e) {
+                    console.warn('[Buffer Manager] Failed to infer direction:', e);
+                }
+
                 const referenceTimestamp = referenceTimestampRef.current; // Use the ref
 
                 // Reset the ref after use
@@ -203,7 +230,17 @@ export function useCandleSubscription() {
                 
                 // Notify ChartContext that the buffer update is complete
                 if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
-                    window.__chartContextValue.handleBufferUpdateComplete(bufferDirection, referenceTimestamp);
+                    if (bufferDirection === 'both') {
+                        // Clear both directions to avoid any stuck flags
+                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        window.__chartContextValue.handleBufferUpdateComplete('future', null);
+                    } else if (bufferDirection === 'unknown') {
+                        // Be defensive: clear both flags if direction ambiguous
+                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        window.__chartContextValue.handleBufferUpdateComplete('future', null);
+                    } else {
+                        window.__chartContextValue.handleBufferUpdateComplete(bufferDirection, referenceTimestamp);
+                    }
                 }
             } else {
                 // For regular updates, use the normal behavior
@@ -331,8 +368,12 @@ export function useCandleSubscription() {
             const newCandles = data.candles
                 .map(c => transformCandleData(c, data.stockSymbol || currentSubscription.stockSymbol));
 
-            // Update indicator candles with new data
-            updateIndicatorCandles(newCandles, true);
+            // Replace buffer only if a reset was explicitly expected; otherwise merge
+            const doReset = expectIndicatorResetRef.current === true;
+            if (doReset) {
+                expectIndicatorResetRef.current = false;
+            }
+            updateIndicatorCandles(newCandles, doReset);
 
             // Apply indicators after data is loaded
             setTimeout(() => {
@@ -602,6 +643,13 @@ export function useCandleSubscription() {
                 // Longer delay to ensure backend processes the unsubscribe
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
+
+            // Prepare for a fresh indicator dataset on the next response
+            try {
+                expectIndicatorResetRef.current = true;
+                // Clear current indicator buffer to avoid mixing symbols/timeframes
+                setIndicatorCandles([]);
+            } catch (_) {}
 
             // Calculate the required data range for indicators
             const range = calculateRequiredDataRange();
@@ -876,6 +924,41 @@ export function useCandleSubscription() {
                     }
 
                     console.log("[Buffer Manager] Buffer update request sent");
+
+                    // Also ensure indicator subscription covers the same required range
+                    try {
+                        const indicatorRangeStart = startDate.toISOString();
+                        const indicatorRangeEnd = endDate.toISOString();
+
+                        // Only if we have indicators
+                        if (indicators.length > 0) {
+                            // Unsubscribe old indicator sub to avoid overlap
+                            if (subscriptionIds.indicator) {
+                                console.log(`[Buffer Manager] Unsubscribing from current indicator subscription before indicator buffer sync`);
+                                await unsubscribe('indicator');
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                            }
+
+                            const indicatorSubscriptionRequest = {
+                                platformName,
+                                stockSymbol,
+                                timeframe,
+                                startDate: indicatorRangeStart,
+                                endDate: indicatorRangeEnd,
+                                resetData: true,
+                                subscriptionType: 'INDICATOR'
+                            };
+
+                            // Prepare to reset indicator buffer on response
+                            expectIndicatorResetRef.current = true;
+                            setIndicatorCandles([]);
+
+                            console.log("[Buffer Manager] Sending indicator buffer sync request:", indicatorSubscriptionRequest);
+                            await requestSubscription('indicator', indicatorSubscriptionRequest);
+                        }
+                    } catch (e) {
+                        console.warn('[Buffer Manager] Failed to sync indicator subscription to buffer range:', e);
+                    }
                 } else {
                     // If not a buffer update, use the regular indicator subscription update
                     await updateIndicatorSubscription();
