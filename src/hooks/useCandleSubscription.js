@@ -40,6 +40,13 @@ export function useCandleSubscription() {
     // Controls whether the next indicator candles message should replace buffer (true) or merge (false)
     const expectIndicatorResetRef = useRef(false);
 
+    // Remember last indicator subscription request to avoid redundant resubscribes
+    const lastIndicatorRequestRef = useRef(null);
+    // Track last chart buffer request and observed end to avoid repeating non-extending future requests
+    const lastChartRequestedRangeRef = useRef({ start: null, end: null, direction: null });
+    const lastChartObservedEndRef = useRef(null);
+    const chartRequestCooldownUntilRef = useRef(0);
+
     // NEW: Create a ref to hold latest subscription details
     const latestSubscriptionDetailsRef = useRef({
         platformName: null,
@@ -209,6 +216,14 @@ export function useCandleSubscription() {
                 // Update display candles with new data. Do not set viewStartIndex here;
                 // let ChartContext handle re-position based on merged buffer and referenceTimestamp.
                 updateDisplayCandles(newCandles, false);
+
+                // Track observed end to help break future buffer request loops if backend doesn't extend
+                try {
+                    const observedEnd = Math.max(...newCandles.map(c => c.timestamp));
+                    if (Number.isFinite(observedEnd)) {
+                        lastChartObservedEndRef.current = observedEnd;
+                    }
+                } catch (_) {}
                 
                 // Notify ChartContext that the buffer update is complete
                 if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
@@ -427,8 +442,8 @@ export function useCandleSubscription() {
             const newCandles = data.updatedCandles.map(candle =>
                 transformCandleData(candle, data.stockSymbol || currentSubscription.stockSymbol));
 
-            // Update indicator candles only
-            updateIndicatorCandles(newCandles);
+            // Update indicator candles only (merge)
+            updateIndicatorCandles(newCandles, false);
         }
         // Handle subscription response with no candles
         else if (data.subscriptionId && data.updateType === undefined) {
@@ -664,12 +679,19 @@ export function useCandleSubscription() {
         }
 
         try {
-            // First, unsubscribe from any existing indicator subscription
+            // First, check if we really need a fresh indicator subscription
+            // Build a key to compare against last request
+            const tentativeKey = JSON.stringify({
+                platformName,
+                stockSymbol,
+                timeframe,
+                startDate: null, // filled later
+                endDate: null
+            });
+
+            // Only unsubscribe if a new range will be requested later (below)
             if (subscriptionIds.indicator) {
-                console.log(`[useCandleSubscription] Unsubscribing from current indicator subscription before creating new one`);
-                await unsubscribe('indicator');
-                // Longer delay to ensure backend processes the unsubscribe
-                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log(`[useCandleSubscription] Existing indicator subscription detected; will only recreate if range differs`);
             }
 
             // Prepare for a fresh indicator dataset on the next response
@@ -708,7 +730,29 @@ export function useCandleSubscription() {
                 subscriptionType: 'INDICATOR'  // Add type marker for backend differentiation
             };
 
+            // Skip identical request to avoid resubscribe storms
+            const nextKey = JSON.stringify(indicatorSubscriptionRequest);
+            if (lastIndicatorRequestRef.current === nextKey) {
+                console.log('[Indicator] Skipping identical indicator subscription request');
+                return "pending";
+            }
+            lastIndicatorRequestRef.current = nextKey;
+
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
+
+            // If identical to last request, skip unsubscribe + resubscribe
+            const reqKey = JSON.stringify(indicatorSubscriptionRequest);
+            if (lastIndicatorRequestRef.current === reqKey) {
+                console.log('[Indicator] Request identical to last; skipping resubscription');
+                return "pending";
+            }
+
+            // If an indicator subscription exists, cleanly unsubscribe first
+            if (subscriptionIds.indicator) {
+                console.log(`[useCandleSubscription] Unsubscribing from current indicator subscription before creating new one`);
+                await unsubscribe('indicator');
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
 
             // Use the CandleWebSocketContext's request method for subscriptions
             await requestSubscription('indicator', indicatorSubscriptionRequest);
@@ -858,8 +902,8 @@ export function useCandleSubscription() {
 
             try {
                 // For buffer updates with range details, use that directly
-                if (isBufferUpdate && range) {
-                    console.log("[Buffer Manager] Processing buffer update request");
+            if (isBufferUpdate && range) {
+                console.log("[Buffer Manager] Processing buffer update request");
 
                     // Get subscription details
                     let platformName = currentSubscription.platformName;
@@ -938,6 +982,26 @@ export function useCandleSubscription() {
                     };
 
                     console.log("[Buffer Manager] Sending buffer update request:", bufferUpdateRequest);
+
+                    // Before sending, avoid repeating identical future requests when backend hasn't extended
+                    const now = Date.now();
+                    if (bufferDirection === 'future') {
+                        const lastReq = lastChartRequestedRangeRef.current;
+                        const observedEnd = lastChartObservedEndRef.current;
+                        if (lastReq && lastReq.direction === 'future' && lastReq.start === start && lastReq.end === end) {
+                            if (observedEnd && observedEnd < end) {
+                                if (now < chartRequestCooldownUntilRef.current) {
+                                    console.log('[Buffer Manager] Skipping duplicate future buffer request during cooldown');
+                                    return;
+                                }
+                                // set short cooldown
+                                chartRequestCooldownUntilRef.current = now + 2000;
+                            }
+                        }
+                        lastChartRequestedRangeRef.current = { start, end, direction: 'future' };
+                    } else if (bufferDirection === 'past') {
+                        lastChartRequestedRangeRef.current = { start, end, direction: 'past' };
+                    }
 
                     // Set the flag before sending the request
                     isRequestingBufferUpdate.current = true;

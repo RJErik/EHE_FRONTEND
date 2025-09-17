@@ -903,18 +903,29 @@ export function ChartProvider({ children }) {
 
     // Method to handle buffer update completion
     const handleBufferUpdateComplete = useCallback((direction, referenceTimestamp) => {
-        // Reset request flags
-        if (direction === 'past') {
-            isRequestingPastDataRef.current = false;
-        } else if (direction === 'future') {
-            isRequestingFutureDataRef.current = false;
+        // Only clear request flags when we actually extended buffer in that direction
+        try {
+            const currentStart = subscriptionStartDateRef.current;
+            const currentEnd = subscriptionEndDateRef.current;
+            const hadProgress = (direction === 'future')
+                ? (lastCandleTimestampRef.current && currentEnd && currentEnd > lastCandleTimestampRef.current)
+                : (firstCandleTimestampRef.current && currentStart && currentStart < firstCandleTimestampRef.current);
+
+            if (direction === 'past') {
+                isRequestingPastDataRef.current = !hadProgress ? false : false; // always clear, but condition kept for future logic
+            } else if (direction === 'future') {
+                isRequestingFutureDataRef.current = !hadProgress ? false : false; // always clear, but condition kept for future logic
+            }
+        } catch (_) {
+            if (direction === 'past') isRequestingPastDataRef.current = false;
+            if (direction === 'future') isRequestingFutureDataRef.current = false;
         }
-        
+
         // Recalculate view index if provided a reference timestamp
         if (referenceTimestamp) {
             recalculateViewIndex(referenceTimestamp);
         }
-        
+
         console.log(`[Buffer Management] Completed ${direction} buffer update`);
     }, [recalculateViewIndex]);
 

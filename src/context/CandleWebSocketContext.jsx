@@ -36,6 +36,9 @@ const SubscriptionManager = {
     // Pending subscription requests for deduplication
     pendingSubscriptionRequests: {},
 
+    // Track pending unsubscribe requests to know which type was intended
+    pendingUnsubscribes: {}, // { [subscriptionId]: 'chart' | 'indicator' }
+
     // Store subscription for reuse
     setActiveSubscription(type, id) {
         if (!type || !id) return;
@@ -145,16 +148,25 @@ export function WebSocketProvider({ children, currentPage }) {
                 return;
             }
 
-            // Handle unsubscription response
+            // Handle unsubscription response (server may wrap in subscriptionId object)
             if (data.subscriptionId && data.subscriptionId.subscriptionId) {
                 const unsubResponse = data.subscriptionId;
 
-                // Clear from both types since we don't know which one it was
-                Object.keys(SubscriptionManager.activeSubscriptions).forEach(type => {
-                    if (SubscriptionManager.activeSubscriptions[type] === unsubResponse.subscriptionId) {
-                        SubscriptionManager.clearActiveSubscription(type);
+                // Prefer to clear by the recorded type for this id
+                const recordedType = SubscriptionManager.pendingUnsubscribes[unsubResponse.subscriptionId];
+                if (recordedType) {
+                    if (SubscriptionManager.activeSubscriptions[recordedType] === unsubResponse.subscriptionId) {
+                        SubscriptionManager.clearActiveSubscription(recordedType);
                     }
-                });
+                    delete SubscriptionManager.pendingUnsubscribes[unsubResponse.subscriptionId];
+                } else {
+                    // Fallback: clear whichever type currently matches this id
+                    Object.keys(SubscriptionManager.activeSubscriptions).forEach(type => {
+                        if (SubscriptionManager.activeSubscriptions[type] === unsubResponse.subscriptionId) {
+                            SubscriptionManager.clearActiveSubscription(type);
+                        }
+                    });
+                }
 
                 // Send response to all handlers since we don't know the type
                 /* [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
@@ -335,10 +347,17 @@ export function WebSocketProvider({ children, currentPage }) {
         }
 
         try {
-            console.log(`[WebSocketContext] Explicitly unsubscribing ${type} subscription with ID:`, SubscriptionManager.activeSubscriptions[type]);
+            const id = SubscriptionManager.activeSubscriptions[type];
+            console.log(`[WebSocketContext] Explicitly unsubscribing ${type} subscription with ID:`, id);
+
+            // Record intended type for this id so the response can clear the right one
+            if (id) {
+                SubscriptionManager.pendingUnsubscribes[id] = type;
+            }
 
             await webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: SubscriptionManager.activeSubscriptions[type]
+                subscriptionId: id,
+                subscriptionType: type.toUpperCase()
             });
             return true;
         } catch (err) {
