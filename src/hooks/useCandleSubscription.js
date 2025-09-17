@@ -206,27 +206,9 @@ export function useCandleSubscription() {
                     referenceTimestampRef.current = null;
                 }
                 
-                // Update display candles with new data
+                // Update display candles with new data. Do not set viewStartIndex here;
+                // let ChartContext handle re-position based on merged buffer and referenceTimestamp.
                 updateDisplayCandles(newCandles, false);
-                
-                if (referenceTimestamp) {
-                    // Attempt to find the reference candle index
-                    const referenceIndex = newCandles.findIndex(c => c.timestamp === referenceTimestamp);
-                    
-                    if (referenceIndex !== -1) {
-                        console.log(`[Buffer Manager] Found reference candle at index ${referenceIndex}`);
-                        
-                        // Set view index to maintain the same view position
-                        setViewStartIndex(Math.max(0, Math.min(referenceIndex, newCandles.length - displayedCandles)));
-                    } else {
-                        console.warn("[Buffer Manager] Reference candle not found in new data, using default position");
-                        setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
-                    }
-                } else {
-                    // No reference timestamp, use default behavior
-                    console.log("[Buffer Manager] No reference timestamp provided, using default position");
-                    setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
-                }
                 
                 // Notify ChartContext that the buffer update is complete
                 if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
@@ -243,9 +225,55 @@ export function useCandleSubscription() {
                     }
                 }
             } else {
-                // For regular updates, use the normal behavior
-                updateDisplayCandles(newCandles, true);
-                setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
+                // For non-buffer initial payloads, decide replace vs merge based on overlap with current buffer
+                try {
+                    const ctx = window.__chartContextValue || {};
+                    const prevCandles = (ctx && ctx.displayCandles) || [];
+                    const prevStart = prevCandles.length ? prevCandles[0].timestamp : null;
+                    const prevEnd = prevCandles.length ? prevCandles[prevCandles.length - 1].timestamp : null;
+                    const newStart = Math.min(...newCandles.map(c => c.timestamp));
+                    const newEnd = Math.max(...newCandles.map(c => c.timestamp));
+                    const epsilon = (ctx && ctx.timeframeInMs) || 60_000;
+
+                    const hasPrev = prevStart != null && prevEnd != null;
+                    const overlaps = hasPrev && (newStart <= (prevEnd + epsilon)) && (newEnd >= (prevStart - epsilon));
+
+                    // Determine an anchor timestamp to preserve visual position across merges
+                    let anchorTimestamp = null;
+                    try {
+                        if (ctx && ctx.activeTimestamp) {
+                            anchorTimestamp = ctx.activeTimestamp;
+                        } else if (Array.isArray(ctx.candleData) && ctx.candleData.length) {
+                            anchorTimestamp = ctx.candleData[Math.floor(ctx.candleData.length / 2)]?.timestamp || null;
+                        }
+                    } catch (_) {}
+
+                    if (!hasPrev) {
+                        // First load: replace and position at the end of buffer
+                        updateDisplayCandles(newCandles, true);
+                        setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
+                    } else if (overlaps) {
+                        // Overlapping refresh: merge only; preserve current viewStartIndex
+                        updateDisplayCandles(newCandles, false);
+                        // Restore view to the anchor timestamp to avoid perceived snapping
+                        if (anchorTimestamp && window.__chartContextValue?.handleBufferUpdateComplete) {
+                            window.__chartContextValue.handleBufferUpdateComplete('future', anchorTimestamp);
+                        }
+                    } else {
+                        // Disjoint window (likely timeframe/symbol change): replace
+                        updateDisplayCandles(newCandles, true);
+                        setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
+                    }
+
+                    // Coalesce known range
+                    if (window.__chartContextValue?.updateSubscriptionDateRange && Number.isFinite(newStart) && Number.isFinite(newEnd)) {
+                        window.__chartContextValue.updateSubscriptionDateRange(newStart, newEnd);
+                    }
+                } catch (e) {
+                    console.warn('[Chart] Fallback initial handling due to error, replacing buffer:', e);
+                    updateDisplayCandles(newCandles, true);
+                    setViewStartIndex(Math.max(0, newCandles.length - displayedCandles));
+                }
             }
             
             setError(null);

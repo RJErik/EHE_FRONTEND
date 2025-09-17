@@ -43,6 +43,9 @@ export function ChartProvider({ children }) {
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
     const MAX_HISTORY_CANDLES = 500;
+    // Retention margins (in candles) for trimming buffers around the current view
+    const PAST_MARGIN = 80;
+    const FUTURE_MARGIN = 80;
 
     // Constants for buffer management
     const BUFFER_SIZE_MULTIPLIER = 20; // How many timeframes to buffer on each side
@@ -491,6 +494,48 @@ export function ChartProvider({ children }) {
         return false;
     }, [displayCandles, displayedCandles, findCandleIndexByTimestamp]);
 
+    // Trim display and indicator buffers to keep memory bounded while retaining enough context
+    const trimBuffersIfNeeded = useCallback(() => {
+        if (!displayCandles.length) return;
+
+        // Avoid trimming while a buffer request is in-flight
+        if (isRequestingPastDataRef.current || isRequestingFutureDataRef.current) return;
+
+        const total = displayCandles.length;
+        if (total <= displayedCandles + PAST_MARGIN + FUTURE_MARGIN) return;
+
+        const startIdx = Math.max(0, viewStartIndex - PAST_MARGIN);
+        const endIdx = Math.min(total, viewStartIndex + displayedCandles + FUTURE_MARGIN);
+
+        if (startIdx <= 0 && endIdx >= total) return; // Nothing to trim
+
+        const trimmed = displayCandles.slice(startIdx, endIdx);
+
+        // Adjust viewStartIndex relative to trimmed buffer
+        const newViewStart = Math.max(0, viewStartIndex - startIdx);
+
+        // Update subscription known date range to match trimmed buffer
+        const newStartTs = trimmed[0]?.timestamp;
+        const newEndTs = trimmed[trimmed.length - 1]?.timestamp;
+
+        // Apply updates
+        updateDisplayCandles(trimmed, "trim_buffers");
+        setViewStartIndex(newViewStart);
+        if (newStartTs && newEndTs) {
+            subscriptionStartDateRef.current = newStartTs;
+            subscriptionEndDateRef.current = newEndTs;
+        }
+
+        // Indicators: ensure sufficient lookback retained
+        if (indicatorCandles.length) {
+            const maxLookback = calculateMaxLookback(indicators);
+            const indicatorStartIdx = Math.max(0, startIdx - maxLookback);
+            const indicatorEndIdx = Math.min(indicatorCandles.length, endIdx + 0);
+            const trimmedIndicators = indicatorCandles.slice(indicatorStartIdx, indicatorEndIdx);
+            setIndicatorCandles(trimmedIndicators);
+        }
+    }, [displayCandles, indicatorCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, updateDisplayCandles]);
+
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
         if (!displayCandles.length) {
@@ -780,8 +825,10 @@ export function ChartProvider({ children }) {
                 // Reset the flag
                 setShouldUpdateSubscription(false);
             }
+            // After handling indicator updates and potential merges, trim buffers if too large
+            trimBuffersIfNeeded();
         }
-    }, [indicators, shouldUpdateSubscription, displayCandles.length, calculateRequiredDataRange]);
+    }, [indicators, shouldUpdateSubscription, displayCandles.length, calculateRequiredDataRange, trimBuffersIfNeeded]);
 
     // Update hovered candle when index changes
     useEffect(() => {
