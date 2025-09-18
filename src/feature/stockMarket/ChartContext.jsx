@@ -396,6 +396,9 @@ export function ChartProvider({ children }) {
             needsPastData,
             needsFutureData
         });
+        if (visibleStartIndex === 0 && displayCandles.length > displayedCandles) {
+            console.warn("[Snap Debug] View is at earliest candle (left edge) while buffer has extra history");
+        }
         
         return { needsPastData, needsFutureData };
     }, [displayCandles, viewStartIndex, displayedCandles, timeframeInMs]);
@@ -472,6 +475,14 @@ export function ChartProvider({ children }) {
             end: new Date(newEndDate).toISOString(),
             earliestKnown: subscriptionStartDateRef.current ? new Date(subscriptionStartDateRef.current).toISOString() : 'none'
         });
+        console.log("[Buffer Management] Visible window before request:", {
+            visibleStartIndex,
+            visibleEndIndex,
+            firstVisible: new Date(firstVisibleCandle.timestamp).toISOString(),
+            lastVisible: new Date(lastVisibleCandle.timestamp).toISOString(),
+            bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+            bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none'
+        });
         
         return {
             startDate: newStartDate,
@@ -482,18 +493,60 @@ export function ChartProvider({ children }) {
 
     // Function to find candle index by timestamp
     const findCandleIndexByTimestamp = useCallback((timestamp) => {
-        return displayCandles.findIndex(candle => candle.timestamp === timestamp);
+        const idx = displayCandles.findIndex(candle => candle.timestamp === timestamp);
+        if (idx !== -1) {
+            console.log("[Anchor] Exact match for reference timestamp:", {
+                reference: new Date(timestamp).toISOString(),
+                index: idx
+            });
+            return idx;
+        }
+        // Logging-only diagnostics to understand why anchoring fails
+        try {
+            const diffs = displayCandles.slice(0, 10).map((c, i) => ({ i, ts: c.timestamp, iso: new Date(c.timestamp).toISOString(), dt: Math.abs(c.timestamp - timestamp) }));
+            const last10 = displayCandles.slice(-10).map((c, i) => ({ i: displayCandles.length - 10 + i, ts: c.timestamp, iso: new Date(c.timestamp).toISOString(), dt: Math.abs(c.timestamp - timestamp) }));
+            let nearest = { index: -1, diff: Number.POSITIVE_INFINITY, ts: null };
+            for (let i = 0; i < displayCandles.length; i++) {
+                const d = Math.abs(displayCandles[i].timestamp - timestamp);
+                if (d < nearest.diff) nearest = { index: i, diff: d, ts: displayCandles[i].timestamp };
+            }
+            console.warn("[Anchor] Reference not found by exact match. Diagnostics:", {
+                reference: new Date(timestamp).toISOString(),
+                bufferLength: displayCandles.length,
+                first: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+                last: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+                nearestIndex: nearest.index,
+                nearestIso: nearest.ts ? new Date(nearest.ts).toISOString() : 'none',
+                nearestDiffMs: nearest.diff,
+                timeframeInMs
+            });
+            console.log("[Anchor] First 10 diffs:", diffs);
+            console.log("[Anchor] Last 10 diffs:", last10);
+        } catch (e) {
+            console.warn("[Anchor] Diagnostics failed:", e);
+        }
+        return idx;
     }, [displayCandles]);
 
     // Function to recalculate view index after receiving new data
     const recalculateViewIndex = useCallback((referenceTimestamp) => {
         // Find the index of the candle with the reference timestamp
         const newIndex = findCandleIndexByTimestamp(referenceTimestamp);
-        
+        console.log("[Anchor] recalculateViewIndex invoked:", {
+            reference: new Date(referenceTimestamp).toISOString(),
+            newIndex,
+            currentViewStart: viewStartIndex,
+            displayedCandles,
+            bufferLength: displayCandles.length,
+            bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+            bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none'
+        });
+
         if (newIndex !== -1) {
             console.log("[Buffer Management] Recalculated view index:", {
                 referenceTimestamp: new Date(referenceTimestamp).toISOString(),
-                newIndex
+                newIndex,
+                targetIndex: Math.max(0, Math.min(newIndex, displayCandles.length - displayedCandles))
             });
             
             // Update view index to maintain view position
@@ -502,8 +555,13 @@ export function ChartProvider({ children }) {
         }
         
         console.warn("[Buffer Management] Failed to find reference candle after data update");
+        console.warn("[Snap Debug] Unable to anchor; viewStartIndex may remain at edge", {
+            currentViewStart: viewStartIndex,
+            displayedCandles,
+            bufferLength: displayCandles.length
+        });
         return false;
-    }, [displayCandles, displayedCandles, findCandleIndexByTimestamp]);
+    }, [displayCandles, displayedCandles, findCandleIndexByTimestamp, viewStartIndex]);
 
     // Trim display and indicator buffers to keep memory bounded while retaining enough context
     const trimBuffersIfNeeded = useCallback(() => {
@@ -766,6 +824,13 @@ export function ChartProvider({ children }) {
                 "Last Candle Time:", visibleData.length > 0 ?
                     new Date(visibleData[visibleData.length-1]?.timestamp).toISOString() :
                     "None");
+            if (safeStartIndex === 0 && displayCandles.length > displayedCandles) {
+                console.warn("[Snap Debug] Window positioned at leftmost index after update", {
+                    safeStartIndex,
+                    displayedCandles,
+                    bufferLength: displayCandles.length
+                });
+            }
 
             setCandleData(visibleData);
 
