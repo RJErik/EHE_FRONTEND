@@ -457,9 +457,20 @@ export function ChartProvider({ children }) {
             }
         }
         
+        // Ensure past requests always step strictly earlier than the currently known earliest
+        if (direction === 'past') {
+            const earliestKnown = subscriptionStartDateRef.current;
+            if (earliestKnown != null && newStartDate >= earliestKnown) {
+                const forcedStart = earliestKnown - ((BUFFER_SIZE_MULTIPLIER + 1) * timeframeInMs);
+                // Also ensure at least one candle earlier than the first visible to avoid overlap
+                newStartDate = Math.min(forcedStart, firstVisibleCandle.timestamp - timeframeInMs);
+            }
+        }
+
         console.log(`[Buffer Management] Calculated new ${direction} date range:`, {
             start: new Date(newStartDate).toISOString(),
-            end: new Date(newEndDate).toISOString()
+            end: new Date(newEndDate).toISOString(),
+            earliestKnown: subscriptionStartDateRef.current ? new Date(subscriptionStartDateRef.current).toISOString() : 'none'
         });
         
         return {
@@ -526,15 +537,18 @@ export function ChartProvider({ children }) {
             subscriptionEndDateRef.current = newEndTs;
         }
 
-        // Indicators: ensure sufficient lookback retained
+        // Indicators: ensure sufficient lookback retained using timestamps
         if (indicatorCandles.length) {
             const maxLookback = calculateMaxLookback(indicators);
-            const indicatorStartIdx = Math.max(0, startIdx - maxLookback);
-            const indicatorEndIdx = Math.min(indicatorCandles.length, endIdx + 0);
-            const trimmedIndicators = indicatorCandles.slice(indicatorStartIdx, indicatorEndIdx);
+            const requiredStartTs = Math.max(0, (trimmed[0]?.timestamp || newStartTs || 0) - (maxLookback * timeframeInMs));
+            const requiredEndTs = trimmed[trimmed.length - 1]?.timestamp || newEndTs;
+
+            const trimmedIndicators = indicatorCandles.filter(c =>
+                c && typeof c.timestamp === 'number' && c.timestamp >= requiredStartTs && c.timestamp <= requiredEndTs
+            );
             setIndicatorCandles(trimmedIndicators);
         }
-    }, [displayCandles, indicatorCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, updateDisplayCandles]);
+    }, [displayCandles, indicatorCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, updateDisplayCandles, timeframeInMs]);
 
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
@@ -712,6 +726,7 @@ export function ChartProvider({ children }) {
             
             // Request data update through existing subscription mechanism
             console.log("[Buffer Management] Requesting data update due to scrolling");
+            // Do not set in-flight flags here; only set them when we actually dispatch a buffer update
             setShouldUpdateSubscription(true);
         }
     }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging]);

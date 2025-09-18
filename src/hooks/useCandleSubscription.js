@@ -232,11 +232,15 @@ export function useCandleSubscription() {
                         window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
                         window.__chartContextValue.handleBufferUpdateComplete('future', null);
                     } else if (bufferDirection === 'unknown') {
-                        // Be defensive: clear both flags if direction ambiguous
+                        // Be defensive: clear both flags if direction ambiguous or overlapping
                         window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
                         window.__chartContextValue.handleBufferUpdateComplete('future', null);
-                    } else {
+                    } else if (bufferDirection === 'past' || bufferDirection === 'future') {
                         window.__chartContextValue.handleBufferUpdateComplete(bufferDirection, referenceTimestamp);
+                    } else {
+                        // Fallback safety: clear both if we failed to classify
+                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        window.__chartContextValue.handleBufferUpdateComplete('future', null);
                     }
                 }
             } else {
@@ -730,32 +734,28 @@ export function useCandleSubscription() {
                 subscriptionType: 'INDICATOR'  // Add type marker for backend differentiation
             };
 
-            // Skip identical request to avoid resubscribe storms
+            // Skip identical request to avoid resubscribe storms (compare before sending)
             const nextKey = JSON.stringify(indicatorSubscriptionRequest);
             if (lastIndicatorRequestRef.current === nextKey) {
                 console.log('[Indicator] Skipping identical indicator subscription request');
                 return "pending";
             }
-            lastIndicatorRequestRef.current = nextKey;
 
             console.log("[useCandleSubscription] Subscribing to indicator candles:", indicatorSubscriptionRequest);
-
-            // If identical to last request, skip unsubscribe + resubscribe
-            const reqKey = JSON.stringify(indicatorSubscriptionRequest);
-            if (lastIndicatorRequestRef.current === reqKey) {
-                console.log('[Indicator] Request identical to last; skipping resubscription');
-                return "pending";
-            }
 
             // If an indicator subscription exists, cleanly unsubscribe first
             if (subscriptionIds.indicator) {
                 console.log(`[useCandleSubscription] Unsubscribing from current indicator subscription before creating new one`);
                 await unsubscribe('indicator');
                 await new Promise(resolve => setTimeout(resolve, 300));
+                // Clear last request key so the next request can proceed
+                lastIndicatorRequestRef.current = null;
             }
 
             // Use the CandleWebSocketContext's request method for subscriptions
             await requestSubscription('indicator', indicatorSubscriptionRequest);
+            // Record the last request only after successfully sending
+            lastIndicatorRequestRef.current = nextKey;
             console.log("[useCandleSubscription] Indicator subscription request sent");
 
             return "pending";
@@ -963,12 +963,15 @@ export function useCandleSubscription() {
 
                     console.log(`[Buffer Manager] Requesting ${bufferDirection} buffer data from ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
-                    // First unsubscribe from current subscription
+                    // Prefer reusing the same subscription if backend supports range change without unsubscribing
+                    // If your backend requires new subscription, uncomment the block below and keep delay small.
+                    /*
                     if (subscriptionIds.chart) {
                         console.log(`[Buffer Manager] Unsubscribing from current chart subscription before buffer update`);
                         await unsubscribe('chart');
-                        await new Promise(resolve => setTimeout(resolve, 300));
+                        await new Promise(resolve => setTimeout(resolve, 150));
                     }
+                    */
 
                     // Create buffer update request
                     const bufferUpdateRequest = {
@@ -1019,8 +1022,24 @@ export function useCandleSubscription() {
 
                     // Also ensure indicator subscription covers the same required range
                     try {
-                        const indicatorRangeStart = startDate.toISOString();
-                        const indicatorRangeEnd = endDate.toISOString();
+                        // Union buffer range with required indicator lookback
+                        let indicatorRangeStartDate = startDate;
+                        let indicatorRangeEndDate = endDate;
+
+                        try {
+                            // Ask ChartContext what lookback is required right now
+                            const ctx = window.__chartContextValue || {};
+                            const lookReq = ctx.calculateRequiredDataRange ? ctx.calculateRequiredDataRange() : null;
+                            if (lookReq && lookReq.start && !isNaN(lookReq.start)) {
+                                const requiredStart = new Date(lookReq.start);
+                                if (requiredStart.getTime() && requiredStart < indicatorRangeStartDate) {
+                                    indicatorRangeStartDate = requiredStart;
+                                }
+                            }
+                        } catch (_) {}
+
+                        const indicatorRangeStart = indicatorRangeStartDate.toISOString();
+                        const indicatorRangeEnd = indicatorRangeEndDate.toISOString();
 
                         // Only if we have indicators
                         if (indicators.length > 0) {
@@ -1175,10 +1194,16 @@ export function useCandleSubscription() {
         }
         // If indicators are removed and we have an active indicator subscription
         else if (indicators.length === 0 && subscriptionIds.indicator) {
-            console.log("[useCandleSubscription] No indicators active - removing indicator subscription");
-            unsubscribe('indicator').catch(err => {
-                console.error("[useCandleSubscription] Failed to remove indicator subscription:", err);
-            });
+            console.log("[useCandleSubscription] No indicators active - scheduling indicator unsubscribe");
+            let timeoutId = setTimeout(() => {
+                unsubscribe('indicator')
+                    .then(() => { lastIndicatorRequestRef.current = null; })
+                    .catch(err => {
+                        console.error("[useCandleSubscription] Failed to remove indicator subscription:", err);
+                    });
+            }, 200);
+            // Cleanup debounce if indicators change before timeout fires
+            return () => clearTimeout(timeoutId);
         }
     }, [indicators, subscribeToIndicatorCandles, currentSubscription, lastValidSubscription, subscriptionIds, unsubscribe]);
 
