@@ -181,8 +181,11 @@ export function useCandleSubscription() {
                 
                 // Infer buffer direction by comparing received range to current known buffer
                 let bufferDirection = 'unknown';
+                // Capture previous buffer snapshot for past-shift logic
+                let prevCandlesSnapshotForShift = null;
                 try {
                     const prevCandles = (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                    prevCandlesSnapshotForShift = Array.isArray(prevCandles) ? [...prevCandles] : [];
                     const prevStart = prevCandles.length ? prevCandles[0].timestamp : null;
                     const prevEnd = prevCandles.length ? prevCandles[prevCandles.length - 1].timestamp : null;
                     const newStart = Math.min(...newCandles.map(c => c.timestamp));
@@ -206,7 +209,23 @@ export function useCandleSubscription() {
                     console.warn('[Buffer Manager] Failed to infer direction:', e);
                 }
 
-                const referenceTimestamp = referenceTimestampRef.current; // Use the ref
+            const referenceObj = referenceTimestampRef.current; // Use the ref; may be timestamp or {timestamp, offset}
+            try {
+                const refTs = (referenceObj && typeof referenceObj === 'object') ? referenceObj.timestamp : referenceObj;
+                const refOffset = (referenceObj && typeof referenceObj === 'object') ? referenceObj.offset : undefined;
+                const prevCandles = (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                const prevStartIso = prevCandles[0] ? new Date(prevCandles[0].timestamp).toISOString() : 'none';
+                const prevEndIso = prevCandles[prevCandles.length - 1] ? new Date(prevCandles[prevCandles.length - 1].timestamp).toISOString() : 'none';
+                console.log('[Merge] Buffer BEFORE merge:', {
+                    length: prevCandles.length,
+                    first: prevStartIso,
+                    last: prevEndIso
+                });
+                console.log('[Anchor] Reference to restore BEFORE merge:', {
+                    timestamp: refTs ? new Date(refTs).toISOString() : 'none',
+                    offset: refOffset !== undefined ? refOffset : 'none'
+                });
+            } catch (_) {}
 
                 // Reset the ref after use
                 if (referenceTimestampRef.current) {
@@ -216,6 +235,16 @@ export function useCandleSubscription() {
                 // Update display candles with new data. Do not set viewStartIndex here;
                 // let ChartContext handle re-position based on merged buffer and referenceTimestamp.
                 updateDisplayCandles(newCandles, false);
+                try {
+                    const afterCandles = (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                    const afterStartIso = afterCandles[0] ? new Date(afterCandles[0].timestamp).toISOString() : 'none';
+                    const afterEndIso = afterCandles[afterCandles.length - 1] ? new Date(afterCandles[afterCandles.length - 1].timestamp).toISOString() : 'none';
+                    console.log('[Merge] Buffer AFTER merge:', {
+                        length: afterCandles.length,
+                        first: afterStartIso,
+                        last: afterEndIso
+                    });
+                } catch (_) {}
 
                 // Track observed end to help break future buffer request loops if backend doesn't extend
                 try {
@@ -227,19 +256,76 @@ export function useCandleSubscription() {
                 
                 // Notify ChartContext that the buffer update is complete
                 if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
+                    // Past-only logic: shift viewStartIndex by the number of newly prepended candles
+                    const applyPastShift = (prevCandlesSnapshot) => {
+                        try {
+                            const ctx = window.__chartContextValue || {};
+                            const halfTf = ((ctx.timeframeInMs || 60000) / 2) >>> 0;
+                            const prevCandles = Array.isArray(prevCandlesSnapshot) ? prevCandlesSnapshot : [];
+                            const prevStartTs = prevCandles.length ? prevCandles[0].timestamp : null;
+
+                            // Build merged buffer locally to avoid state-update race
+                            const map = new Map((prevCandles || []).map(c => [c.timestamp, c]));
+                            for (const nc of newCandles) { if (nc && typeof nc.timestamp === 'number') map.set(nc.timestamp, nc); }
+                            const merged = Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+
+                            let prepended = 0;
+                            if (prevStartTs != null && merged.length) {
+                                const threshold = prevStartTs - halfTf;
+                                for (let i = 0; i < merged.length; i++) {
+                                    if (merged[i].timestamp < threshold) prepended++; else break;
+                                }
+                            }
+
+                            // Read current viewStartIndex from context
+                            const currentViewStart = (ctx && typeof ctx.viewStartIndex === 'number') ? ctx.viewStartIndex : 0;
+                            const displayed = (ctx && typeof ctx.displayedCandles === 'number') ? ctx.displayedCandles : displayedCandles;
+                            const newViewStart = Math.max(0, Math.min(currentViewStart + prepended, Math.max(0, merged.length - displayed)));
+
+                            console.log('[Anchor] Past shift calculation:', {
+                                prevLength: prevCandles.length,
+                                mergedLength: merged.length,
+                                prevFirst: prevCandles[0] ? new Date(prevCandles[0].timestamp).toISOString() : 'none',
+                                mergedFirst: merged[0] ? new Date(merged[0].timestamp).toISOString() : 'none',
+                                prevLast: prevCandles[prevCandles.length - 1] ? new Date(prevCandles[prevCandles.length - 1].timestamp).toISOString() : 'none',
+                                mergedLast: merged[merged.length - 1] ? new Date(merged[merged.length - 1].timestamp).toISOString() : 'none',
+                                prevStartTs: prevStartTs ? new Date(prevStartTs).toISOString() : 'none',
+                                threshold: prevStartTs ? new Date(prevStartTs - halfTf).toISOString() : 'none',
+                                prepended,
+                                currentViewStart,
+                                newViewStart,
+                                displayedCandles: displayed
+                            });
+
+                            // Apply shift immediately and skip timestamp-based re-anchor for past
+                            if (typeof setViewStartIndex === 'function') {
+                                setViewStartIndex(newViewStart);
+                            }
+                            // Clear flags but do not pass reference to avoid recalc overriding our shift
+                            ctx.handleBufferUpdateComplete && ctx.handleBufferUpdateComplete('past', null);
+                        } catch (e) {
+                            console.warn('[Anchor] Past shift calculation failed; falling back to timestamp anchor', e);
+                            window.__chartContextValue.handleBufferUpdateComplete('past', referenceObj);
+                        }
+                    };
+
                     if (bufferDirection === 'both') {
-                        // Clear both directions to avoid any stuck flags
-                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        const prevCandlesSnapshot = prevCandlesSnapshotForShift || (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                        applyPastShift(prevCandlesSnapshot);
                         window.__chartContextValue.handleBufferUpdateComplete('future', null);
                     } else if (bufferDirection === 'unknown') {
-                        // Be defensive: clear both flags if direction ambiguous or overlapping
-                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        const prevCandlesSnapshot = prevCandlesSnapshotForShift || (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                        applyPastShift(prevCandlesSnapshot);
                         window.__chartContextValue.handleBufferUpdateComplete('future', null);
-                    } else if (bufferDirection === 'past' || bufferDirection === 'future') {
-                        window.__chartContextValue.handleBufferUpdateComplete(bufferDirection, referenceTimestamp);
+                    } else if (bufferDirection === 'past') {
+                        const prevCandlesSnapshot = prevCandlesSnapshotForShift || (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                        applyPastShift(prevCandlesSnapshot);
+                    } else if (bufferDirection === 'future') {
+                        window.__chartContextValue.handleBufferUpdateComplete('future', referenceObj);
                     } else {
-                        // Fallback safety: clear both if we failed to classify
-                        window.__chartContextValue.handleBufferUpdateComplete('past', referenceTimestamp);
+                        // Fallback safety: treat as past+future
+                        const prevCandlesSnapshot = prevCandlesSnapshotForShift || (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
+                        applyPastShift(prevCandlesSnapshot);
                         window.__chartContextValue.handleBufferUpdateComplete('future', null);
                     }
                 }
@@ -881,9 +967,11 @@ export function useCandleSubscription() {
 
             // Log if this is a buffer update
             if (isBufferUpdate) {
-                const refTimestampStr = referenceTimestamp && !isNaN(referenceTimestamp)
-                    ? new Date(referenceTimestamp).toISOString()
-                    : 'invalid';
+                const refTimestampStr = (referenceTimestamp && typeof referenceTimestamp === 'object')
+                    ? new Date(referenceTimestamp.timestamp).toISOString()
+                    : (referenceTimestamp && !isNaN(referenceTimestamp))
+                        ? new Date(referenceTimestamp).toISOString()
+                        : 'invalid';
                 console.log(`[Indicator Monitor] Processing buffer update for ${bufferDirection} data with reference timestamp: ${refTimestampStr}`);
             }
 
@@ -1013,9 +1101,12 @@ export function useCandleSubscription() {
                     await requestSubscription('chart', bufferUpdateRequest);
 
                     // Store the reference timestamp for position restoration
-                    if (referenceTimestamp && !isNaN(referenceTimestamp)) {
+                    if (typeof referenceTimestamp === 'number' && !isNaN(referenceTimestamp)) {
                         console.log(`[Buffer Manager] Stored reference timestamp: ${new Date(referenceTimestamp).toISOString()}`);
                         referenceTimestampRef.current = referenceTimestamp;
+                    } else if (referenceTimestamp && typeof referenceTimestamp === 'object' && !isNaN(referenceTimestamp.timestamp)) {
+                        console.log(`[Buffer Manager] Stored reference (with offset): ${new Date(referenceTimestamp.timestamp).toISOString()} offset=${referenceTimestamp.offset}`);
+                        referenceTimestampRef.current = { timestamp: referenceTimestamp.timestamp, offset: referenceTimestamp.offset };
                     }
 
                     console.log("[Buffer Manager] Buffer update request sent");

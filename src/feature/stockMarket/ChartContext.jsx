@@ -493,24 +493,44 @@ export function ChartProvider({ children }) {
 
     // Function to find candle index by timestamp
     const findCandleIndexByTimestamp = useCallback((timestamp) => {
-        const idx = displayCandles.findIndex(candle => candle.timestamp === timestamp);
-        if (idx !== -1) {
+        // 1) Try exact match first
+        const exactIdx = displayCandles.findIndex(candle => candle.timestamp === timestamp);
+        if (exactIdx !== -1) {
             console.log("[Anchor] Exact match for reference timestamp:", {
                 reference: new Date(timestamp).toISOString(),
-                index: idx
+                index: exactIdx
             });
-            return idx;
+            console.log("[Anchor] Returning exact index for reference timestamp", { index: exactIdx });
+            return exactIdx;
         }
-        // Logging-only diagnostics to understand why anchoring fails
+
+        // 2) No exact match — compute nearest candle in the merged buffer
+        let nearest = { index: -1, diff: Number.POSITIVE_INFINITY, ts: null };
+        for (let i = 0; i < displayCandles.length; i++) {
+            const d = Math.abs(displayCandles[i].timestamp - timestamp);
+            if (d < nearest.diff) nearest = { index: i, diff: d, ts: displayCandles[i].timestamp };
+        }
+
+        // 3) If nearest is within half a timeframe, use it to preserve view position
+        const halfTf = (typeof timeframeInMs === 'number' && timeframeInMs > 0) ? timeframeInMs / 2 : null;
+        const withinHalfTf = Number.isFinite(nearest.diff) && halfTf != null ? nearest.diff <= halfTf : false;
+
+        if (withinHalfTf && nearest.index !== -1) {
+            console.log("[Anchor] Using nearest match within half timeframe to preserve position:", {
+                reference: new Date(timestamp).toISOString(),
+                chosenIndex: nearest.index,
+                chosenIso: nearest.ts ? new Date(nearest.ts).toISOString() : 'none',
+                diffMs: nearest.diff,
+                timeframeInMs
+            });
+            return nearest.index;
+        }
+
+        // 4) Diagnostics + fallback to -1 when outside tolerance
         try {
             const diffs = displayCandles.slice(0, 10).map((c, i) => ({ i, ts: c.timestamp, iso: new Date(c.timestamp).toISOString(), dt: Math.abs(c.timestamp - timestamp) }));
             const last10 = displayCandles.slice(-10).map((c, i) => ({ i: displayCandles.length - 10 + i, ts: c.timestamp, iso: new Date(c.timestamp).toISOString(), dt: Math.abs(c.timestamp - timestamp) }));
-            let nearest = { index: -1, diff: Number.POSITIVE_INFINITY, ts: null };
-            for (let i = 0; i < displayCandles.length; i++) {
-                const d = Math.abs(displayCandles[i].timestamp - timestamp);
-                if (d < nearest.diff) nearest = { index: i, diff: d, ts: displayCandles[i].timestamp };
-            }
-            console.warn("[Anchor] Reference not found by exact match. Diagnostics:", {
+            console.warn("[Anchor] Reference not found by exact match and nearest outside tolerance. Diagnostics:", {
                 reference: new Date(timestamp).toISOString(),
                 bufferLength: displayCandles.length,
                 first: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
@@ -525,37 +545,82 @@ export function ChartProvider({ children }) {
         } catch (e) {
             console.warn("[Anchor] Diagnostics failed:", e);
         }
-        return idx;
-    }, [displayCandles]);
+
+        console.warn("[Anchor] Returning -1 (reference timestamp not found within tolerance)");
+        return -1;
+    }, [displayCandles, timeframeInMs]);
 
     // Function to recalculate view index after receiving new data
-    const recalculateViewIndex = useCallback((referenceTimestamp) => {
-        // Find the index of the candle with the reference timestamp
-        const newIndex = findCandleIndexByTimestamp(referenceTimestamp);
-        console.log("[Anchor] recalculateViewIndex invoked:", {
-            reference: new Date(referenceTimestamp).toISOString(),
-            newIndex,
-            currentViewStart: viewStartIndex,
-            displayedCandles,
+    const recalculateViewIndex = useCallback((referenceInput) => {
+        // Normalize reference input
+        const { timestamp: referenceTimestamp, offset: referenceOffset } =
+            (referenceInput && typeof referenceInput === 'object')
+                ? { timestamp: referenceInput.timestamp, offset: referenceInput.offset }
+                : { timestamp: referenceInput, offset: undefined };
+
+        // Buffer snapshot BEFORE search
+        const beforeSnapshot = {
             bufferLength: displayCandles.length,
             bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
-            bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none'
+            bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+            currentViewStart: viewStartIndex,
+            displayedCandles
+        };
+        try {
+            const vStart = viewStartIndex;
+            const vEnd = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+            beforeSnapshot.visibleStartIndex = vStart;
+            beforeSnapshot.visibleEndIndex = vEnd;
+            beforeSnapshot.firstVisible = (displayCandles[vStart] ? new Date(displayCandles[vStart].timestamp).toISOString() : 'none');
+            beforeSnapshot.lastVisible = (displayCandles[vEnd] ? new Date(displayCandles[vEnd].timestamp).toISOString() : 'none');
+        } catch (_) {}
+
+        console.log('[Anchor] recalculateViewIndex invoked:', {
+            reference: new Date(referenceTimestamp).toISOString(),
+            referenceOffset,
+            ...beforeSnapshot
+        });
+
+        // Find the index of the candle with (or nearest to) the reference timestamp
+        const newIndex = findCandleIndexByTimestamp(referenceTimestamp);
+        console.log('[Anchor] Search outcome:', {
+            reference: new Date(referenceTimestamp).toISOString(),
+            foundIndex: newIndex,
+            usedNearest: newIndex !== -1 && displayCandles[newIndex] && displayCandles[newIndex].timestamp !== referenceTimestamp,
+            foundIso: (newIndex !== -1 && displayCandles[newIndex]) ? new Date(displayCandles[newIndex].timestamp).toISOString() : 'none'
         });
 
         if (newIndex !== -1) {
-            console.log("[Buffer Management] Recalculated view index:", {
+            // Keep the reference candle at the same relative position if offset is provided
+            const desiredStart = (typeof referenceOffset === 'number') ? (newIndex - referenceOffset) : newIndex;
+            const targetIndex = Math.max(0, Math.min(desiredStart, displayCandles.length - displayedCandles));
+
+            // Predict visible window AFTER restoration (state update is async)
+            const predictedStart = targetIndex;
+            const predictedEnd = Math.min(targetIndex + displayedCandles - 1, displayCandles.length - 1);
+            const predictedFirst = displayCandles[predictedStart] ? new Date(displayCandles[predictedStart].timestamp).toISOString() : 'none';
+            const predictedLast = displayCandles[predictedEnd] ? new Date(displayCandles[predictedEnd].timestamp).toISOString() : 'none';
+
+            console.log('[Anchor] Restoration details:', {
                 referenceTimestamp: new Date(referenceTimestamp).toISOString(),
                 newIndex,
-                targetIndex: Math.max(0, Math.min(newIndex, displayCandles.length - displayedCandles))
+                desiredStart,
+                targetIndex,
+                predictedVisibleStartIndex: predictedStart,
+                predictedVisibleEndIndex: predictedEnd,
+                predictedFirstVisible: predictedFirst,
+                predictedLastVisible: predictedLast,
+                bufferLength: displayCandles.length
             });
-            
+            console.log('[Anchor] Setting viewStartIndex to targetIndex to preserve reference position');
+
             // Update view index to maintain view position
-            setViewStartIndex(Math.max(0, Math.min(newIndex, displayCandles.length - displayedCandles)));
+            setViewStartIndex(targetIndex);
             return true;
         }
-        
-        console.warn("[Buffer Management] Failed to find reference candle after data update");
-        console.warn("[Snap Debug] Unable to anchor; viewStartIndex may remain at edge", {
+
+        console.warn('[Buffer Management] Failed to find reference candle after data update');
+        console.warn('[Anchor] Restoration failed; not changing viewStartIndex', {
             currentViewStart: viewStartIndex,
             displayedCandles,
             bufferLength: displayCandles.length
@@ -642,13 +707,32 @@ export function ChartProvider({ children }) {
         if (needsPastData && !isRequestingPastDataRef.current && !isStartReachedRef.current) {
             const pastRange = calculateNewDateRangeForBuffer('past');
             if (pastRange) {
+                try {
+                    const vStart = viewStartIndex;
+                    const vEnd = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+                    console.log('[Anchor] Selected reference for buffer update:', {
+                        direction: 'past',
+                        referenceTimestamp: displayCandles[vStart]?.timestamp ? new Date(displayCandles[vStart].timestamp).toISOString() : 'none',
+                        referenceOffset: 0,
+                        visibleStartIndex: vStart,
+                        visibleEndIndex: vEnd,
+                        firstVisible: displayCandles[vStart] ? new Date(displayCandles[vStart].timestamp).toISOString() : 'none',
+                        lastVisible: displayCandles[vEnd] ? new Date(displayCandles[vEnd].timestamp).toISOString() : 'none',
+                        bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+                        bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+                        bufferLength: displayCandles.length
+                    });
+                } catch (_) {}
+
                 return {
                     start: pastRange.startDate,
                     end: pastRange.endDate,
                     resetData: pastRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'past',
-                    referenceTimestamp: displayCandles[viewStartIndex]?.timestamp
+                    referenceTimestamp: displayCandles[viewStartIndex]?.timestamp,
+                    // Preserve the same candle at the same relative position (left edge for past)
+                    referenceOffset: 0
                 };
             }
         }
@@ -656,13 +740,35 @@ export function ChartProvider({ children }) {
         if (needsFutureData && !isRequestingFutureDataRef.current) {
             const futureRange = calculateNewDateRangeForBuffer('future');
             if (futureRange) {
+                const refIndex = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+                const refTs = displayCandles[refIndex]?.timestamp;
+                const refOffset = Math.max(0, Math.min(displayedCandles - 1, refIndex - viewStartIndex));
+                try {
+                    const vStart = viewStartIndex;
+                    const vEnd = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+                    console.log('[Anchor] Selected reference for buffer update:', {
+                        direction: 'future',
+                        referenceTimestamp: refTs ? new Date(refTs).toISOString() : 'none',
+                        referenceOffset: refOffset,
+                        visibleStartIndex: vStart,
+                        visibleEndIndex: vEnd,
+                        firstVisible: displayCandles[vStart] ? new Date(displayCandles[vStart].timestamp).toISOString() : 'none',
+                        lastVisible: displayCandles[vEnd] ? new Date(displayCandles[vEnd].timestamp).toISOString() : 'none',
+                        bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+                        bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+                        bufferLength: displayCandles.length
+                    });
+                } catch (_) {}
+
                 return {
                     start: futureRange.startDate,
                     end: futureRange.endDate,
                     resetData: futureRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'future',
-                    referenceTimestamp: displayCandles[Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1)]?.timestamp
+                    referenceTimestamp: refTs,
+                    // Preserve the same candle at the same relative position within the window
+                    referenceOffset: refOffset
                 };
             }
         }
@@ -885,7 +991,8 @@ export function ChartProvider({ children }) {
                                 subscriptionDetails: true, // this forces the handler to look up current details
                                 isBufferUpdate: range.isBufferUpdate,
                                 bufferDirection: range.bufferDirection,
-                                referenceTimestamp: range.referenceTimestamp
+                                referenceTimestamp: range.referenceTimestamp,
+                                referenceOffset: typeof range.referenceOffset === 'number' ? range.referenceOffset : undefined
                             }
                         });
                         window.dispatchEvent(indicatorChangeEvent);
@@ -982,7 +1089,19 @@ export function ChartProvider({ children }) {
     };
 
     // Method to handle buffer update completion
-    const handleBufferUpdateComplete = useCallback((direction, referenceTimestamp) => {
+    const handleBufferUpdateComplete = useCallback((direction, referenceInput) => {
+        // Detailed log: when buffer update completes and what reference we will use
+        try {
+            const refInfo = (referenceInput && typeof referenceInput === 'object')
+                ? { timestamp: referenceInput.timestamp, offset: referenceInput.offset }
+                : { timestamp: referenceInput }
+            console.log('[Anchor] handleBufferUpdateComplete invoked:', {
+                direction,
+                referenceTimestamp: refInfo.timestamp ? new Date(refInfo.timestamp).toISOString() : 'none',
+                referenceOffset: refInfo.offset !== undefined ? refInfo.offset : 'none',
+            });
+        } catch (_) {}
+
         // Only clear request flags when we actually extended buffer in that direction
         try {
             const currentStart = subscriptionStartDateRef.current;
@@ -1001,9 +1120,48 @@ export function ChartProvider({ children }) {
             if (direction === 'future') isRequestingFutureDataRef.current = false;
         }
 
-        // Recalculate view index if provided a reference timestamp
-        if (referenceTimestamp) {
-            recalculateViewIndex(referenceTimestamp);
+        // Recalculate view index if provided a reference (timestamp or {timestamp, offset})
+        if (referenceInput) {
+            // Snapshot BEFORE recalc
+            try {
+                const vStart = viewStartIndex;
+                const vEnd = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+                console.log('[Anchor] Pre-restore snapshot:', {
+                    bufferLength: displayCandles.length,
+                    bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+                    bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+                    visibleStartIndex: vStart,
+                    visibleEndIndex: vEnd,
+                    firstVisible: displayCandles[vStart] ? new Date(displayCandles[vStart].timestamp).toISOString() : 'none',
+                    lastVisible: displayCandles[vEnd] ? new Date(displayCandles[vEnd].timestamp).toISOString() : 'none',
+                });
+            } catch (_) {}
+
+            const anchored = recalculateViewIndex(referenceInput);
+            console.log(`[Anchor] recalculateViewIndex result`, {
+                direction,
+                referenceTimestamp: new Date((typeof referenceInput === 'object' ? referenceInput.timestamp : referenceInput)).toISOString(),
+                anchored
+            });
+
+            // Schedule AFTER snapshot to capture final state once state updates settle
+            setTimeout(() => {
+                try {
+                    const vStart2 = viewStartIndex;
+                    const vEnd2 = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
+                    console.log('[Window Update] Final Visible Data:', {
+                        visibleStartIndex: vStart2,
+                        visibleEndIndex: vEnd2,
+                        firstVisible: displayCandles[vStart2] ? new Date(displayCandles[vStart2].timestamp).toISOString() : 'none',
+                        lastVisible: displayCandles[vEnd2] ? new Date(displayCandles[vEnd2].timestamp).toISOString() : 'none',
+                        bufferLength: displayCandles.length,
+                        bufferFirst: displayCandles[0] ? new Date(displayCandles[0].timestamp).toISOString() : 'none',
+                        bufferLast: displayCandles[displayCandles.length - 1] ? new Date(displayCandles[displayCandles.length - 1].timestamp).toISOString() : 'none',
+                    });
+                } catch (_) {}
+            }, 50);
+        } else {
+            console.log(`[Anchor] No referenceTimestamp provided to handleBufferUpdateComplete; skipping re-anchor`, { direction });
         }
 
         console.log(`[Buffer Management] Completed ${direction} buffer update`);
