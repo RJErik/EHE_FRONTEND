@@ -1,21 +1,42 @@
 // src/components/stockMarket/CandleChart.jsx
-import { useEffect, useRef, useContext, useState } from "react";
-import { Card, CardContent } from "../../../components/ui/card.jsx";
+import {useCallback, useContext, useEffect, useRef, useState} from "react";
+import {Card, CardContent} from "../../../components/ui/card.jsx";
 import CandleInfoPanel from "./CandleInfoPanel.jsx";
 import MainIndicatorInfoPanel from "../indicators/MainIndicatorInfoPanel.jsx";
-import { renderCandleChart } from "./renderCandleChart.js";
-import { ChartContext } from "../ChartContext.jsx";
-import { useIndicators } from "../indicators/useIndicators.js";
+import {renderCandleChart} from "./renderCandleChart.js";
+import {ChartContext} from "../ChartContext.jsx";
+import {useIndicators} from "../indicators/useIndicators.js";
+
+// Shared constants and helpers
+const CHART_MARGINS = { left: 60, right: 60, top: 20, bottom: 40 };
+
+const getChartMetrics = (el) => {
+    const rect = el.getBoundingClientRect();
+    const innerWidth = rect.width - CHART_MARGINS.left - CHART_MARGINS.right;
+    const innerHeight = rect.height - CHART_MARGINS.top - CHART_MARGINS.bottom;
+    return { rect, innerWidth, innerHeight };
+};
+
+const getRelativePosition = (e, rect) => ({
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+});
+
+const isInChartArea = ({ x, y }, rect) => (
+    x >= CHART_MARGINS.left &&
+    x <= (rect.width - CHART_MARGINS.right) &&
+    y >= CHART_MARGINS.top &&
+    y <= (rect.height - CHART_MARGINS.bottom)
+);
 
 const CandleChart = () => {
     const chartRef = useRef(null);
     const dragStartXRef = useRef(null);
     const dragStartViewIndexRef = useRef(null); // Store viewStartIndex at drag start
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
-    const hoveredTimestampBeforeZoomRef = useRef(null);
 
     // Add mouseX state to track horizontal position for hover recalculation
-    const [mouseX, setMouseX] = useState(null);
+    const [, setMouseX] = useState(null);
 
     // Use the shared chart context instead of local state
     const {
@@ -39,8 +60,6 @@ const CandleChart = () => {
         MAX_DISPLAY_CANDLES,
         hoveredIndex,
         setHoveredIndex,
-        isDataGenerationEnabled = false, // Provide default
-        setIsDataGenerationEnabled = () => {} // Provide default no-op function
     } = useContext(ChartContext) || {}; // Add fallback empty object
 
     useEffect(() => {
@@ -61,7 +80,7 @@ const CandleChart = () => {
     const mainIndicators = indicators?.filter(ind => ind.category === "main") || [];
 
     // Helper function to update hovered candle based on timestamp
-    const updateHoveredCandleByTimestamp = (timestamp) => {
+    const updateHoveredCandleByTimestamp = useCallback((timestamp) => {
         if (!data || !timestamp) return false;
 
         const newHoveredIndex = data.findIndex(candle => candle.timestamp === timestamp);
@@ -71,11 +90,12 @@ const CandleChart = () => {
             return true;
         }
         return false;
-    };
+    }, [data, setHoveredIndex, setHoveredCandle]);
 
     // D3 chart rendering
     useEffect(() => {
-        if (!data || !Array.isArray(data) || data.length === 0 || !chartRef.current) return;
+        const el = chartRef.current;
+        if (!data || !Array.isArray(data) || data.length === 0 || !el) return;
 
         // Check if this is a buffer update - if buffer size changed but we still have data
         const possibleBufferUpdate = displayCandles.length > data.length + displayedCandles;
@@ -132,19 +152,14 @@ const CandleChart = () => {
         return () => {
             window.removeEventListener('resize', handleResize);
             // Optional: Clear SVG on unmount or when dependencies change significantly
-            if (chartRef.current) {
-                const svg = chartRef.current.querySelector('svg');
+            if (el) {
+                const svg = el.querySelector('svg');
                 if (svg) {
                     svg.remove();
                 }
             }
         };
-        // Ensure all dependencies that affect rendering are included
-    }, [
-        data, isLogarithmic, currentMouseY, activeTimestamp, isDragging,
-        displayedCandles, mainIndicators, hoveredIndex, viewStartIndex,
-        setHoveredCandle, setCurrentMouseY, setActiveTimestamp, setHoveredIndex
-    ]);
+    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex, viewStartIndex, isMouseOverChart, displayCandles.length]);
 
     // Backup mechanism: Effect to recalculate hover based on timestamp when displayed candles change
     useEffect(() => {
@@ -153,9 +168,21 @@ const CandleChart = () => {
             return;
         }
 
-        // Try to restore hover state by timestamp
         updateHoveredCandleByTimestamp(activeTimestamp);
-    }, [displayedCandles, viewStartIndex, data, isDragging, isMouseOverChart, activeTimestamp]);
+    }, [displayedCandles, viewStartIndex, data?.length, isDragging, isMouseOverChart, activeTimestamp, updateHoveredCandleByTimestamp]);
+
+    // Helper to apply centered zoom and preserve hover by timestamp
+    const applyCenteredZoom = useCallback((newDisplayed, timestampToTrack) => {
+        const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
+        const newViewStartIndex = middleIndex - Math.floor(newDisplayed / 2);
+
+        setDisplayedCandles(newDisplayed);
+        setViewStartIndex(Math.max(0, Math.min(newViewStartIndex, Math.max(0, displayCandles.length - newDisplayed))));
+
+        if (timestampToTrack) {
+            updateHoveredCandleByTimestamp(timestampToTrack);
+        }
+    }, [viewStartIndex, displayedCandles, displayCandles.length, setDisplayedCandles, setViewStartIndex, updateHoveredCandleByTimestamp]);
 
     // Zoom control handlers with immediate timestamp tracking
     const handleZoomIn = () => {
@@ -166,21 +193,7 @@ const CandleChart = () => {
 
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP);
-
-        const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
-        const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
-
-        // Update zoom state
-        setDisplayedCandles(newDisplayedCandles);
-        setViewStartIndex(Math.max(
-            0,
-            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
-        ));
-
-        // Immediately update hover position based on timestamp
-        if (timestampToTrack) {
-            updateHoveredCandleByTimestamp(timestampToTrack);
-        }
+        applyCenteredZoom(newDisplayedCandles, timestampToTrack);
     };
 
     const handleZoomOut = () => {
@@ -191,50 +204,18 @@ const CandleChart = () => {
 
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
-
-        const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
-        const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
-
-        // Update zoom state
-        setDisplayedCandles(newDisplayedCandles);
-        setViewStartIndex(Math.max(
-            0,
-            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
-        ));
-
-        // Immediately update hover position based on timestamp
-        if (timestampToTrack) {
-            updateHoveredCandleByTimestamp(timestampToTrack);
-        }
+        applyCenteredZoom(newDisplayedCandles, timestampToTrack);
     };
 
     const handleResetZoom = () => {
         if (!data?.length) return;
 
         // Store the current timestamp to maintain after zoom
-        const timestampToTrack = activeTimestamp;
-
-        const newDisplayedCandles = DEFAULT_DISPLAY_CANDLES;
-        // Recenter based on the *current* middle, then apply default zoom
-        const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
-        const newViewStartIndex = middleIndex - Math.floor(newDisplayedCandles / 2);
-
-        // Update zoom state
-        setDisplayedCandles(newDisplayedCandles);
-        setViewStartIndex(Math.max(
-            0,
-            // Ensure the reset index is valid with the new candle count
-            Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
-        ));
-
-        // Immediately update hover position based on timestamp
-        if (timestampToTrack) {
-            updateHoveredCandleByTimestamp(timestampToTrack);
-        }
+        applyCenteredZoom(DEFAULT_DISPLAY_CANDLES, activeTimestamp);
     };
 
     // Handle zoom functionality with immediate timestamp tracking
-    const handleWheel = (e) => {
+    const handleWheel = useCallback((e) => {
         e.preventDefault(); // Prevent page scrolling
         if (!data?.length) return;
 
@@ -242,13 +223,12 @@ const CandleChart = () => {
         const timestampToTrack = activeTimestamp;
 
         const isZoomIn = e.deltaY < 0;
-        const chartRect = chartRef.current.getBoundingClientRect();
-        const marginLeft = 60;
-        const marginRight = 60;
-        const chartWidth = chartRect.width - marginLeft - marginRight;
-
-        const mouseX = e.clientX - chartRect.left - marginLeft;
-        const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth)); // Clamp ratio [0, 1]
+        const el = chartRef.current;
+        if (!el) return;
+        const { rect, innerWidth } = getChartMetrics(el);
+        const rel = getRelativePosition(e, rect);
+        const mouseXInner = rel.x - CHART_MARGINS.left;
+        const mouseXRatio = Math.max(0, Math.min(1, mouseXInner / innerWidth)); // Clamp ratio [0, 1]
 
         const candleIndexUnderMouse = Math.floor(mouseXRatio * displayedCandles);
         const absoluteIndexUnderMouse = viewStartIndex + candleIndexUnderMouse;
@@ -279,7 +259,7 @@ const CandleChart = () => {
         if (timestampToTrack) {
             updateHoveredCandleByTimestamp(timestampToTrack);
         }
-    };
+    }, [data?.length, activeTimestamp, displayedCandles, viewStartIndex, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, displayCandles.length, updateHoveredCandleByTimestamp]);
 
     // Setup dragging events
     useEffect(() => {
@@ -295,22 +275,17 @@ const CandleChart = () => {
 
         const handleMouseDown = (e) => {
             if (e.button === 0) { // Only left mouse button
-                const chartRect = chartRef.current.getBoundingClientRect();
-                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
+                const el = chartRef.current;
+                if (!el) return;
+                const { rect } = getChartMetrics(el);
+                const rel = getRelativePosition(e, rect);
+                const inside = isInChartArea(rel, rect);
 
-                const isInChartArea =
-                    e.clientX >= chartRect.left + marginLeft &&
-                    e.clientX <= chartRect.right - marginRight &&
-                    e.clientY >= chartRect.top + marginTop &&
-                    e.clientY <= chartRect.bottom - marginBottom;
-
-                if (isInChartArea) {
+                if (inside) {
                     setIsDragging(true);
                     dragStartXRef.current = e.clientX;
                     dragStartViewIndexRef.current = viewStartIndex; // *** Store the starting index ***
-                    if (chartRef.current) {
-                        chartRef.current.style.cursor = 'grabbing';
-                    }
+                    if (chartRef.current) chartRef.current.style.cursor = 'grabbing';
                     e.preventDefault();
                 }
             }
@@ -319,23 +294,15 @@ const CandleChart = () => {
         const handleMouseMove = (e) => {
             // Update X & Y positions for crosshair if mouse is over the chart AND not dragging
             if (chartRef.current && isMouseOverChart && !isDragging) {
-                const chartRect = chartRef.current.getBoundingClientRect();
-                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
-                const relativeX = e.clientX - chartRect.left;
-                const relativeY = e.clientY - chartRect.top;
-
-                const isInChartArea =
-                    relativeX >= marginLeft &&
-                    relativeX <= (chartRect.width - marginRight) &&
-                    relativeY >= marginTop &&
-                    relativeY <= (chartRect.height - marginBottom);
-
-                if (isInChartArea) {
-                    // Store both X and Y positions now
-                    const xRelative = relativeX - marginLeft;
-                    const yRelative = relativeY - marginTop;
-                    setMouseX(xRelative); // Update X for hover recalculation
-                    setCurrentMouseY(yRelative); // Update Y for crosshair
+                const el = chartRef.current;
+                const { rect } = getChartMetrics(el);
+                const rel = getRelativePosition(e, rect);
+                const inside = isInChartArea(rel, rect);
+                if (inside) {
+                    const xRelative = rel.x - CHART_MARGINS.left;
+                    const yRelative = rel.y - CHART_MARGINS.top;
+                    setMouseX(xRelative);
+                    setCurrentMouseY(yRelative);
                 }
             }
 
@@ -385,35 +352,26 @@ const CandleChart = () => {
                 dragStartXRef.current = null;
                 dragStartViewIndexRef.current = null; // *** Clear the starting index ***
 
-                // Update cursor based on whether the mouse is still over the chart
                 if (chartRef.current) {
-                    const chartRect = chartRef.current.getBoundingClientRect();
-                    const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
-                    const relativeX = e.clientX - chartRect.left;
-                    const relativeY = e.clientY - chartRect.top;
-                    const isInChartArea =
-                        relativeX >= marginLeft &&
-                        relativeX <= (chartRect.width - marginRight) &&
-                        relativeY >= marginTop &&
-                        relativeY <= (chartRect.height - marginBottom);
+                    const el = chartRef.current;
+                    const { rect } = getChartMetrics(el);
+                    const rel = getRelativePosition(e, rect);
+                    const inside = isInChartArea(rel, rect);
 
-                    setIsMouseOverChart(isInChartArea); // Update mouse over state on mouse up
+                    setIsMouseOverChart(inside);
 
-                    if (!isInChartArea) {
-                        // If mouse released outside, clear hover state
+                    if (!inside) {
                         setHoveredCandle(null);
                         setCurrentMouseY(null);
                         setActiveTimestamp(null);
                         setHoveredIndex(null);
-                        setMouseX(null); // Also clear mouseX
+                        setMouseX(null);
                     } else {
-                        // Ensure X & Y positions are updated on release if still inside
-                        const xRelative = relativeX - marginLeft;
-                        const yRelative = relativeY - marginTop;
+                        const xRelative = rel.x - CHART_MARGINS.left;
+                        const yRelative = rel.y - CHART_MARGINS.top;
                         setMouseX(xRelative);
                         setCurrentMouseY(yRelative);
 
-                        // Make sure hover is updated based on timestamp
                         if (timestampToTrack) {
                             updateHoveredCandleByTimestamp(timestampToTrack);
                         }
@@ -424,21 +382,15 @@ const CandleChart = () => {
 
         // --- Mouse Enter/Leave/Wheel Logic --- (Mostly unchanged, added bounds checks)
         const handleMouseEnter = (e) => {
-            const chartRect = chartRef.current.getBoundingClientRect();
-            const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
-            const relativeX = e.clientX - chartRect.left;
-            const relativeY = e.clientY - chartRect.top;
-            const isInChartArea =
-                relativeX >= marginLeft &&
-                relativeX <= (chartRect.width - marginRight) &&
-                relativeY >= marginTop &&
-                relativeY <= (chartRect.height - marginBottom);
+            const el = chartRef.current;
+            if (!el) return;
+            const { rect } = getChartMetrics(el);
+            const rel = getRelativePosition(e, rect);
+            const inside = isInChartArea(rel, rect);
 
-            if (isInChartArea) {
+            if (inside) {
                 setIsMouseOverChart(true);
-
-                // When entering chart, set initial mouse X position
-                const xRelative = relativeX - marginLeft;
+                const xRelative = rel.x - CHART_MARGINS.left;
                 setMouseX(xRelative);
             }
         };
@@ -464,22 +416,14 @@ const CandleChart = () => {
 
         const handleWheelEvent = (e) => {
             if (!chartRef.current) return;
-            const chartRect = chartRef.current.getBoundingClientRect();
-            const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
-            const relativeX = e.clientX - chartRect.left;
-            const relativeY = e.clientY - chartRect.top;
-            const isInChartArea =
-                relativeX >= marginLeft &&
-                relativeX <= (chartRect.width - marginRight) &&
-                relativeY >= marginTop &&
-                relativeY <= (chartRect.height - marginBottom);
+            const el = chartRef.current;
+            const { rect } = getChartMetrics(el);
+            const rel = getRelativePosition(e, rect);
+            const inside = isInChartArea(rel, rect);
 
-            if (isInChartArea) {
-                // Store the mouse X position before zoom
-                const xRelative = relativeX - marginLeft;
+            if (inside) {
+                const xRelative = rel.x - CHART_MARGINS.left;
                 setMouseX(xRelative);
-
-                // Call the zoom handler
                 handleWheel(e);
             }
         };
@@ -488,15 +432,12 @@ const CandleChart = () => {
         // This helps clear the crosshair if the mouse moves out quickly.
         const handleGlobalMouseMoveForLeave = (e) => {
             if (chartRef.current && !isDragging && isMouseOverChart) {
-                const chartRect = chartRef.current.getBoundingClientRect();
-                const marginLeft = 60, marginRight = 60, marginTop = 20, marginBottom = 40;
-                const isStillOverChartArea =
-                    e.clientX >= chartRect.left + marginLeft &&
-                    e.clientX <= chartRect.right - marginRight &&
-                    e.clientY >= chartRect.top + marginTop &&
-                    e.clientY <= chartRect.bottom - marginBottom;
+                const el = chartRef.current;
+                const { rect } = getChartMetrics(el);
+                const rel = getRelativePosition(e, rect);
+                const inside = isInChartArea(rel, rect);
 
-                if (!isStillOverChartArea) {
+                if (!inside) {
                     setIsMouseOverChart(false);
                     setHoveredCandle(null);
                     setCurrentMouseY(null);
@@ -533,13 +474,12 @@ const CandleChart = () => {
             document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
     }, [
-        // Include all state and props used within the effect and its handlers
-        isDragging, setIsDragging, viewStartIndex, setViewStartIndex, displayCandles.length,
-        displayedCandles, setDisplayedCandles, // Added setDisplayedCandles for zoom/reset
-        setCurrentMouseY, isMouseOverChart, setMouseX, // Added setMouseX for tracking X position
-        setHoveredCandle, setActiveTimestamp, setHoveredIndex, // Other state setters
-        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, // Constants used in handlers
-        activeTimestamp, data // Added for timestamp tracking
+        // Include state used within the effect and its handlers
+        isDragging, viewStartIndex, displayCandles.length,
+        displayedCandles, // zoom/reset
+        isMouseOverChart, // tracking X position and hover state
+        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, // constants
+        activeTimestamp, data?.length, handleWheel, updateHoveredCandleByTimestamp
     ]);
 
     // Calculate zoom percentage for display
