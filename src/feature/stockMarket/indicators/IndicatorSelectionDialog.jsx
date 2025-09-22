@@ -104,12 +104,6 @@ const INDICATOR_TYPES = [
     }
 ];
 
-// Find color name by hex value
-const getColorNameByHex = (hexValue) => {
-    const color = PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
-    return color ? color.name : "Custom";
-};
-
 // Find color object by hex value
 const getColorByHex = (hexValue) => {
     return PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
@@ -195,7 +189,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
             const indicatorType = INDICATOR_TYPES.find(t => t.id === selectedType);
             if (indicatorType) {
                 const randomColor = getRandomColor();
-                setSettings(prev => ({
+                setSettings(() => ({
                     ...indicatorType.defaultSettings,
                     color: randomColor.hex,
                     colorName: randomColor.name,
@@ -231,7 +225,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                 };
 
                 // Preserve the 'source' setting if it exists in both
-                if (settings.source && newTypeDefaults.hasOwnProperty('source')) {
+                if (settings.source && Object.prototype.hasOwnProperty.call(newTypeDefaults, 'source')) {
                     newSettings.source = settings.source;
                 }
 
@@ -239,7 +233,7 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                 setSettings(newSettings);
             }
         }
-    }, [selectedType, editMode, originalType, originalSettings]);
+    }, [selectedType, editMode, originalType, originalSettings, settings.color, settings.colorName, settings.thickness, settings.source]);
 
     // Reset selected type when changing tabs only in add mode
     useEffect(() => {

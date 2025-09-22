@@ -1,6 +1,6 @@
 // src/pages/StockMarket.jsx (update)
 import StockSelectors from "@/feature/stockMarket/StockSelectors.jsx";
-import CandleChart from "@/feature/stockMarket/CandleChart";
+import CandleChart from "@/feature/stockMarket/CandleChart/CandleChart.jsx";
 import IndicatorCharts from "@/feature/stockMarket/IndicatorCharts.jsx";
 import PortfolioList from "@/feature/stockMarket/PortfolioList.jsx";
 import PortfolioGraph from "@/feature/stockMarket/PortfolioGraph.jsx";

@@ -9,13 +9,10 @@ export function renderCandleChart({
                                       setHoveredCandle,
                                       setCurrentMouseY,
                                       setActiveTimestamp,
-                                      activeTimestamp,
                                       currentMouseY,
-                                      displayedCandles,
                                       mainIndicators = [],
                                       hoveredIndex,
                                       setHoveredIndex,
-                                      viewStartIndex,
                                       isMouseOverChart
                                   }) {
     // Basic validation to prevent errors
@@ -65,7 +62,10 @@ export function renderCandleChart({
         const yScale = createYScale(isLogarithmic, data, height);
 
         const volumeScale = d3.scaleLinear()
-            .domain([0, d3.max(data, d => d.volume || 0)])
+            .domain([0, d3.max(data, d => {
+                const vol = Number(d.volume);
+                return isNaN(vol) ? 0 : vol;
+            })])
             .range([height, height * 0.8]);
 
         // Add axes and grid
@@ -75,9 +75,8 @@ export function renderCandleChart({
         drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height);
 
         // Draw candles
-        const candles = drawCandles(svg, data, xScale, yScale, candleWidth);
-
-        // Draw main indicators if present
+        drawCandles(svg, data, xScale, yScale, candleWidth);
+// Draw main indicators if present
         if (mainIndicators && mainIndicators.length > 0) {
             try {
                 drawIndicators(svg, data, mainIndicators, xScale, yScale);

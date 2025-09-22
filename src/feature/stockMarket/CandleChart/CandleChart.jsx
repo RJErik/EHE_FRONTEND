@@ -1,5 +1,5 @@
 // src/components/stockMarket/CandleChart.jsx
-import {useCallback, useContext, useEffect, useRef, useState} from "react";
+import {useCallback, useContext, useEffect, useMemo, useRef, useState} from "react";
 import {Card, CardContent} from "../../../components/ui/card.jsx";
 import CandleInfoPanel from "./CandleInfoPanel.jsx";
 import MainIndicatorInfoPanel from "../indicators/MainIndicatorInfoPanel.jsx";
@@ -36,7 +36,7 @@ const CandleChart = () => {
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
 
     // Add mouseX state to track horizontal position for hover recalculation
-    const [, setMouseX] = useState(null);
+    const [setMouseX] = useState(null);
 
     // Use the shared chart context instead of local state
     const {
@@ -77,7 +77,9 @@ const CandleChart = () => {
 
     // Get main indicators that should be displayed on the candle chart
     const { indicators } = useIndicators();
-    const mainIndicators = indicators?.filter(ind => ind.category === "main") || [];
+    const mainIndicators = useMemo(() => (
+        Array.isArray(indicators) ? indicators.filter(ind => ind.category === "main") : []
+    ), [indicators]);
 
     // Helper function to update hovered candle based on timestamp
     const updateHoveredCandleByTimestamp = useCallback((timestamp) => {
@@ -159,7 +161,7 @@ const CandleChart = () => {
                 }
             }
         };
-    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex, viewStartIndex, isMouseOverChart, displayCandles.length]);
+    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex, viewStartIndex, isMouseOverChart, displayCandles.length, setHoveredCandle, setCurrentMouseY, setActiveTimestamp, setHoveredIndex]);
 
     // Backup mechanism: Effect to recalculate hover based on timestamp when displayed candles change
     useEffect(() => {
@@ -259,7 +261,7 @@ const CandleChart = () => {
         if (timestampToTrack) {
             updateHoveredCandleByTimestamp(timestampToTrack);
         }
-    }, [data?.length, activeTimestamp, displayedCandles, viewStartIndex, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, displayCandles.length, updateHoveredCandleByTimestamp]);
+    }, [data?.length, activeTimestamp, displayedCandles, viewStartIndex, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, displayCandles.length, setDisplayedCandles, setViewStartIndex, updateHoveredCandleByTimestamp]);
 
     // Setup dragging events
     useEffect(() => {
@@ -473,14 +475,7 @@ const CandleChart = () => {
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
-    }, [
-        // Include state used within the effect and its handlers
-        isDragging, viewStartIndex, displayCandles.length,
-        displayedCandles, // zoom/reset
-        isMouseOverChart, // tracking X position and hover state
-        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, // constants
-        activeTimestamp, data?.length, handleWheel, updateHoveredCandleByTimestamp
-    ]);
+    }, [isDragging, viewStartIndex, displayCandles.length, displayedCandles, isMouseOverChart, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, activeTimestamp, data.length, handleWheel, updateHoveredCandleByTimestamp, setIsDragging, setCurrentMouseY, setViewStartIndex, setHoveredCandle, setActiveTimestamp, setHoveredIndex, setMouseX]);
 
     // Calculate zoom percentage for display
     const zoomPercentage = Math.round(

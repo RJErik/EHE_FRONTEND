@@ -41,8 +41,8 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
                                 <span className="font-medium text-foreground mr-1">{indicator.name}:</span>
                                 <span style={{ color: indicator.settings.color }}>
                                     {Object.entries(value)
-                                        .filter(([_, val]) => val !== null && val !== undefined)
-                                        .map(([_, val]) => val.toFixed(2))
+                                        .filter(([val]) => val !== null && val !== undefined)
+                                        .map(([val]) => val.toFixed(2))
                                         .join(', ')}
                                 </span>
                             </div>

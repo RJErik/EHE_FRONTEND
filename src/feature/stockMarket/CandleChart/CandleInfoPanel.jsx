@@ -1,5 +1,3 @@
-import React from "react";
-
 const CandleInfoPanel = ({ candle }) => {
     if (!candle) return (
         <div className="h-8 flex items-center text-xs text-gray-500">

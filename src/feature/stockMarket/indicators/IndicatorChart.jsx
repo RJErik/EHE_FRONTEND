@@ -1,7 +1,7 @@
 // src/components/stockMarket/indicators/IndicatorChart.jsx
-import { useEffect, useRef, useContext, useState } from "react";
-import { renderIndicatorChart } from "./renderIndicatorChart.js";
-import { ChartContext } from "../ChartContext.jsx";
+import {useContext, useEffect, useRef, useState} from "react";
+import {renderIndicatorChart} from "./renderIndicatorChart.js";
+import {ChartContext} from "../ChartContext.jsx";
 
 const IndicatorChart = ({ indicator }) => {
     const chartRef = useRef(null);
@@ -11,6 +11,8 @@ const IndicatorChart = ({ indicator }) => {
     // Add refs for tracking drag state
     const dragStartXRef = useRef(null);
     const dragStartViewIndexRef = useRef(null);
+
+    // Shared helpers moved into effect to satisfy hooks exhaustive-deps
 
     const {
         candleData,
@@ -49,7 +51,7 @@ const IndicatorChart = ({ indicator }) => {
         }
 
         // Render chart using D3
-        const cleanup = renderIndicatorChart({
+        return renderIndicatorChart({
             chartRef,
             data: indicatorValues,
             indicator,
@@ -61,18 +63,7 @@ const IndicatorChart = ({ indicator }) => {
             currentMouseY,
             isMouseOverChart
         });
-
-        return cleanup;
-    }, [
-        indicator,
-        candleData,
-        viewStartIndex,
-        displayedCandles,
-        isDragging,
-        hoveredIndex,
-        currentMouseY,
-        isMouseOverChart
-    ]);
+    }, [indicator, candleData, viewStartIndex, displayedCandles, isDragging, hoveredIndex, currentMouseY, isMouseOverChart, setActiveTimestamp, setCurrentMouseY, setHoveredIndex]);
 
     // NEW: Effect to recalculate hover index when displayed candles change (zoom)
     useEffect(() => {
@@ -117,26 +108,39 @@ const IndicatorChart = ({ indicator }) => {
             return 10; // Fallback width
         };
 
+        // Define helpers inside effect to avoid changing deps
+        const CHART_MARGINS = { left: 40, right: 40, top: 5, bottom: 5 };
+        const getChartRect = () => chartRef.current?.getBoundingClientRect();
+        const isEventInChartArea = (e) => {
+            const rect = getChartRect();
+            if (!rect) return false;
+            const { left, right, top, bottom } = rect;
+            const { left: ml, right: mr, top: mt, bottom: mb } = CHART_MARGINS;
+            return (
+                e.clientX >= left + ml &&
+                e.clientX <= right - mr &&
+                e.clientY >= top + mt &&
+                e.clientY <= bottom - mb
+            );
+        };
+        const getRelativeMouse = (e) => {
+            const rect = getChartRect();
+            return {
+                rect,
+                x: rect ? e.clientX - rect.left - CHART_MARGINS.left : 0,
+                y: rect ? e.clientY - rect.top - CHART_MARGINS.top : 0,
+            };
+        };
+
         const handleMouseDown = (e) => {
-            if (e.button === 0) { // Only left mouse button
-                const chartRect = chartRef.current.getBoundingClientRect();
-                const marginLeft = 40, marginRight = 40, marginTop = 5, marginBottom = 5;
-
-                const isInChartArea =
-                    e.clientX >= chartRect.left + marginLeft &&
-                    e.clientX <= chartRect.right - marginRight &&
-                    e.clientY >= chartRect.top + marginTop &&
-                    e.clientY <= chartRect.bottom - marginBottom;
-
-                if (isInChartArea) {
-                    setIsDragging(true);
-                    dragStartXRef.current = e.clientX;
-                    dragStartViewIndexRef.current = viewStartIndex;
-                    if (chartRef.current) {
-                        chartRef.current.style.cursor = 'grabbing';
-                    }
-                    e.preventDefault();
+            if (e.button === 0 && isEventInChartArea(e)) { // Only left mouse button
+                setIsDragging(true);
+                dragStartXRef.current = e.clientX;
+                dragStartViewIndexRef.current = viewStartIndex;
+                if (chartRef.current) {
+                    chartRef.current.style.cursor = 'grabbing';
                 }
+                e.preventDefault();
             }
         };
 
@@ -182,7 +186,7 @@ const IndicatorChart = ({ indicator }) => {
             }
         };
 
-        const handleMouseUp = (e) => {
+        const handleMouseUp = () => {
             if (isDragging) {
                 setIsDragging(false);
                 dragStartXRef.current = null;
@@ -236,25 +240,10 @@ const IndicatorChart = ({ indicator }) => {
         };
 
         const handleMouseEnter = (e) => {
-            const chartRect = chartRef.current.getBoundingClientRect();
-            const marginLeft = 40;
-            const marginRight = 40;
-            const marginTop = 5;
-            const marginBottom = 5;
-
-            const isInChartArea =
-                e.clientX >= chartRect.left + marginLeft &&
-                e.clientX <= chartRect.right - marginRight &&
-                e.clientY >= chartRect.top + marginTop &&
-                e.clientY <= chartRect.bottom - marginBottom;
-
-            if (isInChartArea) {
+            if (isEventInChartArea(e)) {
                 setIsMouseOverChart(true);
-
-                // When entering chart, set initial mouse positions
-                const relativeX = e.clientX - chartRect.left - marginLeft;
-                setMouseX(relativeX);
-
+                const { x } = getRelativeMouse(e);
+                setMouseX(x);
                 if (chartRef.current) {
                     chartRef.current.style.cursor = isDragging ? 'grabbing' : 'crosshair';
                 }
@@ -279,21 +268,9 @@ const IndicatorChart = ({ indicator }) => {
 
         const handleWheelEvent = (e) => {
             if (!chartRef.current) return;
-            const chartRect = chartRef.current.getBoundingClientRect();
-            const marginLeft = 40, marginRight = 40, marginTop = 5, marginBottom = 5;
-            const relativeX = e.clientX - chartRect.left;
-            const relativeY = e.clientY - chartRect.top;
-            const isInChartArea =
-                relativeX >= marginLeft &&
-                relativeX <= (chartRect.width - marginRight) &&
-                relativeY >= marginTop &&
-                relativeY <= (chartRect.height - marginBottom);
-
-            if (isInChartArea) {
-                // Store the mouse X position before zoom
-                const xRelative = relativeX - marginLeft;
-                setMouseX(xRelative);
-
+            if (isEventInChartArea(e)) {
+                const { x } = getRelativeMouse(e);
+                setMouseX(x);
                 handleWheel(e); // Call the zoom handler
             }
         };
@@ -301,15 +278,7 @@ const IndicatorChart = ({ indicator }) => {
         // Global mouse move listener to catch mouse leaving the chart area *while not dragging*
         const handleGlobalMouseMoveForLeave = (e) => {
             if (chartRef.current && !isDragging && isMouseOverChart) {
-                const chartRect = chartRef.current.getBoundingClientRect();
-                const marginLeft = 40, marginRight = 40, marginTop = 5, marginBottom = 5;
-                const isStillOverChartArea =
-                    e.clientX >= chartRect.left + marginLeft &&
-                    e.clientX <= chartRect.right - marginRight &&
-                    e.clientY >= chartRect.top + marginTop &&
-                    e.clientY <= chartRect.bottom - marginBottom;
-
-                if (!isStillOverChartArea) {
+                if (!isEventInChartArea(e)) {
                     setIsMouseOverChart(false);
                     setCurrentMouseY(null);
                     setHoveredIndex(null);
@@ -343,13 +312,7 @@ const IndicatorChart = ({ indicator }) => {
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
-    }, [
-        isDragging, setIsDragging, viewStartIndex, setViewStartIndex, historicalBuffer?.length,
-        displayedCandles, setDisplayedCandles,
-        setCurrentMouseY, isMouseOverChart, setMouseX, // Added setMouseX
-        setHoveredIndex, setActiveTimestamp, // Added setActiveTimestamp
-        MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES
-    ]);
+    }, [isDragging, setIsDragging, viewStartIndex, setViewStartIndex, historicalBuffer.length, displayedCandles, setDisplayedCandles, setCurrentMouseY, isMouseOverChart, setMouseX, setHoveredIndex, setActiveTimestamp, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES]);
 
     // Helper function to extract indicator values from candle data
     const extractIndicatorValues = (candles, indicatorId, indicatorType) => {

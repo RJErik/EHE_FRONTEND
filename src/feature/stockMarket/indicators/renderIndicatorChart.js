@@ -22,6 +22,8 @@ export function renderIndicatorChart({
     const margin = { top: 5, right: 40, bottom: 5, left: 40 };
     const width = chartRef.current.clientWidth - margin.left - margin.right;
     const height = chartRef.current.clientHeight - margin.top - margin.bottom;
+    const widthNum = +width;
+    const heightNum = +height;
 
     // Create SVG
     const svg = d3.select(chartRef.current)
@@ -34,9 +36,9 @@ export function renderIndicatorChart({
     // Setup scales
     const xScale = d3.scaleLinear()
         .domain([0, Array.isArray(data) ? data.length - 1 : Object.values(data)[0].length - 1])
-        .range([0, width]);
+        .range([0, widthNum]);
 
-    const yScale = getYScale(data, height);
+    const yScale = getYScale(data, heightNum);
 
     // Handle different data formats
     if (Array.isArray(data)) {
@@ -195,26 +197,30 @@ function drawMultipleLines(svg, data, xScale, yScale, indicator) {
 
 function getYScale(data, height) {
     if (Array.isArray(data)) {
+        const numeric = data
+            .map(d => (d === null ? null : +d))
+            .filter(d => d !== null);
+
+        const minVal = (d3.min(numeric) ?? 0) * 0.99;
+        const maxVal = (d3.max(numeric) ?? 0) * 1.01;
+
         return d3.scaleLinear()
-            .domain([
-                d3.min(data, d => d === null ? Infinity : d) * 0.99,
-                d3.max(data, d => d === null ? -Infinity : d) * 1.01
-            ])
-            .range([height, 0])
+            .domain([minVal, maxVal])
+            .range([+height, 0])
             .nice();
     } else {
         // For multi-line indicators
         let allValues = [];
         Object.values(data).forEach(values => {
-            allValues = allValues.concat(values.filter(v => v !== null));
+            allValues = allValues.concat(values.filter(v => v !== null).map(v => +v));
         });
 
+        const minVal = (d3.min(allValues) ?? 0) * 0.99;
+        const maxVal = (d3.max(allValues) ?? 0) * 1.01;
+
         return d3.scaleLinear()
-            .domain([
-                d3.min(allValues) * 0.99,
-                d3.max(allValues) * 1.01
-            ])
-            .range([height, 0])
+            .domain([minVal, maxVal])
+            .range([+height, 0])
             .nice();
     }
 }

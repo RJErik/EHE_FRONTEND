@@ -63,7 +63,6 @@ const StockSelectors = () => {
     }, [selectedPlatform, selectedStock]);
 
     const {
-        isConnected,
         isSubscribing,
         error: subscriptionError,
         subscribeToCandles
@@ -219,19 +218,6 @@ const StockSelectors = () => {
                 isLoading={isSubscribing}
                 disabled={!selectedStock || !selectedPlatform}
             />
-
-            {/* Connection status indicator */}
-            {/*<div className="flex items-center justify-between px-2">*/}
-            {/*    <span className="text-xs text-muted-foreground">*/}
-            {/*        WebSocket: {isConnected ? "Connected" : "Disconnected"}*/}
-            {/*    </span>*/}
-            {/*    {isSubscribing && (*/}
-            {/*        <span className="text-xs flex items-center">*/}
-            {/*            <Loader2 className="h-3 w-3 mr-1 animate-spin" />*/}
-            {/*            Subscribing...*/}
-            {/*        </span>*/}
-            {/*    )}*/}
-            {/*</div>*/}
         </div>
     );
 };

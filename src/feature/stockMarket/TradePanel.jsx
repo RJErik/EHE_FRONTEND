@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Loader2, AlertCircle } from "lucide-react";
 import { useTrading } from "../../hooks/useTrading.js";
 import { stockSelectionEvents } from "./StockSelectors.jsx";
-import { useToast } from "../../hooks/use-toast.js";
 import { Alert, AlertDescription } from "../../components/ui/alert.jsx";
 import { Badge } from "../../components/ui/badge.jsx";
 import { Label } from "../../components/ui/label.jsx";
@@ -51,10 +50,8 @@ const TradePanel = () => {
     const [selectedQuantityType, setSelectedQuantityType] = useState("QUOTE_ORDER_QTY"); // Default to QUOTE_ORDER_QTY for buy
     const [quantity, setQuantity] = useState(0);
     const [inputValue, setInputValue] = useState("0");
-    const [isInputFocused, setIsInputFocused] = useState(false);
+    const [setIsInputFocused] = useState(false);
     const [maxValue, setMaxValue] = useState(0);
-
-    const { toast } = useToast();
 
     // Calculate if panel should be enabled
     const isPanelEnabled = !!selectedPlatform && !!selectedStock;
