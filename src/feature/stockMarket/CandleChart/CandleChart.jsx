@@ -36,7 +36,7 @@ const CandleChart = () => {
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
 
     // Add mouseX state to track horizontal position for hover recalculation
-    const [setMouseX] = useState(null);
+    const [mouseX, setMouseX] = useState(null);
 
     // Use the shared chart context instead of local state
     const {
@@ -60,6 +60,8 @@ const CandleChart = () => {
         MAX_DISPLAY_CANDLES,
         hoveredIndex,
         setHoveredIndex,
+        isFollowingLatest,
+        setIsFollowingLatest,
     } = useContext(ChartContext) || {}; // Add fallback empty object
 
     useEffect(() => {
@@ -493,6 +495,13 @@ const CandleChart = () => {
                         <MainIndicatorInfoPanel indicators={mainIndicators} hoveredIndex={hoveredIndex} />
                     </div>
                     <div className="flex items-center flex-shrink-0">
+                        <button
+                            onClick={() => setIsFollowingLatest && setIsFollowingLatest(!isFollowingLatest)}
+                            className={`px-2 py-1 text-xs rounded mr-2 ${isFollowingLatest ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
+                            title="Toggle follow latest"
+                        >
+                            {isFollowingLatest ? 'Following latest' : 'Follow latest'}
+                        </button>
                         <div className="text-xs text-gray-500 mr-2 whitespace-nowrap">
                             Zoom: {zoomPercentage}%
                         </div>

@@ -27,6 +27,7 @@ export function ChartProvider({ children }) {
     // Configuration
     const [isLogarithmic, setIsLogarithmic] = useState(false);
     const [timeframeInMs, setTimeframeInMs] = useState(60000); // Default to 1 minute
+    const [isFollowingLatest, setIsFollowingLatest] = useState(false);
 
     // WebSocket state
     const [isWaitingForData, setIsWaitingForData] = useState(true);
@@ -69,6 +70,126 @@ export function ChartProvider({ children }) {
         lastUpdateReasonRef.current = reason;
         setDisplayCandles(newCandles);
     }, []);
+
+    // ---------- Core utilities and helpers (dedupe/sort, anchor) ----------
+    const dedupeAndSort = useCallback((candles) => {
+        const byTs = new Map();
+        for (const c of candles || []) {
+            if (!c || typeof c.timestamp !== 'number') continue;
+            byTs.set(c.timestamp, c);
+        }
+        return Array.from(byTs.values()).sort((a, b) => a.timestamp - b.timestamp);
+    }, []);
+
+    const getVisibleWindow = useCallback(() => {
+        const start = viewStartIndex;
+        const end = Math.min(viewStartIndex + displayedCandles, displayCandles.length);
+        return { start, end };
+    }, [viewStartIndex, displayedCandles, displayCandles.length]);
+
+    const getAnchor = useCallback(() => {
+        const { start } = getVisibleWindow();
+        const ts = displayCandles[start]?.timestamp;
+        return ts ? { timestamp: ts, offset: 0 } : null;
+    }, [displayCandles, getVisibleWindow]);
+
+    const reanchorTo = useCallback((anchor) => {
+        if (!anchor || typeof anchor.timestamp !== 'number') return false;
+        const idx = displayCandles.findIndex(c => c.timestamp === anchor.timestamp);
+        if (idx < 0) return false;
+        const desiredStart = Math.max(0, idx - (anchor.offset || 0));
+        const maxStart = Math.max(0, displayCandles.length - displayedCandles);
+        setViewStartIndex(Math.max(0, Math.min(desiredStart, maxStart)));
+        return true;
+    }, [displayCandles, displayedCandles]);
+
+    // Keep the visible slice in sync with buffer + view indices
+    useEffect(() => {
+        const { start, end } = getVisibleWindow();
+        setCandleData(displayCandles.slice(start, end));
+    }, [displayCandles, getVisibleWindow]);
+
+    // ---------- Public operations expected by the subscription layer ----------
+    // Initialize on selection/timeframe change with an initial batch (expects ~100)
+    const initializeOnSelection = useCallback((initialCandles = []) => {
+        const cleaned = dedupeAndSort(initialCandles);
+        updateDisplayCandles(cleaned, "initialize_selection");
+        const initialDisplayed = 100;
+        setDisplayedCandles(initialDisplayed);
+        // Show the latest candles on initial load: right-align the window
+        const startIndex = Math.max(0, cleaned.length - initialDisplayed);
+        setViewStartIndex(startIndex);
+    }, [dedupeAndSort, updateDisplayCandles]);
+
+    // Merge base candles (handles past/future/overlap, dedupe, re-anchoring, and trim)
+    const mergeBaseCandles = useCallback((newCandles = [], opts = {}) => {
+        const { source = 'unknown' } = opts;
+        const prev = displayCandles;
+        const prevFirst = prev[0]?.timestamp;
+        const prevLast = prev[prev.length - 1]?.timestamp;
+        const prevLen = prev.length;
+
+        const merged = dedupeAndSort([...(prev || []), ...(newCandles || [])]);
+
+        // Determine direction by comparing new range to previous
+        let direction = 'overlap';
+        if (newCandles.length) {
+            const nFirst = Math.min(...newCandles.map(c => c.timestamp));
+            const nLast = Math.max(...newCandles.map(c => c.timestamp));
+            const eps = Math.floor((timeframeInMs || 60000) / 2);
+            if (prevLen === 0) direction = 'initial';
+            else if (Number.isFinite(prevFirst) && nLast <= (prevFirst + eps)) direction = 'past';
+            else if (Number.isFinite(prevLast) && nFirst >= (prevLast - eps)) direction = 'future';
+            else direction = 'overlap';
+        }
+
+        // How many were prepended strictly before prevFirst (using half timeframe epsilon)
+        let prepended = 0;
+        if (Number.isFinite(prevFirst)) {
+            const threshold = prevFirst - Math.floor((timeframeInMs || 60000) / 2);
+            for (let i = 0; i < merged.length; i++) {
+                if (merged[i].timestamp < threshold) prepended++; else break;
+            }
+        }
+
+        updateDisplayCandles(merged, `merge_base_${source}_${direction}`);
+
+        // Adjust left-edge anchor
+        if (prevLen === 0 || direction === 'initial') {
+            setViewStartIndex(0);
+        } else if (direction === 'past' && prepended > 0) {
+            setViewStartIndex(v => Math.min(v + prepended, Math.max(0, merged.length - displayedCandles)));
+        } else if (direction === 'future') {
+            if (isFollowingLatest) {
+                const rightStart = Math.max(0, merged.length - displayedCandles);
+                setViewStartIndex(rightStart);
+            } else {
+                setViewStartIndex(v => Math.min(v, Math.max(0, merged.length - displayedCandles)));
+            }
+        } else {
+            // Overlap: reanchor by previous left-edge candle using the merged buffer
+            const anchorTs = prev[viewStartIndex]?.timestamp;
+            if (anchorTs) {
+                const idx = merged.findIndex(c => c.timestamp === anchorTs);
+                if (idx >= 0) {
+                    const maxStart = Math.max(0, merged.length - displayedCandles);
+                    setViewStartIndex(Math.max(0, Math.min(idx, maxStart)));
+                }
+            }
+        }
+
+        // Defer trimming to a post-render effect that uses the updated viewStartIndex
+    }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo]);
+
+    // Merge indicator calculation candles with optional reset
+    const mergeIndicatorCandles = useCallback((newCandles = [], opts = {}) => {
+        const { reset = false } = opts;
+        if (reset) {
+            setIndicatorCandles(dedupeAndSort(newCandles));
+            return;
+        }
+        setIndicatorCandles(prev => dedupeAndSort([...(prev || []), ...(newCandles || [])]));
+    }, [dedupeAndSort]);
 
     // Calculate max lookback needed for all indicators
     const calculateMaxLookback = useCallback((currentIndicators) => {
@@ -121,20 +242,14 @@ export function ChartProvider({ children }) {
         console.log("[ChartContext] Calculating indicators for buffer with length:", buffer.length);
 
         return buffer.map((candle, candleIndex) => {
-            // Create a new candle object with existing properties
             const updatedCandle = {
                 ...candle,
-                // Initialize indicatorValues if it doesn't exist
                 indicatorValues: candle.indicatorValues || {}
             };
 
-            // Calculate each indicator's value for this candle
             currentIndicators.forEach(indicator => {
                 try {
-                    // Calculate the full array of values for this indicator
                     const fullValues = calculateIndicator(indicator, buffer);
-
-                    // Store just this candle's value
                     if (fullValues && candleIndex < fullValues.length) {
                         updatedCandle.indicatorValues[indicator.id] = fullValues[candleIndex];
                     }
@@ -146,6 +261,30 @@ export function ChartProvider({ children }) {
             return updatedCandle;
         });
     }, []);
+
+    // Compute the indicator data range required to cover the current visible base window
+    const computeRequiredIndicatorRange = useCallback(() => {
+        if (!displayCandles.length) return { start: null, end: null, lookback: 0 };
+        const maxLookback = calculateMaxLookback(indicators);
+        const startVisible = displayCandles[viewStartIndex]?.timestamp;
+        const endVisible = displayCandles[Math.min(displayCandles.length - 1, viewStartIndex + Math.max(0, displayedCandles - 1))]?.timestamp;
+        if (!startVisible || !endVisible) return { start: null, end: null, lookback: maxLookback };
+        const start = startVisible - (maxLookback * timeframeInMs);
+        const end = endVisible;
+        return { start, end, lookback: maxLookback };
+    }, [displayCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, timeframeInMs]);
+
+    // Indicator range based on full base buffer, not just the visible window
+    const computeIndicatorRangeForBaseBuffer = useCallback(() => {
+        if (!displayCandles.length) return { start: null, end: null, lookback: 0 };
+        const maxLookback = calculateMaxLookback(indicators);
+        const startBuffer = displayCandles[0]?.timestamp;
+        const endBuffer = displayCandles[displayCandles.length - 1]?.timestamp;
+        if (!startBuffer || !endBuffer) return { start: null, end: null, lookback: maxLookback };
+        const start = startBuffer - (maxLookback * timeframeInMs);
+        const end = endBuffer;
+        return { start, end, lookback: maxLookback };
+    }, [displayCandles, indicators, calculateMaxLookback, timeframeInMs]);
 
     // Function to apply calculated indicator values to display candles
     const applyIndicatorsToCandleDisplay = useCallback(() => {
@@ -636,10 +775,20 @@ export function ChartProvider({ children }) {
         if (isRequestingPastDataRef.current || isRequestingFutureDataRef.current) return;
 
         const total = displayCandles.length;
-        if (total <= displayedCandles + PAST_MARGIN + FUTURE_MARGIN) return;
 
-        const startIdx = Math.max(0, viewStartIndex - PAST_MARGIN);
-        const endIdx = Math.min(total, viewStartIndex + displayedCandles + FUTURE_MARGIN);
+        // Dynamic target total around current view with guard
+        const MIN_TOTAL = 400; // guard to avoid aggressive trimming on small windows
+        const FACTOR = 3; // keep ~3x the visible window in memory
+        const targetTotal = Math.max(displayedCandles * FACTOR, MIN_TOTAL);
+        const extra = Math.max(0, targetTotal - displayedCandles);
+        const leftMargin = Math.max(PAST_MARGIN, Math.floor(extra / 2));
+        const rightMargin = Math.max(FUTURE_MARGIN, extra - Math.floor(extra / 2));
+
+        // If already within target bounds, skip
+        if (total <= displayedCandles + leftMargin + rightMargin) return;
+
+        const startIdx = Math.max(0, viewStartIndex - leftMargin);
+        const endIdx = Math.min(total, viewStartIndex + displayedCandles + rightMargin);
 
         if (startIdx <= 0 && endIdx >= total) return; // Nothing to trim
 
@@ -834,7 +983,7 @@ export function ChartProvider({ children }) {
         // Date formatting helper
         const formatDate = (timestamp) => {
             if (!timestamp) return "undefined";
-            return new Date(timestamp).toISOString();
+            try { return new Date(timestamp).toISOString(); } catch { return String(timestamp); }
         };
 
         console.log(`[Indicator Requirements] Oldest candle needed time: ${formatDate(startDate)}`);
@@ -940,82 +1089,61 @@ export function ChartProvider({ children }) {
 
             setCandleData(visibleData);
 
-            // Calculate the required data range using the ref version
-            setTimeout(() => {
-                if (displayCandles.length > 0) {
-                    calculateRangeRef.current();
-                }
-            }, 0);
+            // After window update, trim if needed to keep memory bounded
+            trimBuffersIfNeeded();
 
             // If we just got data and were waiting, set waiting to false
             if (isWaitingForData && visibleData.length > 0) {
                 setIsWaitingForData(false);
             }
         }
-    }, [displayCandles, viewStartIndex, displayedCandles, isWaitingForData]);
+    }, [displayCandles, viewStartIndex, displayedCandles, isWaitingForData, trimBuffersIfNeeded]);
 
-    // Monitor indicator changes to update subscription requirements
+    // Monitor indicator changes to update indicator subscription requirements (do not alter chart buffer)
     useEffect(() => {
-        if (displayCandles.length > 0) {
-            // Only recalculate range when indicators change or when explicitly requested
-            if ((indicators.length > 0 || shouldUpdateSubscription) && !isProcessingIndicatorUpdateRef.current) {
-                isProcessingIndicatorUpdateRef.current = true;
-                console.log("[WebSocket Prep] Recalculating required data range due to indicator changes");
-                const range = calculateRequiredDataRange();
+        if (displayCandles.length === 0) return;
 
-                // Check if range is different from last request or if it's a buffer update
-                const lastRange = lastRequestedRangeRef.current;
-                const isRangeDifferent = !lastRange ||
-                    lastRange.start !== range.start ||
-                    lastRange.end !== range.end;
+        // Only fire when indicators change or an explicit update was requested (e.g., base buffer actually changed)
+        if ((indicators.length > 0 || shouldUpdateSubscription) && !isProcessingIndicatorUpdateRef.current) {
+            isProcessingIndicatorUpdateRef.current = true;
+            console.log("[WebSocket Prep] Recalculating indicator range due to indicator/base buffer changes");
 
-                if (isRangeDifferent || range.isBufferUpdate) {
-                    lastRequestedRangeRef.current = { ...range };
-                    
-                    // Update request flags for buffer management
-                    if (range.isBufferUpdate) {
-                        if (range.bufferDirection === 'past') {
-                            isRequestingPastDataRef.current = true;
-                        } else if (range.bufferDirection === 'future') {
-                            isRequestingFutureDataRef.current = true;
+            // Compute indicator range based on the entire base buffer + lookback
+            const indRange = computeIndicatorRangeForBaseBuffer();
+
+            const lastRange = lastRequestedRangeRef.current;
+            const isRangeDifferent = !lastRange || lastRange.start !== indRange.start || lastRange.end !== indRange.end;
+
+            if (isRangeDifferent) {
+                lastRequestedRangeRef.current = { ...indRange };
+
+                setTimeout(() => {
+                    const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
+                        detail: {
+                            range: indRange,
+                            indicatorCount: indicators.length,
+                            subscriptionDetails: true,
+                            isBufferUpdate: false
                         }
-                    }
+                    });
+                    window.dispatchEvent(indicatorChangeEvent);
+                    console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Indicator range changed");
 
-                    // Use setTimeout to prevent immediate consecutive emissions
                     setTimeout(() => {
-                        const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
-                            detail: {
-                                range,
-                                indicatorCount: indicators.length,
-                                // Include current subscription details if needed
-                                subscriptionDetails: true, // this forces the handler to look up current details
-                                isBufferUpdate: range.isBufferUpdate,
-                                bufferDirection: range.bufferDirection,
-                                referenceTimestamp: range.referenceTimestamp,
-                                referenceOffset: typeof range.referenceOffset === 'number' ? range.referenceOffset : undefined
-                            }
-                        });
-                        window.dispatchEvent(indicatorChangeEvent);
-
-                        console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Range changed");
-
-                        // Reset the processing flag after a delay to allow processing
-                        setTimeout(() => {
-                            isProcessingIndicatorUpdateRef.current = false;
-                        }, 300);
-                    }, 100);
-                } else {
-                    console.log("[WebSocket Prep] Skipping event dispatch - Range unchanged");
-                    isProcessingIndicatorUpdateRef.current = false;
-                }
-
-                // Reset the flag
-                setShouldUpdateSubscription(false);
+                        isProcessingIndicatorUpdateRef.current = false;
+                    }, 300);
+                }, 100);
+            } else {
+                console.log("[WebSocket Prep] Skipping indicator event - Range unchanged");
+                isProcessingIndicatorUpdateRef.current = false;
             }
-            // After handling indicator updates and potential merges, trim buffers if too large
-            trimBuffersIfNeeded();
+
+            setShouldUpdateSubscription(false);
         }
-    }, [indicators, shouldUpdateSubscription, displayCandles.length, calculateRequiredDataRange, trimBuffersIfNeeded]);
+
+        // Trim if too large after any indicator handling
+        trimBuffersIfNeeded();
+    }, [indicators, shouldUpdateSubscription, displayCandles.length, computeIndicatorRangeForBaseBuffer, trimBuffersIfNeeded]);
 
     // Update hovered candle when index changes
     useEffect(() => {
@@ -1213,6 +1341,8 @@ export function ChartProvider({ children }) {
             lastUpdateReasonRef.current = "timeframe_change";
             setTimeframeInMs(ms);
         },
+        isFollowingLatest,
+        setIsFollowingLatest,
         isDataGenerationEnabled,
         setIsDataGenerationEnabled,
 
@@ -1237,7 +1367,16 @@ export function ChartProvider({ children }) {
         updateSubscriptionDateRange,
         checkBufferThresholds,
         handleBufferUpdateComplete,
-        findCandleIndexByTimestamp
+        findCandleIndexByTimestamp,
+
+        // New cleaner API used by subscription layer
+        initializeOnSelection,
+        mergeBaseCandles,
+        mergeIndicatorCandles,
+        computeRequiredIndicatorRange,
+        getAnchor,
+        reanchorTo,
+        trimBuffersIfNeeded
     };
     
     // Expose context externally through a global variable
