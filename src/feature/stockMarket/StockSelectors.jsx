@@ -8,27 +8,9 @@ import { useEffect, useState, useCallback, useRef, useContext } from "react";
 import TimeIntervalButtons from "./TimeIntervalButtons.jsx";
 import { useCandleSubscription } from "../../hooks/useCandleSubscription.js";
 import { ChartContext } from "./ChartContext.jsx";
+import { stockSelectionEvents } from "./stockSelectionEvents.js";
 
-// Create a simple event system to share stock/platform selection
-// This is a workaround since we can't rely on context for these values
-const stockSelectionEvents = {
-    listeners: [],
-    subscribe: (callback) => {
-        stockSelectionEvents.listeners.push(callback);
-        return () => {
-            stockSelectionEvents.listeners = stockSelectionEvents.listeners
-                .filter(cb => cb !== callback);
-        };
-    },
-    notify: (platform, stock) => {
-        stockSelectionEvents.listeners.forEach(callback =>
-            callback(platform, stock)
-        );
-    }
-};
-
-// Export the event system so other components can subscribe
-export { stockSelectionEvents };
+// stockSelectionEvents moved to separate module to satisfy react-refresh rule
 
 const StockSelectors = () => {
     const {

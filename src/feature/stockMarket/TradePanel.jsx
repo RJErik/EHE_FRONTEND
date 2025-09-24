@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { Loader2, AlertCircle } from "lucide-react";
 import { useTrading } from "../../hooks/useTrading.js";
-import { stockSelectionEvents } from "./StockSelectors.jsx";
+import { stockSelectionEvents } from "./stockSelectionEvents.js";
 import { Alert, AlertDescription } from "../../components/ui/alert.jsx";
 import { Badge } from "../../components/ui/badge.jsx";
 import { Label } from "../../components/ui/label.jsx";
