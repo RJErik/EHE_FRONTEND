@@ -113,12 +113,25 @@ export function ChartProvider({ children }) {
     // Initialize on selection/timeframe change with an initial batch (expects ~100)
     const initializeOnSelection = useCallback((initialCandles = []) => {
         const cleaned = dedupeAndSort(initialCandles);
-        updateDisplayCandles(cleaned, "initialize_selection");
+        console.log('[Chart Merge] Initialize selection:', {
+            incomingCount: initialCandles?.length || 0,
+            cleanedCount: cleaned.length,
+            firstIncoming: initialCandles?.length ? new Date(Math.min(...initialCandles.map(c=>c.timestamp))).toISOString() : 'none',
+            lastIncoming: initialCandles?.length ? new Date(Math.max(...initialCandles.map(c=>c.timestamp))).toISOString() : 'none',
+            cleanedFirst: cleaned.length ? new Date(cleaned[0].timestamp).toISOString() : 'none',
+            cleanedLast: cleaned.length ? new Date(cleaned[cleaned.length-1].timestamp).toISOString() : 'none'
+        });
+        updateDisplayCandles(cleaned, 'initialize_selection');
         const initialDisplayed = 100;
         setDisplayedCandles(initialDisplayed);
         // Show the latest candles on initial load: right-align the window
         const startIndex = Math.max(0, cleaned.length - initialDisplayed);
         setViewStartIndex(startIndex);
+        console.log('[Chart Merge] Initialize window:', {
+            startIndex,
+            displayed: initialDisplayed,
+            bufferLength: cleaned.length
+        });
     }, [dedupeAndSort, updateDisplayCandles]);
 
     // Merge base candles (handles past/future/overlap, dedupe, re-anchoring, and trim)
@@ -130,6 +143,7 @@ export function ChartProvider({ children }) {
         const prevLen = prev.length;
 
         const merged = dedupeAndSort([...(prev || []), ...(newCandles || [])]);
+        const duplicates = Math.max(0, (prevLen + (newCandles?.length || 0)) - merged.length);
 
         // Determine direction by comparing new range to previous
         let direction = 'overlap';
@@ -143,14 +157,39 @@ export function ChartProvider({ children }) {
             else direction = 'overlap';
         }
 
-        // How many were prepended strictly before prevFirst (using half timeframe epsilon)
+        // How many were prepended/appended relative to previous buffer
         let prepended = 0;
+        let appended = 0;
         if (Number.isFinite(prevFirst)) {
             const threshold = prevFirst - Math.floor((timeframeInMs || 60000) / 2);
             for (let i = 0; i < merged.length; i++) {
                 if (merged[i].timestamp < threshold) prepended++; else break;
             }
         }
+        if (Number.isFinite(prevLast)) {
+            const threshold = prevLast + Math.floor((timeframeInMs || 60000) / 2);
+            for (let i = merged.length - 1; i >= 0; i--) {
+                if (merged[i].timestamp > threshold) appended++; else break;
+            }
+        }
+
+        const prevView = viewStartIndex;
+        console.log('[Chart Merge] Before merge:', {
+            source,
+            direction,
+            prevLen,
+            incoming: newCandles?.length || 0,
+            mergedLen: merged.length,
+            duplicates,
+            prepended,
+            appended,
+            prevFirst: prevLen ? new Date(prevFirst).toISOString() : 'none',
+            prevLast: prevLen ? new Date(prevLast).toISOString() : 'none',
+            mergedFirst: merged.length ? new Date(merged[0].timestamp).toISOString() : 'none',
+            mergedLast: merged.length ? new Date(merged[merged.length-1].timestamp).toISOString() : 'none',
+            viewStartIndex: prevView,
+            displayedCandles
+        });
 
         updateDisplayCandles(merged, `merge_base_${source}_${direction}`);
 
@@ -177,6 +216,14 @@ export function ChartProvider({ children }) {
                 }
             }
         }
+
+        setTimeout(() => {
+            console.log('[Chart Merge] After merge:', {
+                direction,
+                newViewStartIndex: viewStartIndex,
+                mergedLen: merged.length
+            });
+        }, 0);
 
         // Defer trimming to a post-render effect that uses the updated viewStartIndex
     }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo]);
@@ -793,6 +840,8 @@ export function ChartProvider({ children }) {
         if (startIdx <= 0 && endIdx >= total) return; // Nothing to trim
 
         const trimmed = displayCandles.slice(startIdx, endIdx);
+        const removedLeft = startIdx;
+        const removedRight = displayCandles.length - endIdx;
 
         // Adjust viewStartIndex relative to trimmed buffer
         const newViewStart = Math.max(0, viewStartIndex - startIdx);
@@ -802,7 +851,17 @@ export function ChartProvider({ children }) {
         const newEndTs = trimmed[trimmed.length - 1]?.timestamp;
 
         // Apply updates
-        updateDisplayCandles(trimmed, "trim_buffers");
+        console.log('[Chart Trim] Trimming buffers:', {
+            bufferBefore: displayCandles.length,
+            startIdx,
+            endIdx,
+            removedLeft,
+            removedRight,
+            newLength: trimmed.length,
+            oldViewStart: viewStartIndex,
+            newViewStart
+        });
+        updateDisplayCandles(trimmed, 'trim_buffers');
         setViewStartIndex(newViewStart);
         if (newStartTs && newEndTs) {
             subscriptionStartDateRef.current = newStartTs;
@@ -853,7 +912,7 @@ export function ChartProvider({ children }) {
         const { needsPastData, needsFutureData } = checkBufferThresholds();
         
         // Past data request – stop if we already hit the earliest known candle
-        if (needsPastData && !isRequestingPastDataRef.current && !isStartReachedRef.current) {
+        if (needsPastData && !isRequestingPastDataRef.current /*&& !isStartReachedRef.current*/ ) {
             const pastRange = calculateNewDateRangeForBuffer('past');
             if (pastRange) {
                 try {
@@ -879,7 +938,7 @@ export function ChartProvider({ children }) {
                     resetData: pastRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'past',
-                    referenceTimestamp: displayCandles[viewStartIndex]?.timestamp,
+                    referenceTimestamp: displayCandles[viewStartIndex]?.timestamp || displayCandles[0]?.timestamp || null,
                     // Preserve the same candle at the same relative position (left edge for past)
                     referenceOffset: 0
                 };
@@ -915,7 +974,7 @@ export function ChartProvider({ children }) {
                     resetData: futureRange.resetData,
                     isBufferUpdate: true,
                     bufferDirection: 'future',
-                    referenceTimestamp: refTs,
+                    referenceTimestamp: typeof refTs === 'number' ? refTs : (displayCandles[0]?.timestamp || null),
                     // Preserve the same candle at the same relative position within the window
                     referenceOffset: refOffset
                 };
@@ -1024,25 +1083,48 @@ export function ChartProvider({ children }) {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
 
-    // When viewStartIndex changes, check if we need to load more data
+    // When viewStartIndex changes, check if we need to load more chart data
     useEffect(() => {
         // Don't check while dragging to avoid multiple requests
         if (isDragging) return;
-        
+
         // Don't check if no data is loaded yet
         if (!displayCandles.length) return;
-        
+
         const { needsPastData, needsFutureData } = checkBufferThresholds();
-        
-        if ((needsPastData && !isRequestingPastDataRef.current) || 
+
+        if ((needsPastData && !isRequestingPastDataRef.current) ||
             (needsFutureData && !isRequestingFutureDataRef.current)) {
-            
-            // Request data update through existing subscription mechanism
-            console.log("[Buffer Management] Requesting data update due to scrolling");
-            // Do not set in-flight flags here; only set them when we actually dispatch a buffer update
-            setShouldUpdateSubscription(true);
+
+            // Compute the precise range to fetch for the chart buffer
+            const range = calculateRequiredDataRange();
+            if (range && range.isBufferUpdate && Number.isFinite(range.start) && Number.isFinite(range.end)) {
+                console.log('[Buffer Management] Requesting chart buffer update due to scrolling', {
+                    direction: range.bufferDirection,
+                    start: new Date(range.start).toISOString(),
+                    end: new Date(range.end).toISOString()
+                });
+
+                // Mark in-flight flag based on direction to avoid duplicate requests
+                if (range.bufferDirection === 'past') isRequestingPastDataRef.current = true;
+                if (range.bufferDirection === 'future') isRequestingFutureDataRef.current = true;
+
+                // Emit an event that useCandleSubscription listens to for making the websocket request
+                try {
+                    const evt = new CustomEvent('chartBufferUpdateRequested', {
+                        detail: {
+                            start: range.start,
+                            end: range.end,
+                            bufferDirection: range.bufferDirection,
+                            referenceTimestamp: range.referenceTimestamp,
+                            referenceOffset: range.referenceOffset
+                        }
+                    });
+                    window.dispatchEvent(evt);
+                } catch (_) {}
+            }
         }
-    }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging]);
+    }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging, calculateRequiredDataRange]);
 
     // Recalculate indicators when indicators list changes or indicator candles change
     useEffect(() => {
@@ -1232,20 +1314,35 @@ export function ChartProvider({ children }) {
 
         // Only clear request flags when we actually extended buffer in that direction
         try {
+            const prevFirst = firstCandleTimestampRef.current;
+            const prevLast = lastCandleTimestampRef.current;
             const currentStart = subscriptionStartDateRef.current;
             const currentEnd = subscriptionEndDateRef.current;
-            const hadProgress = (direction === 'future')
-                ? (lastCandleTimestampRef.current && currentEnd && currentEnd > lastCandleTimestampRef.current)
-                : (firstCandleTimestampRef.current && currentStart && currentStart < firstCandleTimestampRef.current);
+
+            const madePastProgress = Boolean(prevFirst && currentStart && currentStart < prevFirst);
+            const madeFutureProgress = Boolean(prevLast && currentEnd && currentEnd > prevLast);
 
             if (direction === 'past') {
-                isRequestingPastDataRef.current = !hadProgress ? false : false; // always clear, but condition kept for future logic
+                // Clear in-flight and ensure we allow further past requests if we extended
+                isRequestingPastDataRef.current = false;
+                if (madePastProgress) {
+                    isStartReachedRef.current = false;
+                }
             } else if (direction === 'future') {
-                isRequestingFutureDataRef.current = !hadProgress ? false : false; // always clear, but condition kept for future logic
+                isRequestingFutureDataRef.current = false;
+            } else if (direction === 'unknown') {
+                // Safety net: avoid deadlock if backend responded without clear direction (e.g., stale id)
+                console.warn('[Buffer Management] Unknown direction on buffer completion; clearing in-flight flags to avoid deadlock');
+                isRequestingPastDataRef.current = false;
+                isRequestingFutureDataRef.current = false;
             }
         } catch (_) {
             if (direction === 'past') isRequestingPastDataRef.current = false;
             if (direction === 'future') isRequestingFutureDataRef.current = false;
+            if (direction === 'unknown') {
+                isRequestingPastDataRef.current = false;
+                isRequestingFutureDataRef.current = false;
+            }
         }
 
         // Recalculate view index if provided a reference (timestamp or {timestamp, offset})

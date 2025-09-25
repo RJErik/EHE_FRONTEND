@@ -93,7 +93,87 @@ export function useCandleSubscription() {
         // Calculate how far back to go based on candle count and timeframe
         const minutesBack = timeframeMinutes * candleCount;
         return new Date(endDate.getTime() - (minutesBack * 60 * 1000));
-    }, []);
+  }, []);
+
+  // Listen for chart buffer update requests from ChartContext
+  useEffect(() => {
+    const handleChartBufferUpdateRequested = async (event) => {
+      try {
+        const detail = event?.detail || {};
+        const { start, end, bufferDirection, referenceTimestamp, referenceOffset } = detail;
+        if (!start || !end || isNaN(start) || isNaN(end)) {
+          console.log('[Chart Buffer] Invalid range in request; ignoring');
+          return;
+        }
+
+        // Resolve subscription details
+        let platformName = currentSubscription.platformName;
+        let stockSymbol = currentSubscription.stockSymbol;
+        let timeframe = currentSubscription.timeframe;
+
+        if (!platformName || !stockSymbol || !timeframe) {
+          if (latestSubscriptionDetailsRef.current.platformName && latestSubscriptionDetailsRef.current.stockSymbol && latestSubscriptionDetailsRef.current.timeframe) {
+            ({ platformName, stockSymbol, timeframe } = latestSubscriptionDetailsRef.current);
+          } else if (lastValidSubscription.platformName && lastValidSubscription.stockSymbol && lastValidSubscription.timeframe) {
+            ({ platformName, stockSymbol, timeframe } = lastValidSubscription);
+          }
+        }
+
+        if (!platformName || !stockSymbol || !timeframe) {
+          console.warn('[Chart Buffer] Missing subscription details; cannot request buffer update');
+          return;
+        }
+
+        const startDateIso = new Date(start).toISOString();
+        const endDateIso = new Date(end).toISOString();
+        console.log('[Chart Buffer] Requesting chart buffer update:', { platformName, stockSymbol, timeframe, startDateIso, endDateIso, bufferDirection });
+
+        // Mark in-flight so downstream processing treats the next payload as buffer update
+        isRequestingBufferUpdate.current = true;
+
+        // Capture anchor to restore after merge (prefer explicit ref; fallback to left-edge anchor)
+        if (referenceTimestamp) {
+          referenceTimestampRef.current = typeof referenceTimestamp === 'object'
+            ? { timestamp: referenceTimestamp.timestamp, offset: referenceOffset }
+            : referenceTimestamp;
+        } else {
+          // fallback: left-edge timestamp
+          try {
+            const anchor = window.__chartContextValue?.getAnchor?.();
+            if (anchor) referenceTimestampRef.current = anchor;
+          } catch (_) {}
+        }
+
+        const bufferUpdateRequest = {
+          platformName,
+          stockSymbol,
+          timeframe,
+          startDate: startDateIso,
+          endDate: endDateIso,
+          resetData: true,
+          isBufferUpdate: true,
+          bufferDirection,
+          subscriptionType: 'CHART'
+        };
+
+        // Unsubscribe current chart subscription to avoid stale IDs and dedupe conflicts
+        try {
+          if (subscriptionIds.chart) {
+            await unsubscribe('chart');
+            await new Promise(r => setTimeout(r, 150));
+          }
+        } catch (_) {}
+
+        await requestSubscription('chart', bufferUpdateRequest);
+        console.log('[Chart Buffer] Chart buffer update request sent');
+      } catch (err) {
+        console.error('[Chart Buffer] Failed to request chart buffer update:', err);
+      }
+    };
+
+    window.addEventListener('chartBufferUpdateRequested', handleChartBufferUpdateRequested);
+    return () => window.removeEventListener('chartBufferUpdateRequested', handleChartBufferUpdateRequested);
+  }, [currentSubscription, lastValidSubscription, requestSubscription, subscriptionIds.chart, unsubscribe]);
 
     // Transform candle data from backend format to frontend format
     const transformCandleData = useCallback((backendCandle, stockSymbol) => {
@@ -198,12 +278,14 @@ export function useCandleSubscription() {
                     const epsilon = (window.__chartContextValue && window.__chartContextValue.timeframeInMs) || 60_000;
 
                     if (prevStart != null && prevEnd != null && Number.isFinite(newStart) && Number.isFinite(newEnd)) {
-                        const touchesPast = newEnd <= (prevStart + epsilon);
-                        const touchesFuture = newStart >= (prevEnd - epsilon);
-                        if (touchesPast && !touchesFuture) bufferDirection = 'past';
-                        else if (touchesFuture && !touchesPast) bufferDirection = 'future';
-                        else if (newStart < prevStart && newEnd > prevEnd) bufferDirection = 'both';
-                        else if (newStart >= prevStart && newEnd <= prevEnd) bufferDirection = 'unknown'; // overlap/refresh
+                        // Determine if the new slice extends the buffer to the past/future beyond a tolerance
+                        const extendsPast = newStart < (prevStart - epsilon);
+                        const extendsFuture = newEnd > (prevEnd + epsilon);
+
+                        if (extendsPast && !extendsFuture) bufferDirection = 'past';
+                        else if (!extendsPast && extendsFuture) bufferDirection = 'future';
+                        else if (extendsPast && extendsFuture) bufferDirection = 'both';
+                        else bufferDirection = 'overlap'; // stays within known bounds
                     }
 
                     // After inferring, update the known subscription date range using the new slice
@@ -238,6 +320,12 @@ export function useCandleSubscription() {
                 }
                 
                 // Merge via ChartContext (handles dedupe and re-anchoring)
+                console.log('[Chart Merge] Buffer update incoming slice:', {
+                    count: newCandles.length,
+                    first: newCandles.length ? new Date(Math.min(...newCandles.map(c=>c.timestamp))).toISOString() : 'none',
+                    last: newCandles.length ? new Date(Math.max(...newCandles.map(c=>c.timestamp))).toISOString() : 'none',
+                    direction: bufferDirection
+                });
                 mergeBaseCandles(newCandles, { source: bufferDirection || 'buffer' });
                 try {
                     const afterCandles = (window.__chartContextValue && window.__chartContextValue.displayCandles) || [];
