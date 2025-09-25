@@ -134,6 +134,50 @@ export function ChartProvider({ children }) {
         });
     }, [dedupeAndSort, updateDisplayCandles]);
 
+    // Calculate max lookback needed for all indicators
+    const calculateMaxLookback = useCallback((currentIndicators) => {
+        let maxLookback = 0;
+
+        currentIndicators.forEach(indicator => {
+            let indicatorLookback = 0;
+
+            switch (indicator.type) {
+                case "sma":
+                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                    break;
+                case "ema":
+                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                    break;
+                case "rsi":
+                    indicatorLookback = indicator.settings?.period || 14;
+                    // RSI needs one extra candle to calculate first change
+                    indicatorLookback += 1;
+                    break;
+                case "macd":
+                    // MACD needs the slowest period plus signal period
+                    indicatorLookback = Math.max(
+                        indicator.settings?.slowPeriod || 26,
+                        indicator.settings?.fastPeriod || 12
+                    ) + (indicator.settings?.signalPeriod || 9);
+                    break;
+                case "bb":
+                    indicatorLookback = indicator.settings?.period || 20;
+                    break;
+                case "atr":
+                    indicatorLookback = indicator.settings?.period || 14;
+                    // ARTR needs one extra candle for previous close
+                    indicatorLookback += 1;
+                    break;
+                default:
+                    indicatorLookback = 50; // Safe default
+            }
+
+            maxLookback = Math.max(maxLookback, indicatorLookback);
+        });
+
+        return maxLookback;
+    }, []);
+
     // Merge base candles (handles past/future/overlap, dedupe, re-anchoring, and trim)
     const mergeBaseCandles = useCallback((newCandles = [], opts = {}) => {
         const { source = 'unknown' } = opts;
@@ -191,19 +235,17 @@ export function ChartProvider({ children }) {
             displayedCandles
         });
 
-        updateDisplayCandles(merged, `merge_base_${source}_${direction}`);
-
-        // Adjust left-edge anchor
+        // Predict viewStartIndex that will be applied by the anchor logic above
+        let predictedViewStart = viewStartIndex;
         if (prevLen === 0 || direction === 'initial') {
-            setViewStartIndex(0);
+            predictedViewStart = 0;
         } else if (direction === 'past' && prepended > 0) {
-            setViewStartIndex(v => Math.min(v + prepended, Math.max(0, merged.length - displayedCandles)));
+            predictedViewStart = Math.min(viewStartIndex + prepended, Math.max(0, merged.length - displayedCandles));
         } else if (direction === 'future') {
             if (isFollowingLatest) {
-                const rightStart = Math.max(0, merged.length - displayedCandles);
-                setViewStartIndex(rightStart);
+                predictedViewStart = Math.max(0, merged.length - displayedCandles);
             } else {
-                setViewStartIndex(v => Math.min(v, Math.max(0, merged.length - displayedCandles)));
+                predictedViewStart = Math.min(viewStartIndex, Math.max(0, merged.length - displayedCandles));
             }
         } else {
             // Overlap: reanchor by previous left-edge candle using the merged buffer
@@ -212,21 +254,105 @@ export function ChartProvider({ children }) {
                 const idx = merged.findIndex(c => c.timestamp === anchorTs);
                 if (idx >= 0) {
                     const maxStart = Math.max(0, merged.length - displayedCandles);
-                    setViewStartIndex(Math.max(0, Math.min(idx, maxStart)));
+                    predictedViewStart = Math.max(0, Math.min(idx, maxStart));
                 }
             }
         }
 
+        // Local helper to trim immediately after merge, around predicted view
+        const trimAfterMerge = (buffer, baseViewStart, fetchedDir) => {
+            if (!Array.isArray(buffer) || buffer.length === 0) {
+                updateDisplayCandles(buffer, `merge_base_${source}_${direction}`);
+                setViewStartIndex(baseViewStart);
+                return { finalBuffer: buffer, finalViewStart: baseViewStart };
+            }
+
+            const total = buffer.length;
+            const MIN_TOTAL = 400; // guard to avoid aggressive trimming on small windows
+            const FACTOR = 3; // keep ~3x the visible window in memory
+            const targetTotal = Math.max(displayedCandles * FACTOR, MIN_TOTAL);
+            const extra = Math.max(0, targetTotal - displayedCandles);
+
+            // Base symmetric margins
+            let leftMargin = Math.max(PAST_MARGIN, Math.floor(extra / 2));
+            let rightMargin = Math.max(FUTURE_MARGIN, extra - Math.floor(extra / 2));
+
+            // Bias margins away from the fetched side
+            if (fetchedDir === 'past') {
+                leftMargin = Math.floor(leftMargin * 1.25);
+                rightMargin = Math.max(FUTURE_MARGIN, Math.floor(rightMargin * 0.75));
+            } else if (fetchedDir === 'future') {
+                leftMargin = Math.max(PAST_MARGIN, Math.floor(leftMargin * 0.75));
+                rightMargin = Math.floor(rightMargin * 1.25);
+            }
+
+            if (total <= displayedCandles + leftMargin + rightMargin) {
+                updateDisplayCandles(buffer, `merge_base_${source}_${direction}`);
+                setViewStartIndex(baseViewStart);
+                return { finalBuffer: buffer, finalViewStart: baseViewStart };
+            }
+
+            const boundedBase = Math.max(0, Math.min(baseViewStart, Math.max(0, total - displayedCandles)));
+            const startIdx = Math.max(0, boundedBase - leftMargin);
+            const endIdx = Math.min(total, boundedBase + displayedCandles + rightMargin);
+
+            if (startIdx <= 0 && endIdx >= total) {
+                updateDisplayCandles(buffer, `merge_base_${source}_${direction}`);
+                setViewStartIndex(boundedBase);
+                return { finalBuffer: buffer, finalViewStart: boundedBase };
+            }
+
+            const trimmed = buffer.slice(startIdx, endIdx);
+            const newView = Math.max(0, boundedBase - startIdx);
+
+            console.log('[Chart Trim] Trimming buffers after merge:', {
+                bufferBefore: total,
+                startIdx,
+                endIdx,
+                removedLeft: startIdx,
+                removedRight: total - endIdx,
+                newLength: trimmed.length,
+                oldViewStart: boundedBase,
+                newViewStart: newView
+            });
+
+            updateDisplayCandles(trimmed, `trim_after_merge_${source}_${direction}`);
+            setViewStartIndex(newView);
+
+            // Update subscription known date range to match trimmed buffer
+            const newStartTs = trimmed[0]?.timestamp;
+            const newEndTs = trimmed[trimmed.length - 1]?.timestamp;
+            if (newStartTs && newEndTs) {
+                subscriptionStartDateRef.current = newStartTs;
+                subscriptionEndDateRef.current = newEndTs;
+            }
+
+            // Indicators: ensure sufficient lookback retained using timestamps
+            if (indicatorCandles.length) {
+                const maxLookback = calculateMaxLookback(indicators);
+                const requiredStartTs = Math.max(0, (trimmed[0]?.timestamp || newStartTs || 0) - (maxLookback * timeframeInMs));
+                const requiredEndTs = trimmed[trimmed.length - 1]?.timestamp || newEndTs;
+                const trimmedIndicators = indicatorCandles.filter(c =>
+                    c && typeof c.timestamp === 'number' && c.timestamp >= requiredStartTs && c.timestamp <= requiredEndTs
+                );
+                setIndicatorCandles(trimmedIndicators);
+            }
+
+            return { finalBuffer: trimmed, finalViewStart: newView };
+        };
+
+        const { finalBuffer, finalViewStart } = trimAfterMerge(merged, predictedViewStart, direction);
+
         setTimeout(() => {
             console.log('[Chart Merge] After merge:', {
                 direction,
-                newViewStartIndex: viewStartIndex,
-                mergedLen: merged.length
+                newViewStartIndex: finalViewStart,
+                mergedLen: finalBuffer.length
             });
         }, 0);
 
-        // Defer trimming to a post-render effect that uses the updated viewStartIndex
-    }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo]);
+        // Defer trimming in the effect remains as a secondary safety net
+    }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo, indicatorCandles, indicators, calculateMaxLookback]);
 
     // Merge indicator calculation candles with optional reset
     const mergeIndicatorCandles = useCallback((newCandles = [], opts = {}) => {
@@ -238,49 +364,7 @@ export function ChartProvider({ children }) {
         setIndicatorCandles(prev => dedupeAndSort([...(prev || []), ...(newCandles || [])]));
     }, [dedupeAndSort]);
 
-    // Calculate max lookback needed for all indicators
-    const calculateMaxLookback = useCallback((currentIndicators) => {
-        let maxLookback = 0;
-
-        currentIndicators.forEach(indicator => {
-            let indicatorLookback = 0;
-
-            switch (indicator.type) {
-                case "sma":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
-                    break;
-                case "ema":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
-                    break;
-                case "rsi":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // RSI needs one extra candle to calculate first change
-                    indicatorLookback += 1;
-                    break;
-                case "macd":
-                    // MACD needs the slowest period plus signal period
-                    indicatorLookback = Math.max(
-                        indicator.settings?.slowPeriod || 26,
-                        indicator.settings?.fastPeriod || 12
-                    ) + (indicator.settings?.signalPeriod || 9);
-                    break;
-                case "bb":
-                    indicatorLookback = indicator.settings?.period || 20;
-                    break;
-                case "atr":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // ATR needs one extra candle for previous close
-                    indicatorLookback += 1;
-                    break;
-                default:
-                    indicatorLookback = 50; // Safe default
-            }
-
-            maxLookback = Math.max(maxLookback, indicatorLookback);
-        });
-
-        return maxLookback;
-    }, []);
+    
 
     // Helper function to calculate indicators for a buffer
     const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
@@ -1389,8 +1473,18 @@ export function ChartProvider({ children }) {
             console.log(`[Anchor] No referenceTimestamp provided to handleBufferUpdateComplete; skipping re-anchor`, { direction });
         }
 
+        // After merge completion and any re-anchoring, trim buffers to keep memory bounded.
+        // Use a short delay to allow state updates (e.g., viewStartIndex) to settle.
+        try {
+            setTimeout(() => {
+                try {
+                    trimBuffersIfNeeded();
+                } catch (_) {}
+            }, 60);
+        } catch (_) {}
+
         console.log(`[Buffer Management] Completed ${direction} buffer update`);
-    }, [recalculateViewIndex]);
+    }, [recalculateViewIndex, trimBuffersIfNeeded]);
 
     // Create an object with all the context values
     const contextValue = {
