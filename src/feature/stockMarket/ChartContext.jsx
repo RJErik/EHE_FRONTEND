@@ -1029,7 +1029,10 @@ export function ChartProvider({ children }) {
             }
         }
 
+        console.log("inbetween calculations")
+
         if (needsFutureData && !isRequestingFutureDataRef.current) {
+            console.log("future data in calculations")
             const futureRange = calculateNewDateRangeForBuffer('future');
             if (futureRange) {
                 const refIndex = Math.min(viewStartIndex + displayedCandles - 1, displayCandles.length - 1);
@@ -1177,6 +1180,11 @@ export function ChartProvider({ children }) {
 
         const { needsPastData, needsFutureData } = checkBufferThresholds();
 
+        console.log("needs past data: " + needsPastData)
+        console.log("is requesting past data ref: " + isRequestingPastDataRef.current)
+        console.log("needs future data: " + needsFutureData)
+        console.log("is requesting future data ref: " + isRequestingFutureDataRef.current)
+
         if ((needsPastData && !isRequestingPastDataRef.current) ||
             (needsFutureData && !isRequestingFutureDataRef.current)) {
 
@@ -1193,6 +1201,11 @@ export function ChartProvider({ children }) {
                 if (range.bufferDirection === 'past') isRequestingPastDataRef.current = true;
                 if (range.bufferDirection === 'future') isRequestingFutureDataRef.current = true;
 
+
+                console.log("useeffect time range calculation")
+                console.log("Reasons past:" + isRequestingFutureDataRef.current + "reasons future:" + isRequestingFutureDataRef.current)
+
+
                 // Emit an event that useCandleSubscription listens to for making the websocket request
                 try {
                     const evt = new CustomEvent('chartBufferUpdateRequested', {
@@ -1205,6 +1218,7 @@ export function ChartProvider({ children }) {
                         }
                     });
                     window.dispatchEvent(evt);
+                    console.log(range.bufferDirection)
                 } catch (_) {}
             }
         }
@@ -1413,6 +1427,7 @@ export function ChartProvider({ children }) {
                     isStartReachedRef.current = false;
                 }
             } else if (direction === 'future') {
+                console.log("is requesting future data ref: " + isRequestingFutureDataRef.current )
                 isRequestingFutureDataRef.current = false;
             } else if (direction === 'unknown') {
                 // Safety net: avoid deadlock if backend responded without clear direction (e.g., stale id)
