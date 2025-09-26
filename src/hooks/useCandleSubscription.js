@@ -373,6 +373,37 @@ export function useCandleSubscription() {
                     const hasPrev = prevStart != null && prevEnd != null;
                     const overlaps = hasPrev && (newStart <= (prevEnd + epsilon)) && (newEnd >= (prevStart - epsilon));
 
+                    // Detect timeframe/symbol changes to force reset instead of merge
+                    const computeInterval = (arr) => {
+                        if (!Array.isArray(arr) || arr.length < 2) return null;
+                        const start = Math.max(1, arr.length - 5);
+                        const deltas = [];
+                        for (let i = start; i < arr.length; i++) {
+                            const dt = arr[i].timestamp - arr[i - 1].timestamp;
+                            if (Number.isFinite(dt) && dt > 0) deltas.push(dt);
+                        }
+                        if (!deltas.length) return null;
+                        deltas.sort((a, b) => a - b);
+                        return deltas[Math.floor(deltas.length / 2)];
+                    };
+
+                    const prevInterval = computeInterval(prevCandles);
+                    const newInterval = computeInterval(newCandles);
+                    const intervalChanged = Number.isFinite(prevInterval) && Number.isFinite(newInterval)
+                        ? Math.abs(prevInterval - newInterval) > Math.min(prevInterval, newInterval) * 0.2
+                        : false;
+
+                    // Prefer explicit backend timeframe when available
+                    const backendTimeframe = data?.timeframe;
+                    const expectedTf = currentSubscription?.timeframe
+                        || latestSubscriptionDetailsRef.current?.timeframe
+                        || lastValidSubscription?.timeframe;
+                    const timeframeChanged = Boolean(backendTimeframe && expectedTf && backendTimeframe !== expectedTf);
+
+                    const prevTicker = prevCandles[0]?.ticker;
+                    const newTicker = newCandles[0]?.ticker;
+                    const symbolChanged = Boolean(prevTicker && newTicker && prevTicker !== newTicker);
+
                     // Determine an anchor timestamp to preserve visual position across merges
                     let anchorTimestamp = null;
                     try {
@@ -383,21 +414,25 @@ export function useCandleSubscription() {
                         }
                     } catch (_) {}
 
-                    if (!hasPrev) {
-                        // First load: initialize buffer and start at latest (right edge)
-                        console.log("has prev initialize on selection")
+                    const forceReset = timeframeChanged || intervalChanged || symbolChanged;
+
+                    if (!hasPrev || forceReset) {
+                        // First load or timeframe/symbol changed: initialize buffer
+                        console.log(forceReset
+                            ? `[Init] Change detected — reinitializing (timeframeChanged=${timeframeChanged}, intervalChanged=${intervalChanged}, symbolChanged=${symbolChanged}, backendTimeframe=${backendTimeframe}, expectedTf=${expectedTf})`
+                            : 'has prev initialize on selection');
                         initializeOnSelection(newCandles);
                     } else if (overlaps) {
                         // Overlapping refresh: merge only; preserve current viewStartIndex
                         mergeBaseCandles(newCandles, { source: 'overlap' });
                         // Restore view to the anchor timestamp to avoid perceived snapping
                         if (anchorTimestamp && window.__chartContextValue?.handleBufferUpdateComplete) {
-                            console.log("Future handle buffer update complete called for unknown")
+                            console.log('Future handle buffer update complete called for unknown');
                             window.__chartContextValue.handleBufferUpdateComplete('future', anchorTimestamp);
                         }
                     } else {
                         // Disjoint window (likely timeframe/symbol change): replace and start at left edge
-                        console.log("else prev initialize on selection")
+                        console.log('else prev initialize on selection');
                         initializeOnSelection(newCandles);
                     }
 

@@ -122,6 +122,21 @@ export function ChartProvider({ children }) {
             cleanedLast: cleaned.length ? new Date(cleaned[cleaned.length-1].timestamp).toISOString() : 'none'
         });
         updateDisplayCandles(cleaned, 'initialize_selection');
+
+        // Reset known subscription date range to the initialized buffer
+        try {
+            const firstTs = cleaned[0]?.timestamp;
+            const lastTs = cleaned[cleaned.length - 1]?.timestamp;
+            if (Number.isFinite(firstTs) && Number.isFinite(lastTs)) {
+                subscriptionStartDateRef.current = firstTs;
+                subscriptionEndDateRef.current = lastTs;
+                console.log('[Buffer Management] Reset subscription date range on initialize:', {
+                    start: new Date(firstTs).toISOString(),
+                    end: new Date(lastTs).toISOString()
+                });
+            }
+        } catch (_) {}
+
         const initialDisplayed = 100;
         setDisplayedCandles(initialDisplayed);
         // Show the latest candles on initial load: right-align the window
