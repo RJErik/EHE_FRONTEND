@@ -385,6 +385,7 @@ export function useCandleSubscription() {
 
                     if (!hasPrev) {
                         // First load: initialize buffer and start at latest (right edge)
+                        console.log("has prev initialize on selection")
                         initializeOnSelection(newCandles);
                     } else if (overlaps) {
                         // Overlapping refresh: merge only; preserve current viewStartIndex
@@ -396,6 +397,7 @@ export function useCandleSubscription() {
                         }
                     } else {
                         // Disjoint window (likely timeframe/symbol change): replace and start at left edge
+                        console.log("else prev initialize on selection")
                         initializeOnSelection(newCandles);
                     }
 
