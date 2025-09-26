@@ -344,6 +344,7 @@ export function useCandleSubscription() {
                 
                 // Minimal re-anchor notification; the context already anchored on merge
                 if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
+                    console.log("Handle chart candle message called hundle buffer update complete with direction:" + bufferDirection)
                     window.__chartContextValue.handleBufferUpdateComplete(bufferDirection || 'unknown', null);
                 }
             } else {
@@ -378,6 +379,7 @@ export function useCandleSubscription() {
                         mergeBaseCandles(newCandles, { source: 'overlap' });
                         // Restore view to the anchor timestamp to avoid perceived snapping
                         if (anchorTimestamp && window.__chartContextValue?.handleBufferUpdateComplete) {
+                            console.log("Future handle buffer update complete called for unknown")
                             window.__chartContextValue.handleBufferUpdateComplete('future', anchorTimestamp);
                         }
                     } else {

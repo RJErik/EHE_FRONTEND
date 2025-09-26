@@ -1180,10 +1180,10 @@ export function ChartProvider({ children }) {
 
         const { needsPastData, needsFutureData } = checkBufferThresholds();
 
-        console.log("needs past data: " + needsPastData)
-        console.log("is requesting past data ref: " + isRequestingPastDataRef.current)
-        console.log("needs future data: " + needsFutureData)
-        console.log("is requesting future data ref: " + isRequestingFutureDataRef.current)
+        console.log("needs past data in useeffect: " + needsPastData)
+        console.log("is requesting past data ref in useefect: " + isRequestingPastDataRef.current)
+        console.log("needs future data in useeffect: " + needsFutureData)
+        console.log("is requesting future data ref in useeffect: " + isRequestingFutureDataRef.current)
 
         if ((needsPastData && !isRequestingPastDataRef.current) ||
             (needsFutureData && !isRequestingFutureDataRef.current)) {
@@ -1398,6 +1398,7 @@ export function ChartProvider({ children }) {
 
     // Method to handle buffer update completion
     const handleBufferUpdateComplete = useCallback((direction, referenceInput) => {
+        console.log("Is handleBufferUpdateComplete future: " + isRequestingFutureDataRef.current )
         // Detailed log: when buffer update completes and what reference we will use
         try {
             const refInfo = (referenceInput && typeof referenceInput === 'object')
@@ -1427,9 +1428,9 @@ export function ChartProvider({ children }) {
                     isStartReachedRef.current = false;
                 }
             } else if (direction === 'future') {
-                console.log("is requesting future data ref: " + isRequestingFutureDataRef.current )
+                console.log("is requesting future data ref in handleBufferUpdateComplete: " + isRequestingFutureDataRef.current )
                 isRequestingFutureDataRef.current = false;
-            } else if (direction === 'unknown') {
+            } else  {
                 // Safety net: avoid deadlock if backend responded without clear direction (e.g., stale id)
                 console.warn('[Buffer Management] Unknown direction on buffer completion; clearing in-flight flags to avoid deadlock');
                 isRequestingPastDataRef.current = false;
