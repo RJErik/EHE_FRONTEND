@@ -131,6 +131,13 @@ export function useCandleSubscription() {
         // Mark in-flight so downstream processing treats the next payload as buffer update
         isRequestingBufferUpdate.current = true;
 
+        // Update known subscription date range to the requested range (not what we may receive)
+        try {
+          if (window.__chartContextValue && window.__chartContextValue.updateSubscriptionDateRange) {
+            window.__chartContextValue.updateSubscriptionDateRange(start, end);
+          }
+        } catch (_) {}
+
         // Capture anchor to restore after merge (prefer explicit ref; fallback to left-edge anchor)
         if (referenceTimestamp) {
           referenceTimestampRef.current = typeof referenceTimestamp === 'object'
@@ -288,10 +295,7 @@ export function useCandleSubscription() {
                         else bufferDirection = 'overlap'; // stays within known bounds
                     }
 
-                    // After inferring, update the known subscription date range using the new slice
-                    if (window.__chartContextValue && window.__chartContextValue.updateSubscriptionDateRange && Number.isFinite(newStart) && Number.isFinite(newEnd)) {
-                        window.__chartContextValue.updateSubscriptionDateRange(newStart, newEnd);
-                    }
+                    // Do NOT shrink known range to received slice; keep requested range authoritative
                 } catch (e) {
                     console.warn('[Buffer Manager] Failed to infer direction:', e);
                 }
@@ -347,6 +351,14 @@ export function useCandleSubscription() {
                     console.log("Handle chart candle message called hundle buffer update complete with direction:" + bufferDirection)
                     window.__chartContextValue.handleBufferUpdateComplete(bufferDirection || 'unknown', null);
                 }
+
+                // Re-assert the requested known range after processing the response
+                try {
+                    const lastReq = lastChartRequestedRangeRef.current;
+                    if (lastReq && lastReq.start && lastReq.end) {
+                        window.__chartContextValue?.updateSubscriptionDateRange?.(lastReq.start, lastReq.end);
+                    }
+                } catch (_) {}
             } else {
                 // For non-buffer initial payloads, decide replace vs merge based on overlap with current buffer
                 try {
@@ -395,6 +407,14 @@ export function useCandleSubscription() {
                     console.warn('[Chart] Fallback initial handling due to error, replacing buffer:', e);
                     initializeOnSelection(newCandles);
                 }
+
+                // For initial payloads, prefer the requested range when present in the request metadata
+                try {
+                    const req = lastChartRequestedRangeRef.current;
+                    if (req && req.start && req.end) {
+                        window.__chartContextValue?.updateSubscriptionDateRange?.(req.start, req.end);
+                    }
+                } catch (_) {}
             }
             
             setError(null);
@@ -659,6 +679,11 @@ export function useCandleSubscription() {
             console.log("[useCandleSubscription] Subscribing to chart candles:", chartSubscriptionRequest);
 
             // Use the CandleWebSocketContext's request method for subscriptions
+            // Update known range immediately to the requested range
+            try {
+                window.__chartContextValue?.updateSubscriptionDateRange?.(startDate.getTime(), endDate.getTime());
+            } catch (_) {}
+
             await requestSubscription('chart', chartSubscriptionRequest);
             console.log("[useCandleSubscription] Chart subscription request sent");
 
