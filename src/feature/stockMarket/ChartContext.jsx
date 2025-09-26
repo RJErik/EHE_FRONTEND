@@ -26,7 +26,8 @@ export function ChartProvider({ children }) {
 
     // Configuration
     const [isLogarithmic, setIsLogarithmic] = useState(false);
-    const [timeframeInMs, setTimeframeInMs] = useState(60000); // Default to 1 minute
+    // Default timeframe set to 1 day to avoid UI remounts forcing 1D later
+    const [timeframeInMs, setTimeframeInMs] = useState(24 * 60 * 60 * 1000);
     const [isFollowingLatest, setIsFollowingLatest] = useState(false);
 
     // WebSocket state
@@ -687,6 +688,10 @@ export function ChartProvider({ children }) {
         
         return { needsPastData, needsFutureData };
     }, [displayCandles, viewStartIndex, displayedCandles, timeframeInMs]);
+
+    useEffect(() => {
+        console.log("timeframeInMs changed to:", timeframeInMs);
+    }, [timeframeInMs]);
 
     // Function to calculate new date range when we need more data
     const calculateNewDateRangeForBuffer = useCallback((direction) => {

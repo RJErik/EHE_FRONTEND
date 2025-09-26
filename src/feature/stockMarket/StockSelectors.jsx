@@ -25,16 +25,10 @@ const StockSelectors = () => {
         error: stockDataError
     } = useStockData();
 
-    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // Default to 1D
+    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // UI selection; synced from context below
 
-    // Import only setTimeframeInMs from ChartContext - it's the only one we're sure exists
-    const { setTimeframeInMs } = useContext(ChartContext);
-
-    // Set default timeframe on mount
-    useEffect(() => {
-        // Apply default timeframe in milliseconds
-        setTimeframeInMs(timeframeToMilliseconds("1D"));
-    }, [setTimeframeInMs]);
+    // Use both setter and current value from ChartContext
+    const { setTimeframeInMs, timeframeInMs } = useContext(ChartContext);
 
     // Notify other components when platform or stock changes
     useEffect(() => {
@@ -74,8 +68,34 @@ const StockSelectors = () => {
         }
     };
 
+    // Helper to convert milliseconds back to timeframe label for UI
+    // Do NOT coerce 60000 to 1D; 60000 is 1M.
+    const millisecondsToTimeframe = (ms) => {
+        switch (ms) {
+            case 1 * 60 * 1000: return "1M";
+            case 5 * 60 * 1000: return "5M";
+            case 15 * 60 * 1000: return "15M";
+            case 60 * 60 * 1000: return "1H";
+            case 4 * 60 * 60 * 1000: return "4H";
+            case 24 * 60 * 60 * 1000: return "1D";
+            default: return selectedTimeframe; // Keep current selection if unknown
+        }
+    };
+
+    // Keep UI selection in sync with global context value
+    useEffect(() => {
+        if (typeof timeframeInMs === 'number' && timeframeInMs > 0) {
+            const mapped = millisecondsToTimeframe(timeframeInMs);
+            if (mapped !== selectedTimeframe) {
+                setSelectedTimeframe(mapped);
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeframeInMs]);
+
     // Handle timeframe change
     const handleTimeframeChange = (timeframe) => {
+        if (!timeframe || timeframe === selectedTimeframe) return;
         setSelectedTimeframe(timeframe);
         setTimeframeInMs(timeframeToMilliseconds(timeframe));
     };
