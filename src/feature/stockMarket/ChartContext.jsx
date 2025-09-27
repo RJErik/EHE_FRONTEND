@@ -679,6 +679,10 @@ export function ChartProvider({ children }) {
             timeFromStart: `${(timeFromStart / 1000 / 60).toFixed(2)} minutes`,
             timeToEnd: `${(timeToEnd / 1000 / 60).toFixed(2)} minutes`,
             thresholdTime: `${(thresholdTimeInMs / 1000 / 60).toFixed(2)} minutes`,
+            subscriptionEndDateRef: subscriptionEndDateRef.current,
+            subscriptionStartDateRef: subscriptionStartDateRef.current,
+            subscriptionEndDateRefDate: new Date(subscriptionEndDateRef.current).toISOString(),
+            subscriptionStartDateRefDate: new Date(subscriptionStartDateRef.current).toISOString(),
             needsPastData,
             needsFutureData
         });

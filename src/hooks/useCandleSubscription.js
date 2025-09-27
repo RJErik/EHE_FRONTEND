@@ -185,7 +185,7 @@ export function useCandleSubscription() {
     // Transform candle data from backend format to frontend format
     const transformCandleData = useCallback((backendCandle, stockSymbol) => {
         return {
-            timestamp: new Date(backendCandle.timestamp).getTime(),
+            timestamp:new Date(backendCandle.timestamp + 'Z').getTime(),
             open: backendCandle.openPrice,
             high: backendCandle.highPrice,
             low: backendCandle.lowPrice,
@@ -457,11 +457,7 @@ export function useCandleSubscription() {
             setError(null);
             setIsWaitingForData(false);
 
-            // Also handle subscription ID if present in the same message
-            if (data.subscriptionId) {
-                setActiveSubscription('chart', data.subscriptionId);
-                console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
-            }
+            // Do not set active subscription from data payloads; handled by WebSocket context on confirmations
         }
         // Handle candle updates
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
@@ -494,9 +490,7 @@ export function useCandleSubscription() {
                 return;
             }
 
-            // Store the new subscription ID
-            setActiveSubscription('chart', data.subscriptionId);
-            console.log(`[useCandleSubscription] Successfully subscribed to chart data with ID: ${data.subscriptionId}`);
+            // Do not set active subscription from here; WebSocket context will handle confirmations
 
             // NEW: If this contains subscription details, update our reference
             if (data.platformName && data.stockSymbol && data.timeframe) {
@@ -583,11 +577,7 @@ export function useCandleSubscription() {
                 applyIndicatorsToCandleDisplay();
             }, 50);
 
-            // Also handle subscription ID if present in the same message
-            if (data.subscriptionId) {
-                setActiveSubscription('indicator', data.subscriptionId);
-                console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
-            }
+            // Do not set active subscription from data payloads; handled by WebSocket context on confirmations
         }
         // Handle candle updates
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
@@ -619,9 +609,7 @@ export function useCandleSubscription() {
                 return;
             }
 
-            // Store the new subscription ID
-            setActiveSubscription('indicator', data.subscriptionId);
-            console.log(`[useCandleSubscription] Successfully subscribed to indicator data with ID: ${data.subscriptionId}`);
+            // Do not set active subscription here; WebSocket context will handle confirmations
         } else {
             console.log("[useCandleSubscription] Message did not match any handler conditions:", data);
         }
@@ -1291,7 +1279,12 @@ export function useCandleSubscription() {
             }
         }
         // If indicators are removed and we have an active indicator subscription
-        else if (indicators.length === 0 && subscriptionIds.indicator) {
+        else if (indicators.length === 0 && subscriptionIds.indicator && lastIndicatorRequestRef.current) {
+            // Extra safety: don't unsubscribe if indicator id equals chart id
+            if (subscriptionIds.indicator === subscriptionIds.chart) {
+                console.warn("[useCandleSubscription] Skipping indicator unsubscribe - indicator ID equals chart ID");
+                return;
+            }
             console.log("[useCandleSubscription] No indicators active - scheduling indicator unsubscribe");
             let timeoutId = setTimeout(() => {
                 unsubscribe('indicator')

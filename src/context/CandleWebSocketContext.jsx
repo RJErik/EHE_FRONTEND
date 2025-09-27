@@ -36,6 +36,12 @@ const SubscriptionManager = {
     // Pending subscription requests for deduplication
     pendingSubscriptionRequests: {},
 
+    // Track which types we explicitly requested to avoid unsolicited activations
+    awaitingActivation: {
+        chart: false,
+        indicator: false
+    },
+
     // Track pending unsubscribe requests to know which type was intended
     pendingUnsubscribes: {}, // { [subscriptionId]: 'chart' | 'indicator' }
 
@@ -128,7 +134,14 @@ export function WebSocketProvider({ children, currentPage }) {
                 // Set the subscription ID in the SubscriptionManager based on type
                 if (subscriptionResponse.subscriptionType) {
                     const type = subscriptionResponse.subscriptionType.toLowerCase();
-                    SubscriptionManager.setActiveSubscription(type, subscriptionResponse.subscriptionId);
+
+                    // Only activate if we actually requested this type
+                    if (SubscriptionManager.awaitingActivation[type]) {
+                        SubscriptionManager.setActiveSubscription(type, subscriptionResponse.subscriptionId);
+                        SubscriptionManager.awaitingActivation[type] = false;
+                    } else {
+                        console.log('[SubscriptionManager] Ignoring unsolicited subscription activation for', type, subscriptionResponse.subscriptionId);
+                    }
 
                     // Route to appropriate handlers with the full response
                     const responseData = {
@@ -179,14 +192,27 @@ export function WebSocketProvider({ children, currentPage }) {
                 return;
             }
 
-            // If neither subscription nor subscriptionId fields are present, route to all handlers
-            [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
-                try {
-                    handler(data);
-                } catch (err) {
-                    console.error("[CandleWebSocketContext] Error in general response handler:", err);
-                }
-            });
+            // If neither subscription nor subscriptionId fields are present, route deterministically by id/type
+            const id = data.subscriptionId;
+            const type = (data.subscriptionType || '').toLowerCase();
+            const idIsChart = id && id === SubscriptionManager.activeSubscriptions.chart;
+            const idIsIndicator = id && id === SubscriptionManager.activeSubscriptions.indicator;
+
+            if (idIsChart || type === 'chart') {
+                SubscriptionManager.messageHandlers.chart.forEach(handler => {
+                    try { handler(data); } catch (err) {
+                        console.error("[CandleWebSocketContext] Error in chart message handler:", err);
+                    }
+                });
+            } else if (idIsIndicator || type === 'indicator') {
+                SubscriptionManager.messageHandlers.indicator.forEach(handler => {
+                    try { handler(data); } catch (err) {
+                        console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
+                    }
+                });
+            } else {
+                console.log("[CandleWebSocketContext] Unknown message without id/type; not broadcasting");
+            }
             return;
         }
 
@@ -223,35 +249,21 @@ export function WebSocketProvider({ children, currentPage }) {
         }
         // Handle initial data responses or messages without known subscription ID
         else if (!data.subscriptionId || data.updateType === undefined) {
-            // Check for subscription type in the data
+            // Deterministic routing by explicit type if available
             if (data.subscriptionType === 'CHART') {
                 SubscriptionManager.messageHandlers.chart.forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
+                    try { handler(data); } catch (err) {
                         console.error("[CandleWebSocketContext] Error in chart message handler:", err);
                     }
                 });
-            }
-            else if (data.subscriptionType === 'INDICATOR') {
+            } else if (data.subscriptionType === 'INDICATOR') {
                 SubscriptionManager.messageHandlers.indicator.forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
+                    try { handler(data); } catch (err) {
                         console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
                     }
                 });
-            }
-            // If no type marker, send to both (legacy compatibility)
-            else {
-                console.log("[CandleWebSocketContext] Unidentified message, routing to all handlers");
-                [...SubscriptionManager.messageHandlers.chart, ...SubscriptionManager.messageHandlers.indicator].forEach(handler => {
-                    try {
-                        handler(data);
-                    } catch (err) {
-                        console.error("[CandleWebSocketContext] Error in shared message handler:", err);
-                    }
-                });
+            } else {
+                console.log("[CandleWebSocketContext] Unidentified message without type; not broadcasting");
             }
         }
         else {
@@ -320,6 +332,10 @@ export function WebSocketProvider({ children, currentPage }) {
         // Create and store the promise
         SubscriptionManager.pendingSubscriptionRequests[requestKey] = (async () => {
             try {
+                // Mark that we're awaiting activation for this type
+                if (type && SubscriptionManager.awaitingActivation.hasOwnProperty(type)) {
+                    SubscriptionManager.awaitingActivation[type] = true;
+                }
                 await webSocketService.send('/app/candles/subscribe', {
                     ...details,
                     subscriptionType: type.toUpperCase()
