@@ -238,19 +238,19 @@ export function useCandleSubscription() {
                     
                     // Update the buffer date range in ChartContext
                     if (data.startDate && data.endDate) {
-                        // Convert to milliseconds if necessary
+                        // Convert to milliseconds if necessary; ensure UTC for string dates
                         const startDate = typeof data.startDate === 'string' ? 
-                            new Date(data.startDate).getTime() : data.startDate;
+                            new Date((/Z$/i.test(data.startDate) ? data.startDate : data.startDate + 'Z')).getTime() : data.startDate;
                         const endDate = typeof data.endDate === 'string' ? 
-                            new Date(data.endDate).getTime() : data.endDate;
+                            new Date((/Z$/i.test(data.endDate) ? data.endDate : data.endDate + 'Z')).getTime() : data.endDate;
                             
                         if (window.__chartContextValue && window.__chartContextValue.updateSubscriptionDateRange) {
                             window.__chartContextValue.updateSubscriptionDateRange(startDate, endDate);
                         }
                     } else if (data.candles.length > 0) {
                         // If not provided explicitly, estimate from the candles we received
-                        const startDate = new Date(data.candles[0].timestamp).getTime();
-                        const endDate = new Date(data.candles[data.candles.length-1].timestamp).getTime();
+                        const startDate = new Date(data.candles[0].timestamp + 'Z').getTime();
+                        const endDate = new Date(data.candles[data.candles.length-1].timestamp + 'Z').getTime();
                         
                         if (window.__chartContextValue && window.__chartContextValue.updateSubscriptionDateRange) {
                             window.__chartContextValue.updateSubscriptionDateRange(startDate, endDate);
