@@ -151,45 +151,63 @@ export function ChartProvider({ children }) {
     }, [dedupeAndSort, updateDisplayCandles]);
 
     // Calculate max lookback needed for all indicators
-    const calculateMaxLookback = useCallback((currentIndicators) => {
+    const calculateMaxLookback = useCallback((currentIndicators = []) => {
         let maxLookback = 0;
 
-        currentIndicators.forEach(indicator => {
-            let indicatorLookback = 0;
+        const toPeriod = (v, fallback) => {
+            const n = Number(v);
+            const val = Number.isFinite(n) ? Math.floor(n) : fallback;
+            return Math.max(1, val);
+        };
 
-            switch (indicator.type) {
-                case "sma":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
+        for (const indicator of currentIndicators) {
+            const type = indicator?.type;
+            const s = indicator?.settings ?? {};
+            let lookback = 0;
+
+            switch (type) {
+                case "sma": {
+                    const p = toPeriod(s.period ?? 14, 14);
+                    lookback = p - 1;
                     break;
-                case "ema":
-                    indicatorLookback = indicator.settings?.period - 1 || 14;
+                }
+                case "ema": {
+                    const p = toPeriod(s.period ?? 14, 14);
+                    lookback = p - 1;
                     break;
-                case "rsi":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // RSI needs one extra candle to calculate first change
-                    indicatorLookback += 1;
+                }
+                case "rsi": {
+                    const p = toPeriod(s.period ?? 14, 14);
+                    lookback = p; // first RSI at index p
                     break;
-                case "macd":
-                    // MACD needs the slowest period plus signal period
-                    indicatorLookback = Math.max(
-                        indicator.settings?.slowPeriod || 26,
-                        indicator.settings?.fastPeriod || 12
-                    ) + (indicator.settings?.signalPeriod || 9);
+                }
+                case "macd": {
+                    const fast = toPeriod(s.fastPeriod ?? 12, 12);
+                    const slow = toPeriod(s.slowPeriod ?? 26, 26);
+                    const signal = toPeriod(s.signalPeriod ?? 9, 9);
+                    // Full MACD (signal + histogram) ready:
+                    lookback = (Math.max(fast, slow) - 1) + (signal - 1);
+                    // If you only need the MACD line, use:
+                    // lookback = Math.max(fast, slow) - 1;
                     break;
-                case "bb":
-                    indicatorLookback = indicator.settings?.period || 20;
+                }
+                case "bb": {
+                    const p = toPeriod(s.period ?? 20, 20);
+                    lookback = p - 1;
                     break;
-                case "atr":
-                    indicatorLookback = indicator.settings?.period || 14;
-                    // ARTR needs one extra candle for previous close
-                    indicatorLookback += 1;
+                }
+                case "atr": {
+                    const p = toPeriod(s.period ?? 14, 14);
+                    // With current TR implementation, first ATR is at index p - 1
+                    lookback = p - 1;
                     break;
+                }
                 default:
-                    indicatorLookback = 50; // Safe default
+                    lookback = 50; // Safe fallback
             }
 
-            maxLookback = Math.max(maxLookback, indicatorLookback);
-        });
+            if (lookback > maxLookback) maxLookback = lookback;
+        }
 
         return maxLookback;
     }, []);
@@ -412,14 +430,35 @@ export function ChartProvider({ children }) {
     // Compute the indicator data range required to cover the current visible base window
     const computeRequiredIndicatorRange = useCallback(() => {
         if (!displayCandles.length) return { start: null, end: null, lookback: 0 };
+
         const maxLookback = calculateMaxLookback(indicators);
-        const startVisible = displayCandles[viewStartIndex]?.timestamp;
-        const endVisible = displayCandles[Math.min(displayCandles.length - 1, viewStartIndex + Math.max(0, displayedCandles - 1))]?.timestamp;
-        if (!startVisible || !endVisible) return { start: null, end: null, lookback: maxLookback };
-        const start = startVisible - (maxLookback * timeframeInMs);
-        const end = endVisible;
+
+        // Use the ENTIRE buffer range instead of just viewed portion
+        const firstBufferCandle = displayCandles[0];  // First in entire buffer
+        const lastBufferCandle = displayCandles[displayCandles.length - 1];  // Last in entire buffer
+
+        if (!firstBufferCandle?.timestamp || !lastBufferCandle?.timestamp) {
+            return { start: null, end: null, lookback: maxLookback };
+        }
+
+        // Start: First buffer candle timestamp - lookback period
+        const start = firstBufferCandle.timestamp - (maxLookback * timeframeInMs);
+
+        // End: Last buffer candle timestamp (NOT last visible)
+        const end = lastBufferCandle.timestamp;
+
+        console.log('[ChartContext] Full buffer indicator range:', {
+            bufferStart: new Date(firstBufferCandle.timestamp).toISOString(),
+            bufferEnd: new Date(lastBufferCandle.timestamp).toISOString(),
+            requiredStart: new Date(start).toISOString(),
+            requiredEnd: new Date(end).toISOString(),
+            candleCount: displayCandles.length,
+            maxLookback
+        });
+
         return { start, end, lookback: maxLookback };
-    }, [displayCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, timeframeInMs]);
+    }, [displayCandles, indicators, calculateMaxLookback, timeframeInMs]);
+
 
     // Indicator range based on full base buffer, not just the visible window
     const computeIndicatorRangeForBaseBuffer = useCallback(() => {
