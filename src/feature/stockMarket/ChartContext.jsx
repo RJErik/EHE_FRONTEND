@@ -961,6 +961,8 @@ export function ChartProvider({ children }) {
         return false;
     }, [displayCandles, displayedCandles, findCandleIndexByTimestamp, viewStartIndex]);
 
+
+
     // Trim display and indicator buffers to keep memory bounded while retaining enough context
     const trimBuffersIfNeeded = useCallback(() => {
         if (!displayCandles.length) return;
@@ -1232,6 +1234,11 @@ export function ChartProvider({ children }) {
     useEffect(() => {
         calculateRangeRef.current = calculateRequiredDataRange;
     }, [calculateRequiredDataRange]);
+
+    useEffect(() => {
+        console.log("#! display candles: ");
+        console.log(displayCandles)
+    }, [displayCandles]);
 
     // When viewStartIndex changes, check if we need to load more chart data
     useEffect(() => {
