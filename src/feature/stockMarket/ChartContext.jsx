@@ -220,7 +220,60 @@ export function ChartProvider({ children }) {
         const prevLast = prev[prev.length - 1]?.timestamp;
         const prevLen = prev.length;
 
-        const merged = dedupeAndSort([...(prev || []), ...(newCandles || [])]);
+        // Custom merge that preserves indicatorValues on overlap and avoids
+        // replacing candles when OHLCV is unchanged (prevents indicator flicker)
+        const byTimestamp = new Map();
+        // Seed with previous buffer candles
+        for (const c of prev || []) {
+            if (!c || typeof c.timestamp !== 'number') continue;
+            // Keep reference to existing object to avoid unnecessary rerenders
+            byTimestamp.set(c.timestamp, c);
+        }
+        // Helper for float-safe equality
+        const EPS = 1e-8;
+        const nearlyEqual = (a, b) => {
+            const an = Number(a), bn = Number(b);
+            if (!Number.isFinite(an) || !Number.isFinite(bn)) return a === b;
+            return Math.abs(an - bn) <= EPS;
+        };
+        const isOHLCVSame = (a, b) => (
+            nearlyEqual(a?.open, b?.open) &&
+            nearlyEqual(a?.high, b?.high) &&
+            nearlyEqual(a?.low, b?.low) &&
+            nearlyEqual(a?.close, b?.close) &&
+            nearlyEqual(a?.volume, b?.volume)
+        );
+
+        // Merge in new candles
+        for (const n of newCandles || []) {
+            if (!n || typeof n.timestamp !== 'number') continue;
+            const existing = byTimestamp.get(n.timestamp);
+            if (!existing) {
+                // No conflict; add new candle
+                byTimestamp.set(n.timestamp, { ...n });
+                continue;
+            }
+
+            // If OHLCV is identical, keep the existing object entirely to
+            // preserve indicatorValues and avoid churn
+            if (isOHLCVSame(existing, n)) {
+                continue;
+            }
+
+            // Otherwise, overlay OHLCV fields from the new candle but
+            // preserve any existing indicatorValues (until indicator data
+            // re-applies). Start from existing to retain any custom fields.
+            const preservedIndicators = (existing.indicatorValues && Object.keys(existing.indicatorValues).length > 0)
+                ? existing.indicatorValues
+                : n.indicatorValues;
+            byTimestamp.set(n.timestamp, {
+                ...existing,
+                ...n,
+                indicatorValues: preservedIndicators || existing.indicatorValues || {}
+            });
+        }
+
+        const merged = Array.from(byTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
         const duplicates = Math.max(0, (prevLen + (newCandles?.length || 0)) - merged.length);
 
         // Determine direction by comparing new range to previous
