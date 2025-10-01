@@ -44,6 +44,8 @@ const CandleChart = () => {
         displayCandles, // Fix: Changed from historicalBuffer to displayCandles
         viewStartIndex,
         setViewStartIndex,
+        setDisplayCandles,
+        setIndicatorCandles,
         isDragging,
         setIsDragging,
         isLogarithmic,
@@ -62,7 +64,10 @@ const CandleChart = () => {
         setHoveredIndex,
         isFollowingLatest,
         setIsFollowingLatest,
+        setIsWaitingForData,
+        timeframeInMs,
     } = useContext(ChartContext) || {}; // Add fallback empty object
+
 
     useEffect(() => {
         if (!data) return; // Guard against undefined data
@@ -216,6 +221,29 @@ const CandleChart = () => {
 
         // Store the current timestamp to maintain after zoom
         applyCenteredZoom(DEFAULT_DISPLAY_CANDLES, activeTimestamp);
+    };
+
+    // Restart: clear local state and dispatch a global restart request
+    const handleGoToStart = () => {
+        try {
+            console.log('[CandleChart] Restart requested via button');
+            // Clear buffers and UI hover state to force initialize path
+            setDisplayCandles?.([]);
+            setIndicatorCandles?.([]);
+            setIsWaitingForData?.(true);
+            setHoveredCandle?.(null);
+            setActiveTimestamp?.(null);
+            setHoveredIndex?.(null);
+
+            // Reset zoom to default for a true "fresh" feel
+            setDisplayedCandles?.(DEFAULT_DISPLAY_CANDLES);
+
+            // Ask the subscription layer to resubscribe using current selection
+            window.dispatchEvent(new CustomEvent('restartChartRequested'));
+            console.log('[CandleChart] Dispatched restartChartRequested');
+        } catch (e) {
+            console.error('[CandleChart] Failed to dispatch restart:', e);
+        }
     };
 
     // Handle zoom functionality with immediate timestamp tracking
@@ -495,6 +523,14 @@ const CandleChart = () => {
                         <MainIndicatorInfoPanel indicators={mainIndicators} hoveredIndex={hoveredIndex} />
                     </div>
                     <div className="flex items-center flex-shrink-0">
+                        <button
+                            onClick={handleGoToStart}
+                            disabled={!data?.length}
+                            className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
+                            title="Go to start"
+                        >
+                            ⏮ Start
+                        </button>
                         <button
                             onClick={() => setIsFollowingLatest && setIsFollowingLatest(!isFollowingLatest)}
                             className={`px-2 py-1 text-xs rounded mr-2 ${isFollowingLatest ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}

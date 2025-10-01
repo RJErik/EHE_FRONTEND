@@ -54,6 +54,9 @@ export function useCandleSubscription() {
         timeframe: null
     });
 
+    // Track pre-init buffer length to detect reinitialization
+    const prevLenBeforeInitRef = useRef(null);
+
     // Get chart context for data management
     const {
         // New ChartContext API for clean merge/anchor/trim
@@ -364,6 +367,7 @@ export function useCandleSubscription() {
                 try {
                     const ctx = window.__chartContextValue || {};
                     const prevCandles = (ctx && ctx.displayCandles) || [];
+                    prevLenBeforeInitRef.current = prevCandles.length;
                     const prevStart = prevCandles.length ? prevCandles[0].timestamp : null;
                     const prevEnd = prevCandles.length ? prevCandles[prevCandles.length - 1].timestamp : null;
                     const newStart = Math.min(...newCandles.map(c => c.timestamp));
@@ -458,6 +462,30 @@ export function useCandleSubscription() {
             setIsWaitingForData(false);
 
             // Do not set active subscription from data payloads; handled by WebSocket context on confirmations
+
+            // Force an indicator resubscribe if we just reinitialized and have indicators,
+            // ensuring enough history is pulled for indicator calculations.
+            try {
+                const ctx = window.__chartContextValue || {};
+                const hasIndicators = Array.isArray(indicators) && indicators.length > 0;
+                const didInit = typeof initializeOnSelection === 'function' && (prevLenBeforeInitRef?.current === 0 || ctx.displayCandles?.length === (newCandles?.length || 0));
+                if (hasIndicators && (didInit || (data.resetData === true))) {
+                    console.log('[useCandleSubscription] Forcing indicator refresh after chart reinit');
+                    setTimeout(async () => {
+                        try {
+                            await subscribeToIndicatorCandles(
+                        latestSubscriptionDetailsRef.current.platformName || currentSubscription.platformName,
+                        latestSubscriptionDetailsRef.current.stockSymbol || currentSubscription.stockSymbol,
+                        latestSubscriptionDetailsRef.current.timeframe || currentSubscription.timeframe
+                            );
+                        } catch (err) {
+                            console.warn('[useCandleSubscription] Indicator refresh task failed:', err);
+                        }
+                    }, 100);
+                }
+            } catch (e) {
+                console.warn('[useCandleSubscription] Failed to force indicator refresh after reinit:', e);
+            }
         }
         // Handle candle updates
         else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
@@ -1183,6 +1211,28 @@ export function useCandleSubscription() {
             window.removeEventListener('indicatorRequirementsChanged', handleIndicatorRequirementsChanged);
         };
     }, [updateIndicatorSubscription, currentSubscription, lastValidSubscription, unsubscribe, requestSubscription, subscriptionIds.chart]);
+
+    // Handle explicit restart requests from UI (e.g., CandleChart)
+    useEffect(() => {
+        const onRestart = async () => {
+            try {
+                console.log('[useCandleSubscription] Restart requested event received');
+                const platform = latestSubscriptionDetailsRef.current.platformName || currentSubscription.platformName;
+                const symbol = latestSubscriptionDetailsRef.current.stockSymbol || currentSubscription.stockSymbol;
+                const timeframe = latestSubscriptionDetailsRef.current.timeframe || currentSubscription.timeframe;
+                if (!platform || !symbol || !timeframe) {
+                    console.warn('[useCandleSubscription] Missing details for restart');
+                    return;
+                }
+                // Re-run the same flow as user selection
+                await subscribeToCandles(platform, symbol, timeframe);
+            } catch (e) {
+                console.error('[useCandleSubscription] Failed to restart subscription:', e);
+            }
+        };
+        window.addEventListener('restartChartRequested', onRestart);
+        return () => window.removeEventListener('restartChartRequested', onRestart);
+    }, [subscribeToCandles, currentSubscription]);
 
     // Register message handlers with CandleWebSocketContext on mount
     useEffect(() => {

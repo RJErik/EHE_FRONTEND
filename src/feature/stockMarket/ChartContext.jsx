@@ -346,7 +346,14 @@ export function ChartProvider({ children }) {
             predictedViewStart = Math.min(viewStartIndex + prepended, Math.max(0, merged.length - displayedCandles));
         } else if (direction === 'future') {
             if (isFollowingLatest) {
-                predictedViewStart = Math.max(0, merged.length - displayedCandles);
+                // Only snap to latest if we were already at the right edge and no future request is in-flight
+                const wasAtRightEdge = (viewStartIndex + displayedCandles >= (prevLen - 1));
+                const canSnapToLatest = wasAtRightEdge && !isRequestingFutureDataRef.current;
+                if (canSnapToLatest) {
+                    predictedViewStart = Math.max(0, merged.length - displayedCandles);
+                } else {
+                    predictedViewStart = Math.min(viewStartIndex, Math.max(0, merged.length - displayedCandles));
+                }
             } else {
                 predictedViewStart = Math.min(viewStartIndex, Math.max(0, merged.length - displayedCandles));
             }
@@ -1468,7 +1475,20 @@ export function ChartProvider({ children }) {
         console.log("[ChartContext] Indicators or indicator data changed - applying to display candles");
         applyIndicatorsToCandleDisplay();
 
-    }, [indicators, indicatorCandles.length, applyIndicatorsToCandleDisplay]);
+        // If indicator buffer is too small (e.g., after restart), request indicator refresh via event
+        try {
+            const maxLookback = calculateMaxLookback(indicators);
+            const needFrom = (displayCandles[0]?.timestamp || 0) - (maxLookback * timeframeInMs);
+            const haveFrom = indicatorCandles[0]?.timestamp;
+            if (Number.isFinite(needFrom) && Number.isFinite(haveFrom) && haveFrom > needFrom) {
+                console.log('[ChartContext] Indicator history insufficient after change; requesting resubscribe');
+                window.dispatchEvent(new CustomEvent('indicatorRequirementsChanged', {
+                    detail: { force: true }
+                }));
+            }
+        } catch (_) {}
+
+    }, [indicators, indicatorCandles.length, applyIndicatorsToCandleDisplay, displayCandles, timeframeInMs, calculateMaxLookback]);
 
     // Update visible data when viewStartIndex changes or display candles change
     useEffect(() => {
