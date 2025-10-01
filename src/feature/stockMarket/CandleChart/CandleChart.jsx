@@ -66,6 +66,7 @@ const CandleChart = () => {
         setIsFollowingLatest,
         setIsWaitingForData,
         timeframeInMs,
+        isFutureRequestInFlight
     } = useContext(ChartContext) || {}; // Add fallback empty object
 
 
@@ -525,7 +526,12 @@ const CandleChart = () => {
                     <div className="flex items-center flex-shrink-0">
                         <button
                             onClick={handleGoToStart}
-                            disabled={!data?.length}
+                            disabled={!data?.length || (
+                                // Disable when already at right edge and no future request in-flight
+                                (Array.isArray(displayCandles) && displayCandles.length > 0 &&
+                                 (viewStartIndex + displayedCandles >= displayCandles.length) &&
+                                 !(isFutureRequestInFlight && isFutureRequestInFlight()))
+                            )}
                             className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
                             title="Go to start"
                         >

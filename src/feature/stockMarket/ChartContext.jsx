@@ -1846,6 +1846,10 @@ export function ChartProvider({ children }) {
         getAnchor,
         reanchorTo,
         trimBuffersIfNeeded
+        ,
+        // Expose in-flight buffer request state for UI logic
+        isFutureRequestInFlight: () => Boolean(isRequestingFutureDataRef.current),
+        isPastRequestInFlight: () => Boolean(isRequestingPastDataRef.current)
     };
     
     // Expose context externally through a global variable
