@@ -75,6 +75,9 @@ export function ChartProvider({ children }) {
     // uses a first-buffer-style sizing to avoid over/under-fetching.
     const timeframeSwitchRef = useRef(null);
     const prevTimeframeRef = useRef(null);
+    const lastChartInitialRangeRef = useRef(null);
+    const baseBufferReadyForTimeframeRef = useRef(false);
+    const baseBufferReadyTfRef = useRef(null);
 
     // Enhanced setter function with reason tracking
     const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
@@ -158,6 +161,9 @@ export function ChartProvider({ children }) {
             displayed: initialDisplayed,
             bufferLength: cleaned.length
         });
+        // Base buffer is now ready for current timeframe
+        baseBufferReadyForTimeframeRef.current = true;
+        baseBufferReadyTfRef.current = timeframeInMs;
     }, [dedupeAndSort, updateDisplayCandles]);
 
     // Calculate max lookback needed for all indicators
@@ -523,14 +529,22 @@ export function ChartProvider({ children }) {
 
         if ((tfChanged && sameRange) || switchActive) {
             // Treat this as a first-buffer-style indicator request sized for the new timeframe
-            // Use similar sizing as initial chart request: displayedCandles plus buffer on both sides.
-            // We only need indicator data for the same base window, but include lookback on the left.
-            const bufferMultiplier = BUFFER_SIZE_MULTIPLIER || 20;
-            const initialCount = Math.max(1, (displayedCandles || 100) + (bufferMultiplier * 2));
-
-            // Inclusive range: subtract (N + lookback - 1) steps
-            const start = Math.max(0, currentEndBuffer - ((initialCount + maxLookback - 1) * timeframeInMs));
-            const end = currentEndBuffer;
+            // Use the same initial chart range as the chart subscription to stay aligned.
+            const lastInit = getLastInitialChartRange && getLastInitialChartRange();
+            let baseStart;
+            let baseEnd;
+            if (lastInit && lastInit.timeframeMs === timeframeInMs) {
+                baseStart = lastInit.start;
+                baseEnd = lastInit.end;
+            } else {
+                const temp = computeAndStoreInitialChartRange
+                    ? computeAndStoreInitialChartRange({ timeframeMs: timeframeInMs, displayed: displayedCandles, bufferMultiplier: BUFFER_SIZE_MULTIPLIER, nowMs: Date.now() })
+                    : { start: currentStartBuffer, end: currentEndBuffer };
+                baseStart = temp.start;
+                baseEnd = temp.end;
+            }
+            const start = Math.max(0, baseStart - (maxLookback * timeframeInMs));
+            const end = baseEnd;
 
             console.log('[ChartContext] Using first-buffer-style indicator range (guard active):', {
                 reason: (tfChanged && sameRange) ? 'tfChanged_sameRange' : (switchActive ? 'snapshot_active' : 'unknown'),
@@ -540,7 +554,8 @@ export function ChartProvider({ children }) {
                 bufferEndIso: new Date(currentEndBuffer).toISOString(),
                 requiredStartIso: new Date(start).toISOString(),
                 requiredEndIso: new Date(end).toISOString(),
-                initialCount,
+                baseStartIso: new Date(baseStart).toISOString(),
+                baseEndIso: new Date(baseEnd).toISOString(),
                 maxLookback
             });
 
@@ -867,8 +882,26 @@ export function ChartProvider({ children }) {
                 timeframeSwitchRef.current = { newTf: timeframeInMs, baselineStart: null, baselineEnd: null, setAt: Date.now() };
             }
         }
+        // On any timeframe change, mark base buffer as not ready for this timeframe until initialize happens
+        baseBufferReadyForTimeframeRef.current = false;
+        baseBufferReadyTfRef.current = timeframeInMs;
         prevTimeframeRef.current = timeframeInMs;
     }, [timeframeInMs, displayCandles]);
+
+    // Helper to compute an initial chart request range and store it for reuse by indicator guard
+    const computeAndStoreInitialChartRange = useCallback(({ timeframeMs, displayed = displayedCandles, bufferMultiplier = BUFFER_SIZE_MULTIPLIER, nowMs } = {}) => {
+        const tf = Number(timeframeMs || timeframeInMs);
+        const disp = Number.isFinite(displayed) ? displayed : displayedCandles;
+        const mult = Number.isFinite(bufferMultiplier) ? bufferMultiplier : BUFFER_SIZE_MULTIPLIER;
+        const end = Number.isFinite(nowMs) ? nowMs : Date.now();
+        const totalCandles = disp + (mult * 2);
+        const start = Math.max(0, end - (totalCandles * tf));
+        const range = { start, end, timeframeMs: tf, displayed: disp, bufferMultiplier: mult, at: Date.now() };
+        lastChartInitialRangeRef.current = range;
+        return range;
+    }, [displayedCandles, BUFFER_SIZE_MULTIPLIER, timeframeInMs]);
+
+    const getLastInitialChartRange = useCallback(() => lastChartInitialRangeRef.current, []);
 
     // Function to calculate new date range when we need more data
     const calculateNewDateRangeForBuffer = useCallback((direction) => {
@@ -1787,6 +1820,9 @@ export function ChartProvider({ children }) {
         mergeBaseCandles,
         mergeIndicatorCandles,
         computeRequiredIndicatorRange,
+        computeAndStoreInitialChartRange,
+        getLastInitialChartRange,
+        isBaseBufferReadyForTimeframe: () => Boolean(baseBufferReadyForTimeframeRef.current && baseBufferReadyTfRef.current === timeframeInMs),
         getAnchor,
         reanchorTo,
         trimBuffersIfNeeded
