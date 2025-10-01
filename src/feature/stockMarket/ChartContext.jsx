@@ -66,6 +66,15 @@ export function ChartProvider({ children }) {
     const isRequestingPastDataRef = useRef(false);
     const isRequestingFutureDataRef = useRef(false);
 
+    // Track the last base buffer range and timeframe used for computing indicator ranges.
+    // This helps detect when timeframe changed while the base buffer hasn't updated yet.
+    const lastIndicatorBasisRef = useRef({ startBuffer: null, endBuffer: null, timeframeInMs: null });
+
+    // Snapshot each timeframe change until the base buffer realigns to that timeframe
+    // or is reinitialized. While this snapshot is present, indicator range calculation
+    // uses a first-buffer-style sizing to avoid over/under-fetching.
+    const timeframeSwitchRef = useRef(null);
+
     // Enhanced setter function with reason tracking
     const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
         lastUpdateReasonRef.current = reason;
@@ -494,23 +503,75 @@ export function ChartProvider({ children }) {
             return { start: null, end: null, lookback: maxLookback };
         }
 
-        // Start: First buffer candle timestamp - lookback period
-        const start = firstBufferCandle.timestamp - (maxLookback * timeframeInMs);
+        const currentStartBuffer = firstBufferCandle.timestamp;
+        const currentEndBuffer = lastBufferCandle.timestamp;
 
-        // End: Last buffer candle timestamp (NOT last visible)
-        const end = lastBufferCandle.timestamp;
+        // Detect timeframe change while base buffer range hasn't moved yet
+        const prev = lastIndicatorBasisRef.current || {};
+        const sameRange = prev.startBuffer === currentStartBuffer && prev.endBuffer === currentEndBuffer;
+        const tfChanged = prev.timeframeInMs != null && prev.timeframeInMs !== timeframeInMs;
+
+        // Also honor an active timeframeSwitch snapshot, which persists until
+        // the base buffer range changes, so subsequent switches trigger the guard too.
+        const switchSnap = timeframeSwitchRef.current;
+        const switchActive = !!switchSnap && switchSnap.newTf === timeframeInMs && (
+            // if we captured a baseline, consider it active while buffer range matches
+            (switchSnap.baselineStart == null && switchSnap.baselineEnd == null) ||
+            (switchSnap.baselineStart === currentStartBuffer && switchSnap.baselineEnd === currentEndBuffer)
+        );
+
+        if ((tfChanged && sameRange) || switchActive) {
+            // Treat this as a first-buffer-style indicator request sized for the new timeframe
+            // Use similar sizing as initial chart request: displayedCandles plus buffer on both sides.
+            // We only need indicator data for the same base window, but include lookback on the left.
+            const bufferMultiplier = BUFFER_SIZE_MULTIPLIER || 20;
+            const initialCount = Math.max(1, (displayedCandles || 100) + (bufferMultiplier * 2));
+
+            const start = Math.max(0, currentEndBuffer - ((initialCount + maxLookback) * timeframeInMs));
+            const end = currentEndBuffer;
+
+            console.log('[ChartContext] Timeframe changed with unchanged base buffer; using first-buffer-style indicator range:', {
+                previousTimeframeInMs: prev.timeframeInMs,
+                timeframeInMs,
+                bufferStartIso: new Date(currentStartBuffer).toISOString(),
+                bufferEndIso: new Date(currentEndBuffer).toISOString(),
+                requiredStartIso: new Date(start).toISOString(),
+                requiredEndIso: new Date(end).toISOString(),
+                initialCount,
+                maxLookback
+            });
+
+            lastIndicatorBasisRef.current = { startBuffer: currentStartBuffer, endBuffer: currentEndBuffer, timeframeInMs };
+            // Keep the switch snapshot until base buffer range actually shifts
+            return { start, end, lookback: maxLookback };
+        }
+
+        // Normal path: cover full base buffer with lookback on the left
+        const start = currentStartBuffer - (maxLookback * timeframeInMs);
+        const end = currentEndBuffer;
 
         console.log('[ChartContext] Full buffer indicator range:', {
-            bufferStart: new Date(firstBufferCandle.timestamp).toISOString(),
-            bufferEnd: new Date(lastBufferCandle.timestamp).toISOString(),
+            bufferStart: new Date(currentStartBuffer).toISOString(),
+            bufferEnd: new Date(currentEndBuffer).toISOString(),
             requiredStart: new Date(start).toISOString(),
             requiredEnd: new Date(end).toISOString(),
             candleCount: displayCandles.length,
+            timeframeInMs,
+
             maxLookback
         });
 
+        lastIndicatorBasisRef.current = { startBuffer: currentStartBuffer, endBuffer: currentEndBuffer, timeframeInMs };
+        // If a timeframeSwitch snapshot exists but the base buffer range has changed,
+        // clear it so normal logic resumes for subsequent cycles.
+        try {
+            const snap = timeframeSwitchRef.current;
+            if (snap && (snap.baselineStart !== currentStartBuffer || snap.baselineEnd !== currentEndBuffer)) {
+                timeframeSwitchRef.current = null;
+            }
+        } catch (_) {}
         return { start, end, lookback: maxLookback };
-    }, [displayCandles, indicators, calculateMaxLookback, timeframeInMs]);
+    }, [displayCandles, displayedCandles, indicators, calculateMaxLookback, timeframeInMs]);
 
 
     // Indicator range based on full base buffer, not just the visible window
@@ -787,6 +848,18 @@ export function ChartProvider({ children }) {
 
     useEffect(() => {
         console.log("timeframeInMs changed to:", timeframeInMs);
+        try {
+            const startTs = displayCandles[0]?.timestamp ?? null;
+            const endTs = displayCandles.length ? displayCandles[displayCandles.length - 1]?.timestamp : null;
+            timeframeSwitchRef.current = {
+                newTf: timeframeInMs,
+                baselineStart: startTs,
+                baselineEnd: endTs,
+                setAt: Date.now()
+            };
+        } catch (_) {
+            timeframeSwitchRef.current = { newTf: timeframeInMs, baselineStart: null, baselineEnd: null, setAt: Date.now() };
+        }
     }, [timeframeInMs]);
 
     // Function to calculate new date range when we need more data
