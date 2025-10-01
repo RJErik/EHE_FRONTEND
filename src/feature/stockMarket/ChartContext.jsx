@@ -74,6 +74,7 @@ export function ChartProvider({ children }) {
     // or is reinitialized. While this snapshot is present, indicator range calculation
     // uses a first-buffer-style sizing to avoid over/under-fetching.
     const timeframeSwitchRef = useRef(null);
+    const prevTimeframeRef = useRef(null);
 
     // Enhanced setter function with reason tracking
     const updateDisplayCandles = useCallback((newCandles, reason = "unknown") => {
@@ -527,10 +528,12 @@ export function ChartProvider({ children }) {
             const bufferMultiplier = BUFFER_SIZE_MULTIPLIER || 20;
             const initialCount = Math.max(1, (displayedCandles || 100) + (bufferMultiplier * 2));
 
-            const start = Math.max(0, currentEndBuffer - ((initialCount + maxLookback) * timeframeInMs));
+            // Inclusive range: subtract (N + lookback - 1) steps
+            const start = Math.max(0, currentEndBuffer - ((initialCount + maxLookback - 1) * timeframeInMs));
             const end = currentEndBuffer;
 
-            console.log('[ChartContext] Timeframe changed with unchanged base buffer; using first-buffer-style indicator range:', {
+            console.log('[ChartContext] Using first-buffer-style indicator range (guard active):', {
+                reason: (tfChanged && sameRange) ? 'tfChanged_sameRange' : (switchActive ? 'snapshot_active' : 'unknown'),
                 previousTimeframeInMs: prev.timeframeInMs,
                 timeframeInMs,
                 bufferStartIso: new Date(currentStartBuffer).toISOString(),
@@ -848,19 +851,24 @@ export function ChartProvider({ children }) {
 
     useEffect(() => {
         console.log("timeframeInMs changed to:", timeframeInMs);
-        try {
-            const startTs = displayCandles[0]?.timestamp ?? null;
-            const endTs = displayCandles.length ? displayCandles[displayCandles.length - 1]?.timestamp : null;
-            timeframeSwitchRef.current = {
-                newTf: timeframeInMs,
-                baselineStart: startTs,
-                baselineEnd: endTs,
-                setAt: Date.now()
-            };
-        } catch (_) {
-            timeframeSwitchRef.current = { newTf: timeframeInMs, baselineStart: null, baselineEnd: null, setAt: Date.now() };
+        const prev = prevTimeframeRef.current;
+        // Only create a snapshot when the timeframe actually changes (skip initial mount or no-op updates)
+        if (typeof prev === 'number' && Number.isFinite(prev) && prev !== timeframeInMs) {
+            try {
+                const startTs = displayCandles[0]?.timestamp ?? null;
+                const endTs = displayCandles.length ? displayCandles[displayCandles.length - 1]?.timestamp : null;
+                timeframeSwitchRef.current = {
+                    newTf: timeframeInMs,
+                    baselineStart: startTs,
+                    baselineEnd: endTs,
+                    setAt: Date.now()
+                };
+            } catch (_) {
+                timeframeSwitchRef.current = { newTf: timeframeInMs, baselineStart: null, baselineEnd: null, setAt: Date.now() };
+            }
         }
-    }, [timeframeInMs]);
+        prevTimeframeRef.current = timeframeInMs;
+    }, [timeframeInMs, displayCandles]);
 
     // Function to calculate new date range when we need more data
     const calculateNewDateRangeForBuffer = useCallback((direction) => {
@@ -1491,8 +1499,7 @@ export function ChartProvider({ children }) {
             const isRangeDifferent = !lastRange || lastRange.start !== indRange.start || lastRange.end !== indRange.end;
 
             if (isRangeDifferent) {
-                lastRequestedRangeRef.current = { ...indRange };
-
+                // Dispatch the event first, then update lastRequestedRangeRef to reflect the last dispatched range
                 setTimeout(() => {
                     const indicatorChangeEvent = new CustomEvent('indicatorRequirementsChanged', {
                         detail: {
@@ -1504,6 +1511,9 @@ export function ChartProvider({ children }) {
                     });
                     window.dispatchEvent(indicatorChangeEvent);
                     console.log("[WebSocket Prep] Dispatched indicatorRequirementsChanged event - Indicator range changed");
+
+                    // After dispatch, remember the last dispatched range for dedupe
+                    lastRequestedRangeRef.current = { ...indRange };
 
                     setTimeout(() => {
                         isProcessingIndicatorUpdateRef.current = false;
