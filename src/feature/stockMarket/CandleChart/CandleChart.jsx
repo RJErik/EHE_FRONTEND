@@ -535,7 +535,7 @@ const CandleChart = () => {
                             className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
                             title="Go to start"
                         >
-                            ⏮ Start
+                            Go To Start
                         </button>
                         <button
                             onClick={() => setIsFollowingLatest && setIsFollowingLatest(!isFollowingLatest)}
