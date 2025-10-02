@@ -1526,6 +1526,13 @@ export function ChartProvider({ children }) {
 
             setCandleData(visibleData);
 
+            // Default anchor: if no activeTimestamp yet, set it to left-edge of visible window
+            try {
+                if (activeTimestamp == null && visibleData.length > 0) {
+                    setActiveTimestamp(visibleData[0].timestamp);
+                }
+            } catch (_) {}
+
             // After window update, trim if needed to keep memory bounded
             trimBuffersIfNeeded();
 
@@ -1534,7 +1541,7 @@ export function ChartProvider({ children }) {
                 setIsWaitingForData(false);
             }
         }
-    }, [displayCandles, viewStartIndex, displayedCandles, isWaitingForData, trimBuffersIfNeeded]);
+    }, [displayCandles, viewStartIndex, displayedCandles, isWaitingForData, trimBuffersIfNeeded, activeTimestamp, setActiveTimestamp]);
 
     // Monitor indicator changes to update indicator subscription requirements (do not alter chart buffer)
     useEffect(() => {

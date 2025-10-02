@@ -741,20 +741,23 @@ export function useCandleSubscription() {
                     const atRightEdge = (ctx.viewStartIndex + ctx.displayedCandles) >= (ctx.displayCandles?.length || 0);
                     const futureInFlight = ctx.isFutureRequestInFlight ? ctx.isFutureRequestInFlight() : false;
                     if (!atRightEdge && !futureInFlight) {
-                        let anchorTs = ctx.activeTimestamp || null;
-                        console.log("anchor timestamp" + ctx.activeTimestamp)
+                        let anchorTs = null;
                         let offsetInView = null;
-                        if (!anchorTs && Array.isArray(ctx.candleData) && ctx.candleData.length) {
-                            console.log("first if")
+
+                        // Prefer the context-provided left-edge anchor when available
+                        const anc = ctx.getAnchor?.();
+                        if (anc && anc.timestamp) {
+                            console.log('[useCandleSubscription] Using getAnchor() for timeframe-only change');
+                            anchorTs = anc.timestamp;
+                            offsetInView = 0; // left edge anchor
+                        } else if (ctx.activeTimestamp) {
+                            console.log('[useCandleSubscription] Using activeTimestamp for timeframe-only change');
+                            anchorTs = ctx.activeTimestamp;
+                        } else if (Array.isArray(ctx.candleData) && ctx.candleData.length) {
+                            console.log('[useCandleSubscription] Using mid of visible window as fallback anchor');
                             const mid = Math.floor(ctx.candleData.length / 2);
                             anchorTs = ctx.candleData[mid]?.timestamp || null;
                             offsetInView = mid;
-                        }
-                        if (!anchorTs) {
-                            console.log("second if")
-                            const anc = ctx.getAnchor?.();
-                            if (anc && anc.timestamp) anchorTs = anc.timestamp;
-                            offsetInView = 0;
                         }
 
                         const tf = timeframe.toUpperCase();
@@ -768,7 +771,7 @@ export function useCandleSubscription() {
                         if (anchorTs && Number.isFinite(tfMs) && tfMs > 0) {
                             const anchorRounded = Math.floor(anchorTs / tfMs) * tfMs;
                             if (offsetInView == null && Array.isArray(ctx.candleData) && ctx.candleData.length) {
-                                const idx = ctx.candleData.findIndex(c => c.timestamp === ctx.activeTimestamp);
+                                const idx = ctx.candleData.findIndex(c => c.timestamp === anchorTs);
                                 if (idx >= 0) offsetInView = idx;
                             }
                             if (offsetInView == null) offsetInView = Math.floor(ctx.displayedCandles / 2);
