@@ -53,6 +53,12 @@ export function useCandleSubscription() {
         stockSymbol: null,
         timeframe: null
     });
+    // Track last chart subscription we requested for correct diffing on timeframe change
+    const lastChartSubscriptionRef = useRef({
+        platformName: null,
+        stockSymbol: null,
+        timeframe: null
+    });
 
     // Track pre-init buffer length to detect reinitialization
     const prevLenBeforeInitRef = useRef(null);
@@ -349,11 +355,15 @@ export function useCandleSubscription() {
                     }
                 } catch (_) {}
                 
-                // Minimal re-anchor notification; the context already anchored on merge
-                if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
-                    console.log("Handle chart candle message called hundle buffer update complete with direction:" + bufferDirection)
-                    window.__chartContextValue.handleBufferUpdateComplete(bufferDirection || 'unknown', null);
-                }
+                    // Minimal re-anchor notification; the context already anchored on merge.
+                    // Use stored reference if present (e.g., special timeframe anchoring)
+                    if (window.__chartContextValue && window.__chartContextValue.handleBufferUpdateComplete) {
+                        const ref = referenceTimestampRef.current || null;
+                        console.log("Handle chart candle message called hundle buffer update complete with direction:" + bufferDirection, ref ? 'with reference' : 'without reference');
+                        window.__chartContextValue.handleBufferUpdateComplete(bufferDirection || 'unknown', ref);
+                        // Clear after use to avoid unintended reuse
+                        referenceTimestampRef.current = null;
+                    }
 
                 // Re-assert the requested known range after processing the response
                 try {
@@ -667,6 +677,21 @@ export function useCandleSubscription() {
         setIsWaitingForData(true);
 
         try {
+            // Capture previous selection to detect timeframe-only change
+            // Prefer stable sources so we don't compare against already-updated refs
+            const prevPlatform =
+                (lastChartSubscriptionRef.current && lastChartSubscriptionRef.current.platformName) ||
+                (lastValidSubscription && lastValidSubscription.platformName) ||
+                currentSubscription.platformName;
+            const prevSymbol =
+                (lastChartSubscriptionRef.current && lastChartSubscriptionRef.current.stockSymbol) ||
+                (lastValidSubscription && lastValidSubscription.stockSymbol) ||
+                currentSubscription.stockSymbol;
+            const prevTimeframe =
+                (lastChartSubscriptionRef.current && lastChartSubscriptionRef.current.timeframe) ||
+                (lastValidSubscription && lastValidSubscription.timeframe) ||
+                currentSubscription.timeframe;
+
             // First, unsubscribe from any existing chart subscription
             if (subscriptionIds.chart) {
                 console.log(`[useCandleSubscription] Unsubscribing from current chart subscription before creating new one`);
@@ -675,18 +700,8 @@ export function useCandleSubscription() {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
 
-            // NEW: Update our local reference before making the request
-            const subscriptionDetails = {
-                platformName,
-                stockSymbol,
-                timeframe
-            };
-
-            latestSubscriptionDetailsRef.current = subscriptionDetails;
-            setLastValidSubscription(subscriptionDetails);
-
-            // Update subscription details - store centrally for both subscriptions
-            updateCurrentSubscriptionInfo(subscriptionDetails);
+            // Defer updating our local reference until after we send the request
+            // to ensure previous values above truly reflect the last state.
 
             // Access ChartContext to get buffer settings
             let bufferSizeMultiplier = 20; // Default if not available from context
@@ -699,14 +714,98 @@ export function useCandleSubscription() {
                 console.warn("[Buffer Manager] Could not access chart context for buffer settings:", e);
             }
             
-            // For chart data, request displayedCandles plus buffer worth of data
+            // For chart data, compute request window
             const now = new Date();
-            const endDate = now;
-            
-            // Include buffer on both sides (past and future)
-            // For first load, request enough data to allow scrolling in both directions
+            const nowMs = now.getTime();
+            let endDate = now;
+
+            // Default behavior: request displayed + buffer around now
             const totalCandlesToRequest = displayedCandles + (bufferSizeMultiplier * 2);
-            const startDate = calculateStartDate(endDate, timeframe, totalCandlesToRequest);
+            let startDate = calculateStartDate(endDate, timeframe, totalCandlesToRequest);
+
+            // Special case: timeframe-only change AND not at latest edge → center around current anchor
+            const onlyTimeframeChanged = (
+                prevPlatform?.toUpperCase() === platformName.toUpperCase() &&
+                prevSymbol?.toUpperCase() === stockSymbol.toUpperCase() &&
+                typeof prevTimeframe === 'string' && prevTimeframe.toUpperCase() !== timeframe.toUpperCase()
+            );
+            try {
+                console.log("Checking whether only the timeframe has changed. " +
+                    "onlyTimeframeChanged: " + onlyTimeframeChanged +
+                    " prevPlatfrom: " + prevPlatform + " platform: " + platformName +
+                    " prevSymbol: " + prevSymbol + " stockSymbol: " + stockSymbol + "" +
+                    " prevTimeframe: " + prevTimeframe + " timeframe: " + timeframe)
+                if (onlyTimeframeChanged && window.__chartContextValue) {
+                    console.log("Only timeframe has changed.")
+                    const ctx = window.__chartContextValue;
+                    const atRightEdge = (ctx.viewStartIndex + ctx.displayedCandles) >= (ctx.displayCandles?.length || 0);
+                    const futureInFlight = ctx.isFutureRequestInFlight ? ctx.isFutureRequestInFlight() : false;
+                    if (!atRightEdge && !futureInFlight) {
+                        let anchorTs = ctx.activeTimestamp || null;
+                        console.log("anchor timestamp" + ctx.activeTimestamp)
+                        let offsetInView = null;
+                        if (!anchorTs && Array.isArray(ctx.candleData) && ctx.candleData.length) {
+                            console.log("first if")
+                            const mid = Math.floor(ctx.candleData.length / 2);
+                            anchorTs = ctx.candleData[mid]?.timestamp || null;
+                            offsetInView = mid;
+                        }
+                        if (!anchorTs) {
+                            console.log("second if")
+                            const anc = ctx.getAnchor?.();
+                            if (anc && anc.timestamp) anchorTs = anc.timestamp;
+                            offsetInView = 0;
+                        }
+
+                        const tf = timeframe.toUpperCase();
+                        const tfMs = tf === '1H' ? 60 * 60 * 1000
+                            : tf === '4H' ? 4 * 60 * 60 * 1000
+                            : tf === '1D' ? 24 * 60 * 60 * 1000
+                            : tf.endsWith('W') ? parseInt(tf) * 7 * 24 * 60 * 60 * 1000
+                            : tf.endsWith('M') ? parseInt(tf) * 60 * 1000
+                            : 60 * 1000;
+
+                        if (anchorTs && Number.isFinite(tfMs) && tfMs > 0) {
+                            const anchorRounded = Math.floor(anchorTs / tfMs) * tfMs;
+                            if (offsetInView == null && Array.isArray(ctx.candleData) && ctx.candleData.length) {
+                                const idx = ctx.candleData.findIndex(c => c.timestamp === ctx.activeTimestamp);
+                                if (idx >= 0) offsetInView = idx;
+                            }
+                            if (offsetInView == null) offsetInView = Math.floor(ctx.displayedCandles / 2);
+                            const visible = ctx.displayedCandles;
+                            const extraPast = 40;
+
+                            const startMs = anchorRounded - (offsetInView + extraPast) * tfMs;
+                            const endMs = anchorRounded + (visible - 1 - offsetInView) * tfMs;
+
+                            // Guard: if end would exceed now, fall back to now-based
+                            if (endMs <= nowMs) {
+                                const s = new Date(Math.max(0, startMs));
+                                const e = new Date(Math.max(s.getTime() + tfMs, endMs));
+
+                                startDate = s;
+                                endDate = e;
+
+                                // Pre-set known range and store reference for re-anchoring after init
+                                try { ctx.updateSubscriptionDateRange?.(s.getTime(), e.getTime()); } catch (_) {}
+                                referenceTimestampRef.current = { timestamp: anchorRounded, offset: offsetInView };
+
+                                console.log('[useCandleSubscription] Timeframe-only change: anchored window', {
+                                    anchorRounded: new Date(anchorRounded).toISOString(),
+                                    offsetInView,
+                                    startIso: s.toISOString(),
+                                    endIso: e.toISOString(),
+                                    visible
+                                });
+                            } else {
+                                console.log('[useCandleSubscription] Anchored window exceeds now; using now-based range');
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('[useCandleSubscription] Failed special timeframe anchoring; falling back to now-based window', e);
+            }
 
             console.log("--------- CHART CANDLE DATA REQUEST ---------");
             console.log(`[Chart Request] Platform: ${platformName}, Symbol: ${stockSymbol}, Timeframe: ${timeframe}`);
@@ -739,6 +838,8 @@ export function useCandleSubscription() {
 
             await requestSubscription('chart', chartSubscriptionRequest);
             console.log("[useCandleSubscription] Chart subscription request sent");
+            // Update last-chart-subscription record for future diffs
+            lastChartSubscriptionRef.current = { platformName, stockSymbol, timeframe };
 
             return "pending";
         } catch (err) {
@@ -940,17 +1041,7 @@ export function useCandleSubscription() {
     // Main subscription function exposed to components
     const subscribeToCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
         try {
-            // Update our local reference with these parameters
-            const subscriptionDetails = {
-                platformName,
-                stockSymbol,
-                timeframe
-            };
-
-            latestSubscriptionDetailsRef.current = subscriptionDetails;
-            setLastValidSubscription(subscriptionDetails);
-
-            // First subscribe to chart data
+            // First subscribe to chart data (it will update refs after sending the request)
             await subscribeToChartCandles(platformName, stockSymbol, timeframe);
 
             // After subscribing to chart data, also subscribe to indicator data if needed
