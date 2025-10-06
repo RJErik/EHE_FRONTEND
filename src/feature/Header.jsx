@@ -6,6 +6,7 @@ import { ModeToggle } from "@/feature/Mode-toggle.jsx";
 import { Menubar } from "../components/ui/menubar.jsx";
 import LogoutDialog from "./LogoutDialog.jsx";
 import { useLogout } from "../hooks/useLogout.js";
+import Logo from "../assets/Logo.png";
 
 const Header = ({ userName = "User" }) => {
     const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
@@ -64,7 +65,7 @@ const Header = ({ userName = "User" }) => {
                     className="cursor-pointer h-10 w-10"
                     onClick={() => handleNavigation("home")}
                 >
-                    Logo
+                    <img src={Logo} className="rotating-image" alt="Logo"/>
                 </Button>
 
                 <div className="flex items-center space-x-4">
