@@ -1,13 +1,16 @@
-// src/pages/StockMarket.jsx (update)
+import { useState } from "react";
 import StockSelectors from "@/feature/stockMarket/StockSelectors.jsx";
 import CandleChart from "@/feature/stockMarket/CandleChart/CandleChart.jsx";
 import IndicatorCharts from "@/feature/stockMarket/IndicatorCharts.jsx";
 import PortfolioList from "@/feature/stockMarket/PortfolioList.jsx";
 import PortfolioGraph from "@/feature/stockMarket/PortfolioGraph.jsx";
 import TradePanel from "@/feature/stockMarket/TradePanel.jsx";
+import PortfolioSelector from "@/feature/stockMarket/PortfolioSelector.jsx";
 import { ChartProvider } from "@/feature/stockMarket/ChartContext.jsx";
 
 const StockMarket = () => {
+    const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
+
     return (
         <div className="min-h-screen flex flex-col">
             <main className="flex-1 p-4">
@@ -28,15 +31,16 @@ const StockMarket = () => {
 
                             {/* Right section - Portfolio and Trading */}
                             <div className="w-full md:w-1/3 space-y-4">
-                                <div className="h-64">
-                                    <PortfolioList />
-                                </div>
+                                <PortfolioSelector
+                                    selectedPortfolioId={selectedPortfolioId}
+                                    onPortfolioChange={setSelectedPortfolioId}
+                                />
 
-                                <div className="h-52">
-                                    <PortfolioGraph />
-                                </div>
+                                    <PortfolioList selectedPortfolioId={selectedPortfolioId}/>
 
-                                <TradePanel />
+                                    <PortfolioGraph selectedPortfolioId={selectedPortfolioId}/>
+
+                                <TradePanel selectedPortfolioId={selectedPortfolioId}/>
                             </div>
                         </div>
                     </ChartProvider>

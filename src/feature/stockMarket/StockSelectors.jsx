@@ -155,7 +155,7 @@ const StockSelectors = () => {
 
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row gap-4 items-start">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
                 <div className="w-full sm:w-auto flex-1">
                     <p className="text-sm text-muted-foreground mb-1">Platform</p>
                     <Select
