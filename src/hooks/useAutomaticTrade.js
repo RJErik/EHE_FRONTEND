@@ -1,12 +1,14 @@
 // src/hooks/useAutomaticTrade.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
+import { useJwtRefresh } from "./useJwtRefresh";
 
 export function useAutomaticTrade() {
     const [automaticTradeRules, setAutomaticTradeRules] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+    const { refreshToken } = useJwtRefresh();
 
     // Fetch all automatic trade rules
     const fetchAutomaticTradeRules = useCallback(async () => {
@@ -15,13 +17,37 @@ export function useAutomaticTrade() {
 
         try {
             console.log("Fetching automatic trade rules...");
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
                 method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -42,19 +68,21 @@ export function useAutomaticTrade() {
             }
         } catch (err) {
             console.error("Error fetching automatic trade rules:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to fetch automatic trade rules. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to fetch automatic trade rules. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [toast]);
+    }, [toast, refreshToken]);
 
     // Add automatic trade rule
-    const addAutomaticTradeRule = async (portfolioId, platform, symbol, conditionType, actionType, quantityType, quantity, thresholdValue) => {
+    const addAutomaticTradeRule = useCallback(async (portfolioId, platform, symbol, conditionType, actionType, quantityType, quantity, thresholdValue) => {
         if (!portfolioId || !platform || !symbol || !conditionType || !actionType || !quantityType || !quantity || !thresholdValue) {
             toast({
                 title: "Validation Error",
@@ -69,7 +97,7 @@ export function useAutomaticTrade() {
 
         try {
             console.log(`Adding automatic trade rule for ${symbol} from ${platform}...`);
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -86,6 +114,40 @@ export function useAutomaticTrade() {
                     thresholdValue: parseFloat(thresholdValue)
                 }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        portfolioId,
+                        platform,
+                        symbol,
+                        conditionType,
+                        actionType,
+                        quantityType,
+                        quantity: parseFloat(quantity),
+                        thresholdValue: parseFloat(thresholdValue)
+                    }),
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -113,26 +175,28 @@ export function useAutomaticTrade() {
             }
         } catch (err) {
             console.error("Error adding automatic trade rule:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to add automatic trade rule. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to add automatic trade rule. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return false;
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     // Remove automatic trade rule
-    const removeAutomaticTradeRule = async (id) => {
+    const removeAutomaticTradeRule = useCallback(async (id) => {
         setIsLoading(true);
         setError(null);
 
         try {
             console.log(`Removing automatic trade rule ${id}...`);
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -140,6 +204,31 @@ export function useAutomaticTrade() {
                 },
                 body: JSON.stringify({ id }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                    method: "DELETE",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ id }),
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -168,20 +257,22 @@ export function useAutomaticTrade() {
             }
         } catch (err) {
             console.error("Error removing automatic trade rule:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to remove automatic trade rule. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to remove automatic trade rule. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return false;
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     // Search automatic trade rules
-    const searchAutomaticTradeRules = async (
+    const searchAutomaticTradeRules = useCallback(async (
         portfolioId,
         platform,
         symbol,
@@ -213,7 +304,7 @@ export function useAutomaticTrade() {
                 searchParams[key] === null && delete searchParams[key]
             );
 
-            const response = await fetch("http://localhost:8080/api/user/automated-trade-rules/search", {
+            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules/search", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -221,6 +312,31 @@ export function useAutomaticTrade() {
                 },
                 body: JSON.stringify(searchParams),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/automated-trade-rules/search", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(searchParams),
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -243,17 +359,19 @@ export function useAutomaticTrade() {
             }
         } catch (err) {
             console.error("Error searching automatic trade rules:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to search automatic trade rules. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to search automatic trade rules. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return [];
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     return {
         automaticTradeRules,

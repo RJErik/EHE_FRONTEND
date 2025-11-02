@@ -1,6 +1,7 @@
 // src/hooks/useTrading.js
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
+import { useJwtRefresh } from "./useJwtRefresh";
 
 export function useTrading() {
     const [portfolios, setPortfolios] = useState([]);
@@ -10,16 +11,17 @@ export function useTrading() {
     const [isExecutingTrade, setIsExecutingTrade] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+    const { refreshToken } = useJwtRefresh();
 
     // Fetch portfolios by platform
-    const fetchPortfoliosByPlatform = async (platform) => {
+    const fetchPortfoliosByPlatform = useCallback(async (platform) => {
         if (!platform) return [];
 
         setIsLoadingPortfolios(true);
         setError(null);
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
+            let response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -27,6 +29,29 @@ export function useTrading() {
                 },
                 body: JSON.stringify({ platform }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ platform }),
+                });
+
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -49,27 +74,29 @@ export function useTrading() {
             }
         } catch (err) {
             console.error("Error fetching portfolios by platform:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to fetch portfolios. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to fetch portfolios. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return [];
         } finally {
             setIsLoadingPortfolios(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     // Fetch trading capacity for a portfolio and stock
-    const getTradingCapacity = async (portfolioId, stockSymbol) => {
+    const getTradingCapacity = useCallback(async (portfolioId, stockSymbol) => {
         if (!portfolioId || !stockSymbol) return null;
 
         setIsLoadingCapacity(true);
         setError(null);
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/trading-capacity", {
+            let response = await fetch("http://localhost:8080/api/user/trading-capacity", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -77,6 +104,29 @@ export function useTrading() {
                 },
                 body: JSON.stringify({ portfolioId, stockSymbol }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/trading-capacity", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ portfolioId, stockSymbol }),
+                });
+
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -99,20 +149,22 @@ export function useTrading() {
             }
         } catch (err) {
             console.error("Error fetching trading capacity:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to fetch trading capacity. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to fetch trading capacity. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return null;
         } finally {
             setIsLoadingCapacity(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     // Execute a trade
-    const executeTrade = async (portfolioId, stockSymbol, action, amount, quantityType) => {
+    const executeTrade = useCallback(async (portfolioId, stockSymbol, action, amount, quantityType) => {
         if (!portfolioId || !stockSymbol || !action || !amount || !quantityType) return false;
 
         setIsExecutingTrade(true);
@@ -121,7 +173,7 @@ export function useTrading() {
         try {
             console.log(`Executing trade: ${action} ${amount} ${stockSymbol} via ${quantityType}`);
 
-            const response = await fetch("http://localhost:8080/api/user/trade", {
+            let response = await fetch("http://localhost:8080/api/user/trade", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -135,6 +187,35 @@ export function useTrading() {
                     quantityType,
                 }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/trade", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        portfolioId,
+                        stockSymbol,
+                        action,
+                        amount,
+                        quantityType,
+                    }),
+                });
+
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -160,17 +241,19 @@ export function useTrading() {
             }
         } catch (err) {
             console.error("Error executing trade:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Connection Error",
-                description: "Failed to execute trade. Server may be unavailable.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Connection Error",
+                    description: "Failed to execute trade. Server may be unavailable.",
+                    variant: "destructive",
+                });
+            }
             return false;
         } finally {
             setIsExecutingTrade(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     return {
         portfolios,

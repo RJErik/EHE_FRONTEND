@@ -1,6 +1,7 @@
 // src/hooks/useChangeEmail.js
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast.js";
+import { useJwtRefresh } from "./useJwtRefresh";
 
 export function useChangeEmail() {
     const [isLoading, setIsLoading] = useState(false);
@@ -10,6 +11,7 @@ export function useChangeEmail() {
         return localStorage.getItem('lastEmailChangeRequested') || "";
     });
     const { toast } = useToast();
+    const { refreshToken } = useJwtRefresh();
 
     // Sync the state with localStorage whenever it changes
     useEffect(() => {
@@ -18,7 +20,7 @@ export function useChangeEmail() {
         }
     }, [lastEmailRequested]);
 
-    const changeEmail = async (newEmail) => {
+    const changeEmail = useCallback(async (newEmail) => {
         setIsLoading(true);
         setError(null);
 
@@ -27,7 +29,7 @@ export function useChangeEmail() {
         localStorage.setItem('lastEmailChangeRequested', newEmail);
 
         try {
-            const response = await fetch("http://localhost:8080/api/user/change-email", {
+            let response = await fetch("http://localhost:8080/api/user/change-email", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -35,6 +37,31 @@ export function useChangeEmail() {
                 },
                 body: JSON.stringify({ newEmail }),
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/change-email", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ newEmail }),
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             const data = await response.json();
 
@@ -46,7 +73,9 @@ export function useChangeEmail() {
             return data;
         } catch (err) {
             console.error("Email change request error:", err);
-            setError("Failed to request email change. Please try again later.");
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to request email change. Please try again later.");
+            }
 
             return {
                 success: false,
@@ -55,9 +84,9 @@ export function useChangeEmail() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [refreshToken]);
 
-    const resendChangeEmail = () => {
+    const resendChangeEmail = useCallback(() => {
         // Get the latest email from localStorage as a fallback
         const emailToResend = lastEmailRequested || localStorage.getItem('lastEmailChangeRequested');
 
@@ -70,7 +99,7 @@ export function useChangeEmail() {
             success: false,
             message: "No email change request to resend"
         });
-    };
+    }, [lastEmailRequested, changeEmail]);
 
     return {
         changeEmail,

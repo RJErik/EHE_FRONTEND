@@ -1,6 +1,7 @@
 // src/hooks/useAccountProfile.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
+import { useJwtRefresh } from "./useJwtRefresh";
 
 export function useAccountProfile() {
     const [userData, setUserData] = useState({
@@ -11,6 +12,7 @@ export function useAccountProfile() {
     const [isRequestingReset, setIsRequestingReset] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+    const { refreshToken } = useJwtRefresh();
 
     // Fetch user information
     const fetchUserInfo = useCallback(async () => {
@@ -19,13 +21,37 @@ export function useAccountProfile() {
 
         try {
             console.log("Fetching user information...");
-            const response = await fetch("http://localhost:8080/api/user/user-info", {
+            let response = await fetch("http://localhost:8080/api/user/user-info", {
                 method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/user-info", {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -49,17 +75,19 @@ export function useAccountProfile() {
             }
         } catch (err) {
             console.error("Error fetching user data:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Error",
-                description: "Failed to load user information. Using placeholder data.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Error",
+                    description: "Failed to load user information. Using placeholder data.",
+                    variant: "destructive",
+                });
+            }
             // Keep the default placeholder data
         } finally {
             setIsLoading(false);
         }
-    }, [toast]);
+    }, [toast, refreshToken]);
 
     // Request password reset
     const requestPasswordReset = useCallback(async () => {
@@ -70,13 +98,37 @@ export function useAccountProfile() {
 
         try {
             console.log("Requesting password reset...");
-            const response = await fetch("http://localhost:8080/api/user/request-password-reset", {
+            let response = await fetch("http://localhost:8080/api/user/request-password-reset", {
                 method: "POST",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
             });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    // Refresh failed - redirects to login automatically
+                    throw new Error("Session expired. Please login again.");
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/request-password-reset", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                // If still 401 after refresh, session is truly expired
+                if (response.status === 401) {
+                    throw new Error("Session expired. Please login again.");
+                }
+            }
 
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}: ${response.statusText}`);
@@ -99,12 +151,14 @@ export function useAccountProfile() {
 
         } catch (err) {
             console.error("Password reset request error:", err);
-            setError("Failed to connect to server. Please try again later.");
-            toast({
-                title: "Error",
-                description: "Failed to request password reset. Please try again later.",
-                variant: "destructive",
-            });
+            if (!err.message?.includes("Session expired")) {
+                setError("Failed to connect to server. Please try again later.");
+                toast({
+                    title: "Error",
+                    description: "Failed to request password reset. Please try again later.",
+                    variant: "destructive",
+                });
+            }
             return {
                 success: false,
                 message: "Failed to request password reset. Please try again later.",
@@ -113,7 +167,7 @@ export function useAccountProfile() {
         } finally {
             setIsRequestingReset(false);
         }
-    }, [isRequestingReset, toast]);
+    }, [refreshToken, toast]);
 
     return {
         userData,
