@@ -13,7 +13,6 @@ const SearchPortfolio = () => {
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [minValue, setMinValue] = useState("");
     const [maxValue, setMaxValue] = useState("");
-    const [portfolioType, setPortfolioType] = useState("_any_");
 
     const { searchPortfolios, fetchPortfolios, refreshLatestSearch } = usePortfolioContext();
 
@@ -29,16 +28,15 @@ const SearchPortfolio = () => {
 
         try {
             // Handle special case when all fields are empty
-            if (searchPlatform === "_any_" && !minValue && !maxValue && portfolioType === "_any_") {
+            if (searchPlatform === "_any_" && !minValue && !maxValue) {
                 await fetchPortfolios();
             } else {
                 // Convert inputs to appropriate formats for API
-                const typeParam = portfolioType === "_any_" ? null : portfolioType;
                 const platformParam = searchPlatform === "_any_" ? null : searchPlatform;
                 const minValueParam = minValue ? parseFloat(minValue) : null;
                 const maxValueParam = maxValue ? parseFloat(maxValue) : null;
 
-                await searchPortfolios(typeParam, platformParam, minValueParam, maxValueParam);
+                await searchPortfolios(platformParam, minValueParam, maxValueParam);
             }
         } finally {
             setIsSearching(false);
@@ -49,7 +47,6 @@ const SearchPortfolio = () => {
         setSearchPlatform("_any_");
         setMinValue("");
         setMaxValue("");
-        setPortfolioType("_any_");
         fetchPortfolios();
     };
 
@@ -71,24 +68,6 @@ const SearchPortfolio = () => {
                 <h3 className="text-lg">Search</h3>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div>
-                    <p className="text-xs mb-1">Portfolio Type</p>
-                    <Select
-                        value={portfolioType}
-                        onValueChange={setPortfolioType}
-                        disabled={isSearching}
-                    >
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="_any_">Any type</SelectItem>
-                            <SelectItem value="Real">Real</SelectItem>
-                            <SelectItem value="Simulated">Simulated</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-
                 <div>
                     <p className="text-xs mb-1">Platform</p>
                     <Select

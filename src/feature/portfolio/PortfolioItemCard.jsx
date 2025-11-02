@@ -19,8 +19,6 @@ const PortfolioItemCard = ({ portfolio, onDelete, onUpdate }) => {
                         <span className="font-medium">{portfolio.name}</span>
                         <Separator className="mx-2 h-4 w-px" orientation="vertical"/>
                         <span className="text-sm">{portfolio.platform}</span>
-                        <Separator className="mx-2 h-4 w-px" orientation="vertical"/>
-                        <span className="text-sm">{portfolio.type}</span>
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">
                         Value: {portfolio.value} $

@@ -13,7 +13,6 @@ export function PortfolioProvider({ children }) {
     // Use a ref for last search params to prevent unnecessary renders
     const lastSearchParamsRef = useRef({
         type: 'fetchAll',
-        portfolioType: null,
         platform: null,
         minValue: null,
         maxValue: null
@@ -30,7 +29,6 @@ export function PortfolioProvider({ children }) {
 
         if (lastSearchParamsRef.current.type === 'search') {
             portfolioData.searchPortfolios(
-                lastSearchParamsRef.current.portfolioType,
                 lastSearchParamsRef.current.platform,
                 lastSearchParamsRef.current.minValue,
                 lastSearchParamsRef.current.maxValue
@@ -41,22 +39,20 @@ export function PortfolioProvider({ children }) {
     }, [portfolioData]);
 
     // Extended search function that stores the parameters
-    const searchPortfoliosWithMemory = useCallback((portfolioType, platform, minValue, maxValue) => {
+    const searchPortfoliosWithMemory = useCallback((platform, minValue, maxValue) => {
         lastSearchParamsRef.current = {
             type: 'search',
-            portfolioType,
             platform,
             minValue,
             maxValue
         };
-        return portfolioData.searchPortfolios(portfolioType, platform, minValue, maxValue);
+        return portfolioData.searchPortfolios(platform, minValue, maxValue);
     }, [portfolioData]);
 
     // Extended fetchPortfolios function that stores it was a general fetch
     const fetchPortfoliosWithMemory = useCallback(() => {
         lastSearchParamsRef.current = {
             type: 'fetchAll',
-            portfolioType: null,
             platform: null,
             minValue: null,
             maxValue: null
