@@ -22,7 +22,6 @@ const Header = ({ userName = "User" }) => {
             case '/account': return 'account';
             case '/portfolio': return 'portfolio';
             case '/stock-market': return 'stockMarket';
-            case '/paper-trading': return 'paperTrading';
             case '/alerts': return 'alerts';
             case '/automatic-transactions': return 'automaticTransactions';
             case '/watchlist': return 'watchlist';
@@ -38,7 +37,6 @@ const Header = ({ userName = "User" }) => {
             'account': '/account',
             'portfolio': '/portfolio',
             'stockMarket': '/stock-market',
-            'paperTrading': '/paper-trading',
             'alerts': '/alerts',
             'automaticTransactions': '/automatic-transactions',
             'watchlist': '/watchlist'
@@ -97,13 +95,6 @@ const Header = ({ userName = "User" }) => {
                             onClick={() => handleNavigation("stockMarket")}
                         >
                             Stock Market
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className={currentPage === 'paperTrading' ? 'bg-muted' : ''}
-                            onClick={() => handleNavigation("paperTrading")}
-                        >
-                            Paper Trading
                         </Button>
                         <Button
                             variant="outline"

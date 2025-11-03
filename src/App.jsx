@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Account from "./pages/Account";
 import StockMarket from "./pages/StockMarket";
-import PaperTrading from "./pages/PaperTrading";
 import Alerts from "./pages/Alerts.jsx";
 import AutomaticTransactions from "./pages/AutomaticTransactions.jsx";
 import Portfolio from "./pages/Portfolio";
@@ -40,7 +39,6 @@ function App() {
                                                 <Route path="/account" element={<Account />} />
                                                 <Route path="/portfolio" element={<Portfolio />} />
                                                 <Route path="/stock-market" element={<StockMarket />} />
-                                                <Route path="/paper-trading" element={<PaperTrading />} />
                                                 <Route path="/alerts" element={<Alerts />} />
                                                 <Route path="/automatic-transactions" element={<AutomaticTransactions />} />
                                                 <Route path="/watchlist" element={<Watchlist />} />
