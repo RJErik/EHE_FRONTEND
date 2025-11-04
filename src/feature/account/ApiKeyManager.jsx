@@ -7,7 +7,7 @@ import DeactivateAccountDialog from "./DeactivateAccountDialog.jsx";
 import { useDeactivateAccount } from "../../hooks/useDeactivateAccount.js";
 import { useApiKeys } from "../../hooks/useApiKeys.js";
 import { useStockData } from "../../hooks/useStockData.js";
-import ApiKeyCard from "./ApiKeyCard.jsx";
+import ApiKeyItemCard from "./ApiKeyItemCard.jsx";
 import ApiKeyAddCard from "./ApiKeyAddCard.jsx";
 import ApiKeyAddDialog from "./ApiKeyAddDialog.jsx";
 import ApiKeyUpdateDialog from "./ApiKeyUpdateDialog.jsx";
@@ -83,7 +83,7 @@ const ApiKeyManager = () => {
                             {apiKeys.length > 0 ? (
                                 <div className="pr-4">
                                     {apiKeys.map((apiKey) => (
-                                        <ApiKeyCard
+                                        <ApiKeyItemCard
                                             key={apiKey.apiKeyId}
                                             apiKey={apiKey}
                                             onUpdate={handleUpdateClick}

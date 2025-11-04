@@ -1,10 +1,10 @@
-// src/components/account/ApiKeyCard.jsx
+// src/components/account/ApiKeyItemCard.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Pencil, Trash2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator.jsx";
 
-const ApiKeyCard = ({ apiKey, onUpdate, onDelete }) => {
+const ApiKeyItemCard = ({ apiKey, onUpdate, onDelete }) => {
     return (
         <Card className="w-full mb-3">
             <CardContent className="flex flex-col p-4">
@@ -38,4 +38,4 @@ const ApiKeyCard = ({ apiKey, onUpdate, onDelete }) => {
     );
 };
 
-export default ApiKeyCard;
+export default ApiKeyItemCard;
