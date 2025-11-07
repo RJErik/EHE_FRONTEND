@@ -1,11 +1,11 @@
 import { Card, CardContent } from "../../components/ui/card.jsx";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeContext.jsx";
-import { useAutomatedTradeWebSocket } from "../../context/AutomatedTradeWebSocketContext.jsx";
+import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
+import { useAutomatedTradeWebSocket } from "../../context/AutomatedTradeRuleWebSocketContext.jsx";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
-import AutomaticTransactionItemCard from "./AutomaticTransactionItemCard.jsx";
+import AutomaticTradeRuleItemCard from "./AutomaticTradeRuleItemCard.jsx";
 
-const AutomaticTransactionList = () => {
+const AutomaticTradeRuleList = () => {
     const { automaticTradeRules, isLoading, error, removeAutomaticTradeRule, fetchAutomaticTradeRules, refreshLatestSearch, lastUpdate } = useAutomaticTradeContext();
     const { registerAutomatedTradeCallback } = useAutomatedTradeWebSocket();
 
@@ -15,7 +15,7 @@ const AutomaticTransactionList = () => {
     // Fetch automatic trade rules only on initial mount
     useEffect(() => {
         if (!initialFetchDoneRef.current) {
-            console.log("AutomaticTransactionList mounted - fetching rules");
+            console.log("AutomaticTradeRuleList mounted - fetching rules");
             fetchAutomaticTradeRules();
             initialFetchDoneRef.current = true;
         }
@@ -23,7 +23,7 @@ const AutomaticTransactionList = () => {
 
     // Memoize the callback to prevent effect regeneration
     const automatedTradeCallback = useCallback((tradeNotification) => {
-        console.log('[AutomaticTransactionList] Received automated trade notification, refreshing list');
+        console.log('[AutomaticTradeRuleList] Received automated trade notification, refreshing list');
         refreshLatestSearch();
     }, [refreshLatestSearch]);
 
@@ -61,7 +61,7 @@ const AutomaticTransactionList = () => {
                 ) : (
                     <div className="space-y-3">
                         {automaticTradeRules.map((rule) => (
-                            <AutomaticTransactionItemCard
+                            <AutomaticTradeRuleItemCard
                                 key={`rule-${rule.id}-${lastUpdate}`}
                                 rule={rule}
                                 onRemove={handleRemove}
@@ -74,4 +74,4 @@ const AutomaticTransactionList = () => {
     );
 };
 
-export default AutomaticTransactionList;
+export default AutomaticTradeRuleList;

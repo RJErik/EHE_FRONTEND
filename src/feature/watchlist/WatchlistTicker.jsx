@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { ChevronUp, ChevronDown, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils.js";
-import { useWatchlist } from "../../context/WatchlistContext.jsx";
+import { useWatchlist } from "../../context/WatchlistItemsContext.jsx";
 
 const WatchlistTicker = () => {
     const [isOpen, setIsOpen] = useState(true);

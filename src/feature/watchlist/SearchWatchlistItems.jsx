@@ -3,10 +3,10 @@ import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
-import { useWatchlist } from "../../context/WatchlistContext.jsx";
+import { useWatchlist } from "../../context/WatchlistItemsContext.jsx";
 import { Loader2, RefreshCw } from "lucide-react";
 
-const SearchWatchlist = () => {
+const SearchWatchlistItems = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [searchSymbol, setSearchSymbol] = useState("_any_");
@@ -141,4 +141,4 @@ const SearchWatchlist = () => {
     );
 };
 
-export default SearchWatchlist;
+export default SearchWatchlistItems;

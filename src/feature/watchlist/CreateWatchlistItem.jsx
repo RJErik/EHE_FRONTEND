@@ -3,10 +3,10 @@ import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
-import { useWatchlist } from "../../context/WatchlistContext.jsx";
+import { useWatchlist } from "../../context/WatchlistItemsContext.jsx";
 import { Loader2 } from "lucide-react";
 
-const AddWatchlist = () => {
+const CreateWatchlistItem = () => {
     const [isAdding, setIsAdding] = useState(false);
 
     const {
@@ -104,4 +104,4 @@ const AddWatchlist = () => {
     );
 };
 
-export default AddWatchlist;
+export default CreateWatchlistItem;

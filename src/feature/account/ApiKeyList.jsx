@@ -1,27 +1,22 @@
-// src/components/account/ApiKeyManager.jsx
 import { useState, useEffect } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { ScrollArea } from "../../components/ui/scroll-area.jsx";
-import DeactivateAccountDialog from "./DeactivateAccountDialog.jsx";
-import { useDeactivateAccount } from "../../hooks/useDeactivateAccount.js";
 import { useApiKeys } from "../../hooks/useApiKeys.js";
 import { useStockData } from "../../hooks/useStockData.js";
 import ApiKeyItemCard from "./ApiKeyItemCard.jsx";
-import ApiKeyAddCard from "./ApiKeyAddCard.jsx";
+import ApiKeyAddItemCard from "./ApiKeyAddItemCard.jsx";
 import ApiKeyAddDialog from "./ApiKeyAddDialog.jsx";
 import ApiKeyUpdateDialog from "./ApiKeyUpdateDialog.jsx";
 import ApiKeyDeleteDialog from "./ApiKeyDeleteDialog.jsx";
 import { Loader2 } from "lucide-react";
 
-const ApiKeyManager = () => {
-    const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+const ApiKeyList = () => {
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedApiKey, setSelectedApiKey] = useState(null);
 
-    const { deactivateAccount, isLoading: isDeactivating } = useDeactivateAccount();
     const { apiKeys, isLoading: isLoadingApiKeys, addApiKey, updateApiKey, deleteApiKey } = useApiKeys();
     const { platforms, isLoadingPlatforms, fetchPlatforms } = useStockData();
 
@@ -29,14 +24,6 @@ const ApiKeyManager = () => {
     // useEffect(() => {
     //     fetchPlatforms();
     // }, [fetchPlatforms]);
-
-    const handleDeactivateClick = () => {
-        setDeactivateDialogOpen(true);
-    };
-
-    const handleDeactivateConfirm = async () => {
-        await deactivateAccount();
-    };
 
     const handleAddClick = () => {
         setAddDialogOpen(true);
@@ -90,7 +77,7 @@ const ApiKeyManager = () => {
                                             onDelete={handleDeleteClick}
                                         />
                                     ))}
-                                    <ApiKeyAddCard onClick={handleAddClick} />
+                                    <ApiKeyAddItemCard onClick={handleAddClick} />
                                 </div>
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-64 space-y-4">
@@ -102,21 +89,6 @@ const ApiKeyManager = () => {
                     )}
                 </CardContent>
             </Card>
-
-            <Button
-                variant="destructive"
-                onClick={handleDeactivateClick}
-                className="w-full"
-            >
-                Deactivate Account
-            </Button>
-
-            <DeactivateAccountDialog
-                open={deactivateDialogOpen}
-                onOpenChange={setDeactivateDialogOpen}
-                onConfirm={handleDeactivateConfirm}
-                isLoading={isDeactivating}
-            />
 
             <ApiKeyAddDialog
                 open={addDialogOpen}
@@ -146,4 +118,4 @@ const ApiKeyManager = () => {
     );
 };
 
-export default ApiKeyManager;
+export default ApiKeyList;

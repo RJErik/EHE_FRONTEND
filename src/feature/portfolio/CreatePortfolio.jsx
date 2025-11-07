@@ -1,14 +1,14 @@
-// src/components/portfolio/AddPortfolio.jsx
+// src/components/portfolio/CreatePortfolio.jsx
 import { useState } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { Input } from "../../components/ui/input.jsx";
-import { usePortfolioContext } from "../../context/PortfolioContext.jsx";
+import { usePortfolioContext } from "../../context/PortfoliosContext.jsx";
 import { useApiKeys } from "../../hooks/useApiKeys.js";
 import { Loader2 } from "lucide-react";
 
-const AddPortfolio = () => {
+const CreatePortfolio = () => {
     const [portfolioName, setPortfolioName] = useState("");
     const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
     const [isAdding, setIsAdding] = useState(false);
@@ -93,4 +93,4 @@ const AddPortfolio = () => {
     );
 };
 
-export default AddPortfolio;
+export default CreatePortfolio;

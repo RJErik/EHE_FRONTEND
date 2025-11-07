@@ -1,10 +1,10 @@
-// src/context/AutomatedTradeWebSocketContext.jsx
+// src/context/AutomatedTradeRuleWebSocketContext.jsx
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
 
 // Create context
-const AutomatedTradeWebSocketContext = createContext(null);
+const AutomatedTradeRuleWebSocketContext = createContext(null);
 
 export function AutomatedTradeWebSocketProvider({ children }) {
     const [isConnected, setIsConnected] = useState(false);
@@ -169,15 +169,15 @@ export function AutomatedTradeWebSocketProvider({ children }) {
     };
 
     return (
-        <AutomatedTradeWebSocketContext.Provider value={contextValue}>
+        <AutomatedTradeRuleWebSocketContext.Provider value={contextValue}>
             {children}
-        </AutomatedTradeWebSocketContext.Provider>
+        </AutomatedTradeRuleWebSocketContext.Provider>
     );
 }
 
 // Hook to use the automated trade WebSocket context
 export function useAutomatedTradeWebSocket() {
-    const context = useContext(AutomatedTradeWebSocketContext);
+    const context = useContext(AutomatedTradeRuleWebSocketContext);
     if (!context) {
         throw new Error('useAutomatedTradeWebSocket must be used within an AutomatedTradeWebSocketProvider');
     }

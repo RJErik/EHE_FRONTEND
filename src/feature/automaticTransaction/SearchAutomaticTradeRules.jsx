@@ -1,4 +1,4 @@
-// src/components/automaticTransaction/SearchAutomaticTransactions.jsx
+// src/components/automaticTransaction/SearchAutomaticTradeRules.jsx
 import { useState } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -8,9 +8,9 @@ import { Label } from "../../components/ui/label.jsx";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useStockData } from "../../hooks/useStockData.js";
 import { useTrading } from "../../hooks/useTrading.js";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeContext.jsx";
+import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
 
-const SearchAutomaticTransactions = () => {
+const SearchAutomaticTradeRules = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
 
@@ -307,4 +307,4 @@ const SearchAutomaticTransactions = () => {
     );
 };
 
-export default SearchAutomaticTransactions;
+export default SearchAutomaticTradeRules;

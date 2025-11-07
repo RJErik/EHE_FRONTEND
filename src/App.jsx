@@ -4,17 +4,17 @@ import Home from "./pages/Home";
 import Account from "./pages/Account";
 import StockMarket from "./pages/StockMarket";
 import Alerts from "./pages/Alerts.jsx";
-import AutomaticTransactions from "./pages/AutomaticTransactions.jsx";
-import Portfolio from "./pages/Portfolio";
-import Watchlist from "./pages/Watchlist";
+import AutomaticTradeRules from "./pages/AutomaticTradeRules.jsx";
+import Portfolios from "./pages/Portfolios.jsx";
+import WatchlistItems from "./pages/WatchlistItems.jsx";
 import { Toaster } from "./components/ui/toaster";
 import { WebSocketProvider } from "./context/CandleWebSocketContext";
 import { AlertWebSocketProvider } from "./context/AlertWebSocketContext";
 import WatchlistTicker from "@/feature/watchlist/WatchlistTicker";
-import { WatchlistProvider } from "./context/WatchlistContext";
+import { WatchlistProvider } from "./context/WatchlistItemsContext.jsx";
 import Header from "./feature/Header.jsx";
-import { AutomaticTradeProvider } from "@/context/AutomaticTradeContext.jsx";
-import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeWebSocketContext";
+import { AutomaticTradeProvider } from "@/context/AutomaticTradeRulesContext.jsx";
+import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeRuleWebSocketContext.jsx";
 
 function App() {
     return (
@@ -37,11 +37,11 @@ function App() {
                                             <Routes>
                                                 <Route path="/" element={<Home />} />
                                                 <Route path="/account" element={<Account />} />
-                                                <Route path="/portfolio" element={<Portfolio />} />
+                                                <Route path="/portfolios" element={<Portfolios />} />
                                                 <Route path="/stock-market" element={<StockMarket />} />
                                                 <Route path="/alerts" element={<Alerts />} />
-                                                <Route path="/automatic-transactions" element={<AutomaticTransactions />} />
-                                                <Route path="/watchlist" element={<Watchlist />} />
+                                                <Route path="/automatic-trade-rules" element={<AutomaticTradeRules />} />
+                                                <Route path="/watchlist-items" element={<WatchlistItems />} />
                                                 {/* Redirect any unknown routes to home */}
                                                 <Route path="*" element={<Navigate to="/" replace />} />
                                             </Routes>

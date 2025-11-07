@@ -1,9 +1,9 @@
-// src/hooks/useAutomaticTrade.js
+// src/hooks/useAutomaticTradeRules.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
-export function useAutomaticTrade() {
+export function useAutomaticTradeRules() {
     const [automaticTradeRules, setAutomaticTradeRules] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);

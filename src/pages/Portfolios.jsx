@@ -1,14 +1,14 @@
-// src/pages/Portfolio.jsx
+// src/pages/Portfolios.jsx
 import { useState } from "react";
-import SearchPortfolio from "@/feature/portfolio/SearchPortfolio.jsx";
-import AddPortfolio from "@/feature/portfolio/AddPortfolio.jsx";
-import PortfoliosDisplay from "@/feature/portfolio/PortfoliosDisplay.jsx";
+import SearchPortfolios from "@/feature/portfolio/SearchPortfolios.jsx";
+import CreatePortfolio from "@/feature/portfolio/CreatePortfolio.jsx";
+import PortfolioList from "@/feature/portfolio/PortfolioList.jsx";
 import PortfolioDetail from "./PortfolioDetail";
 import { Button } from "../components/ui/button";
-import { PortfolioProvider } from "../context/PortfolioContext";
+import { PortfolioProvider } from "../context/PortfoliosContext.jsx";
 import { useNavigate } from "react-router-dom";
 
-const Portfolio = () => {
+const Portfolios = () => {
     const navigate = useNavigate();
     const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
 
@@ -57,12 +57,12 @@ const Portfolio = () => {
                                 <Button className="w-full mb-4" onClick={() => navigate("/account")}>
                                     Manage API Keys
                                 </Button>
-                                <SearchPortfolio />
-                                <AddPortfolio />
+                                <SearchPortfolios />
+                                <CreatePortfolio />
                             </div>
 
                             <div className="w-full md:w-3/4">
-                                <PortfoliosDisplay onSelectPortfolio={handlePortfolioSelect} />
+                                <PortfolioList onSelectPortfolio={handlePortfolioSelect} />
                             </div>
                         </div>
                     </PortfolioProvider>
@@ -72,4 +72,4 @@ const Portfolio = () => {
     );
 };
 
-export default Portfolio;
+export default Portfolios;

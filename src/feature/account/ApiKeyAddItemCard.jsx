@@ -1,9 +1,9 @@
-// src/components/account/ApiKeyAddCard.jsx
+// src/components/account/ApiKeyAddItemCard.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Plus } from "lucide-react";
 
-const ApiKeyAddCard = ({ onClick }) => {
+const ApiKeyAddItemCard = ({ onClick }) => {
     return (
         <Card className="w-full mb-3 border-dashed">
             <CardContent className="flex items-center justify-center p-4 cursor-pointer" onClick={onClick}>
@@ -15,4 +15,4 @@ const ApiKeyAddCard = ({ onClick }) => {
     );
 };
 
-export default ApiKeyAddCard;
+export default ApiKeyAddItemCard;

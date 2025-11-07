@@ -1,9 +1,9 @@
-// src/pages/AutomaticTransactions.jsx
-import SearchAutomaticTransactions from "@/feature/automaticTransaction/SearchAutomaticTransactions.jsx";
-import CreateAutomaticTransaction from "@/feature/automaticTransaction/CreateAutomaticTransaction.jsx";
-import AutomaticTransactionList from "@/feature/automaticTransaction/AutomaticTransactionList.jsx";
+// src/pages/AutomaticTradeRules.jsx
+import SearchAutomaticTradeRules from "@/feature/automaticTransaction/SearchAutomaticTradeRules.jsx";
+import CreateAutomaticTradeRule from "@/feature/automaticTransaction/CreateAutomaticTradeRule.jsx";
+import AutomaticTradeRuleList from "@/feature/automaticTransaction/AutomaticTradeRuleList.jsx";
 
-const AutomaticTransactions = () => {
+const AutomaticTradeRules = () => {
     return (
         <div className="min-h-screen flex flex-col">
             <main className="flex-1 p-4">
@@ -13,13 +13,13 @@ const AutomaticTransactions = () => {
                     <div className="flex flex-col md:flex-row gap-6">
                         {/* Left section - Search and Create */}
                         <div className="w-full md:w-1/3">
-                            <SearchAutomaticTransactions />
-                            <CreateAutomaticTransaction />
+                            <SearchAutomaticTradeRules />
+                            <CreateAutomaticTradeRule />
                         </div>
 
                         {/* Right section - List of automated trade rules */}
                         <div className="w-full md:w-2/3">
-                            <AutomaticTransactionList />
+                            <AutomaticTradeRuleList />
                         </div>
                     </div>
                 </div>
@@ -28,4 +28,4 @@ const AutomaticTransactions = () => {
     );
 };
 
-export default AutomaticTransactions;
+export default AutomaticTradeRules;

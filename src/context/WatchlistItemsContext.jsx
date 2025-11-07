@@ -1,9 +1,9 @@
-// src/context/WatchlistContext.jsx
+// src/context/WatchlistItemsContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useWatchlist as useWatchlistHook } from '../hooks/useWatchlist';
+import { useWatchlistItems as useWatchlistHook } from '../hooks/useWatchlistItems.js';
 
 // Create the context
-const WatchlistContext = createContext(null);
+const WatchlistItemsContext = createContext(null);
 
 // Provider component
 export function WatchlistProvider({ children }) {
@@ -24,7 +24,7 @@ export function WatchlistProvider({ children }) {
 
     // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
-        console.log('[WatchlistContext] Refreshing with last search:', lastSearchParamsRef.current);
+        console.log('[WatchlistItemsContext] Refreshing with last search:', lastSearchParamsRef.current);
 
         if (lastSearchParamsRef.current.type === 'search') {
             watchlistData.searchWatchlistItems(
@@ -66,17 +66,17 @@ export function WatchlistProvider({ children }) {
     };
 
     return (
-        <WatchlistContext.Provider value={contextValue}>
+        <WatchlistItemsContext.Provider value={contextValue}>
             {children}
-        </WatchlistContext.Provider>
+        </WatchlistItemsContext.Provider>
     );
 }
 
 // Custom hook to use the watchlist context
 export function useWatchlist() {
-    const context = useContext(WatchlistContext);
+    const context = useContext(WatchlistItemsContext);
     if (!context) {
-        throw new Error('useWatchlist must be used within a WatchlistProvider');
+        throw new Error('useWatchlistItems must be used within a WatchlistProvider');
     }
     return context;
 }

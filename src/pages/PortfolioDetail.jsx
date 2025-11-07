@@ -3,12 +3,12 @@ import PortfolioDetailHeader from "@/feature/portfolioDetail/PortfolioDetailHead
 import PortfolioCompositionChart from "@/feature/portfolioDetail/PortfolioCompositionChart.jsx";
 import PortfolioCompositionList from "@/feature/portfolioDetail/PortfolioCompositionList.jsx";
 import PortfolioDivisionChart from "@/feature/portfolioDetail/PortfolioDivisionChart.jsx";
-import { usePortfolio } from "../hooks/usePortfolio";
+import { usePortfolios } from "../hooks/usePortfolios.js";
 import { Loader2 } from "lucide-react";
 
 const PortfolioDetail = ({portfolioId }) => {
     const [portfolioData, setPortfolioData] = useState(null);
-    const { isLoading, error, fetchPortfolioDetails } = usePortfolio();
+    const { isLoading, error, fetchPortfolioDetails } = usePortfolios();
 
     useEffect(() => {
         const loadPortfolioDetails = async () => {

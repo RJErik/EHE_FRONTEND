@@ -1,13 +1,13 @@
-// src/context/PortfolioContext.jsx
+// src/context/PortfoliosContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { usePortfolio } from '../hooks/usePortfolio';
+import { usePortfolios } from '../hooks/usePortfolios.js';
 
 // Create the context
-const PortfolioContext = createContext(null);
+const PortfoliosContext = createContext(null);
 
 // Provider component
 export function PortfolioProvider({ children }) {
-    const portfolioData = usePortfolio();
+    const portfolioData = usePortfolios();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
     // Use a ref for last search params to prevent unnecessary renders
@@ -25,7 +25,7 @@ export function PortfolioProvider({ children }) {
 
     // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
-        console.log('[PortfolioContext] Refreshing with last search:', lastSearchParamsRef.current);
+        console.log('[PortfoliosContext] Refreshing with last search:', lastSearchParamsRef.current);
 
         if (lastSearchParamsRef.current.type === 'search') {
             portfolioData.searchPortfolios(
@@ -70,15 +70,15 @@ export function PortfolioProvider({ children }) {
     };
 
     return (
-        <PortfolioContext.Provider value={contextValue}>
+        <PortfoliosContext.Provider value={contextValue}>
             {children}
-        </PortfolioContext.Provider>
+        </PortfoliosContext.Provider>
     );
 }
 
 // Custom hook to use the portfolio context
 export function usePortfolioContext() {
-    const context = useContext(PortfolioContext);
+    const context = useContext(PortfoliosContext);
     if (!context) {
         throw new Error('usePortfolioContext must be used within a PortfolioProvider');
     }

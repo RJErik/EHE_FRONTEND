@@ -1,23 +1,24 @@
-// src/hooks/useAlert.js
+// src/hooks/useWatchlistItems.js
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
-export function useAlert() {
-    const [alerts, setAlerts] = useState([]);
+export function useWatchlistItems() {
+    const [watchlistItems, setWatchlistItems] = useState([]);
+    const [watchlistCandles, setWatchlistCandles] = useState({});
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
     const { refreshToken } = useJwtRefresh();
 
-    // Fetch all alerts
-    const fetchAlerts = useCallback(async () => {
+    // Fetch all watchlist items
+    const fetchWatchlistItems = useCallback(async () => {
         setIsLoading(true);
         setError(null);
 
         try {
-            console.log("Fetching alerts...");
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            console.log("Fetching watchlist items...");
+            let response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -30,12 +31,11 @@ export function useAlert() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch("http://localhost:8080/api/user/watchlists", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -43,7 +43,6 @@ export function useAlert() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -54,25 +53,31 @@ export function useAlert() {
             }
 
             const data = await response.json();
-            console.log("Alerts received:", data);
+            console.log("WatchlistItems items received:", data);
 
             if (data.success) {
-                setAlerts(data.alerts || []);
+                setWatchlistItems(data.watchlists || []);
+
+                // Explicitly fetch candles after items are updated
+                if (data.watchlists && data.watchlists.length > 0) {
+                    console.log("Fetching candles for updated watchlist...");
+                    await fetchWatchlistCandles();
+                }
             } else {
                 toast({
                     title: "Error",
-                    description: data.message || "Failed to fetch alerts",
+                    description: data.message || "Failed to fetch watchlist items",
                     variant: "destructive",
                 });
-                setError(data.message || "Failed to fetch alerts");
+                setError(data.message || "Failed to fetch watchlist items");
             }
         } catch (err) {
-            console.error("Error fetching alerts:", err);
+            console.error("Error fetching watchlist items:", err);
             if (!err.message?.includes("Session expired")) {
                 setError("Failed to connect to server. Please try again later.");
                 toast({
                     title: "Connection Error",
-                    description: "Failed to fetch alerts. Server may be unavailable.",
+                    description: "Failed to fetch watchlist items. Server may be unavailable.",
                     variant: "destructive",
                 });
             }
@@ -81,12 +86,70 @@ export function useAlert() {
         }
     }, [toast, refreshToken]);
 
-    // Add alert
-    const addAlert = async (platform, symbol, conditionType, thresholdValue) => {
-        if (!platform || !symbol || !conditionType || !thresholdValue) {
+    // Fetch latest candles for watchlist items
+    const fetchWatchlistCandles = useCallback(async () => {
+        if (watchlistItems.length === 0) return;
+
+        try {
+            console.log("Fetching candles for watchlist items...");
+            let response = await fetch("http://localhost:8080/api/user/watchlists/candles", {
+                method: "GET",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
+
+            // Handle 401 - Token expired
+            if (response.status === 401) {
+                try {
+                    await refreshToken();
+                } catch (refreshError) {
+                    console.error("Token refresh failed during candles fetch:", refreshError);
+                    return;
+                }
+
+                // Retry the original request
+                response = await fetch("http://localhost:8080/api/user/watchlists/candles", {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (response.status === 401) {
+                    console.error("Session expired. Unable to fetch candles.");
+                    return;
+                }
+            }
+
+            if (!response.ok) {
+                console.error(`Error fetching candles: ${response.status} ${response.statusText}`);
+                return;
+            }
+
+            const data = await response.json();
+            console.log("Candles received:", data);
+
+            if (data.success) {
+                const candlesMap = {};
+                (data.candles || []).forEach(candle => {
+                    candlesMap[candle.watchlistItemId] = candle;
+                });
+                setWatchlistCandles(candlesMap);
+            }
+        } catch (err) {
+            console.error("Error fetching watchlist candles:", err);
+        }
+    }, [watchlistItems, refreshToken]);
+
+    // Add item to watchlist
+    const addWatchlistItem = useCallback(async (platform, symbol) => {
+        if (!platform || !symbol) {
             toast({
                 title: "Validation Error",
-                description: "All fields are required",
+                description: "Both platform and symbol are required",
                 variant: "destructive",
             });
             return false;
@@ -96,19 +159,14 @@ export function useAlert() {
         setError(null);
 
         try {
-            console.log(`Adding alert for ${symbol} from ${platform}...`);
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            console.log(`Adding ${symbol} from ${platform} to watchlist...`);
+            let response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "POST",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    platform,
-                    symbol,
-                    conditionType,
-                    thresholdValue: parseFloat(thresholdValue)
-                }),
+                body: JSON.stringify({ platform, symbol }),
             });
 
             // Handle 401 - Token expired
@@ -116,26 +174,19 @@ export function useAlert() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch("http://localhost:8080/api/user/watchlists", {
                     method: "POST",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        platform,
-                        symbol,
-                        conditionType,
-                        thresholdValue: parseFloat(thresholdValue)
-                    }),
+                    body: JSON.stringify({ platform, symbol }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -149,29 +200,32 @@ export function useAlert() {
             console.log("Add response:", data);
 
             if (data.success) {
-                // ✨ CHANGE: Update state directly instead of re-fetching
-                setAlerts(prevAlerts => [...prevAlerts, data.alert]);
+                setWatchlistItems(prev => [...prev, data.watchlist]);
+
+                // Fetch candles for the new item if needed
+                await fetchWatchlistCandles();
                 toast({
                     title: "Success",
-                    description: data.message || `Added alert for ${symbol} from ${platform}`,
+                    description: data.message || `Added ${symbol} from ${platform} to watchlist`,
                 });
+
                 return true;
             } else {
                 toast({
                     title: "Error",
-                    description: data.message || "Failed to add alert",
+                    description: data.message || "Failed to add item to watchlist",
                     variant: "destructive",
                 });
-                setError(data.message || "Failed to add alert");
+                setError(data.message || "Failed to add item to watchlist");
                 return false;
             }
         } catch (err) {
-            console.error("Error adding alert:", err);
+            console.error("Error adding watchlist item:", err);
             if (!err.message?.includes("Session expired")) {
                 setError("Failed to connect to server. Please try again later.");
                 toast({
                     title: "Connection Error",
-                    description: "Failed to add alert. Server may be unavailable.",
+                    description: "Failed to add item to watchlist. Server may be unavailable.",
                     variant: "destructive",
                 });
             }
@@ -179,16 +233,16 @@ export function useAlert() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
-    // Remove alert
-    const removeAlert = async (id) => {
+    // Remove item from watchlist
+    const removeWatchlistItem = useCallback(async (id) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            console.log(`Removing alert ${id}...`);
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            console.log(`Removing item ${id} from watchlist...`);
+            let response = await fetch("http://localhost:8080/api/user/watchlists", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -202,12 +256,11 @@ export function useAlert() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch("http://localhost:8080/api/user/watchlists", {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -216,7 +269,6 @@ export function useAlert() {
                     body: JSON.stringify({ id }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -230,30 +282,36 @@ export function useAlert() {
             console.log("Remove response:", data);
 
             if (data.success) {
-                // Update local state
-                setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== id));
+                // First update local state for immediate UI feedback
+                setWatchlistItems(prev => prev.filter(item => item.id !== id));
+                setWatchlistCandles(prev => {
+                    const updated = {...prev};
+                    delete updated[id];
+                    return updated;
+                });
 
                 toast({
                     title: "Success",
-                    description: data.message || "Alert removed successfully",
+                    description: data.message || "Item removed from watchlist",
                 });
+
                 return true;
             } else {
                 toast({
                     title: "Error",
-                    description: data.message || "Failed to remove alert",
+                    description: data.message || "Failed to remove item from watchlist",
                     variant: "destructive",
                 });
-                setError(data.message || "Failed to remove alert");
+                setError(data.message || "Failed to remove item from watchlist");
                 return false;
             }
         } catch (err) {
-            console.error("Error removing alert:", err);
+            console.error("Error removing watchlist item:", err);
             if (!err.message?.includes("Session expired")) {
                 setError("Failed to connect to server. Please try again later.");
                 toast({
                     title: "Connection Error",
-                    description: "Failed to remove alert. Server may be unavailable.",
+                    description: "Failed to remove item from watchlist. Server may be unavailable.",
                     variant: "destructive",
                 });
             }
@@ -261,26 +319,27 @@ export function useAlert() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
-    // Search alerts
-    const searchAlerts = async (platform, symbol, conditionType) => {
+    // Search watchlist items
+    const searchWatchlistItems = useCallback(async (platform, symbol) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            console.log(`Searching alerts: platform=${platform}, symbol=${symbol}, conditionType=${conditionType}`);
+            const apiPlatform = platform === "_any_" ? "" : platform;
+            const apiSymbol = symbol === "_any_" ? "" : symbol;
 
-            let response = await fetch("http://localhost:8080/api/user/alerts/search", {
+            console.log(`Searching watchlist: platform=${apiPlatform}, symbol=${apiSymbol}`);
+            let response = await fetch("http://localhost:8080/api/user/watchlists/search", {
                 method: "POST",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    platform: platform === "_any_" ? "" : platform,
-                    symbol: symbol === "_any_" ? "" : symbol,
-                    conditionType: conditionType === "_any_" ? "" : conditionType
+                    platform: apiPlatform,
+                    symbol: apiSymbol
                 }),
             });
 
@@ -289,25 +348,22 @@ export function useAlert() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts/search", {
+                response = await fetch("http://localhost:8080/api/user/watchlists/search", {
                     method: "POST",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        platform: platform === "_any_" ? "" : platform,
-                        symbol: symbol === "_any_" ? "" : symbol,
-                        conditionType: conditionType === "_any_" ? "" : conditionType
+                        platform: apiPlatform,
+                        symbol: apiSymbol
                     }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -321,24 +377,29 @@ export function useAlert() {
             console.log("Search results:", data);
 
             if (data.success) {
-                setAlerts(data.alerts || []);
-                return data.alerts || [];
+                setWatchlistItems(data.watchlists || []);
+
+                if (data.watchlists && data.watchlists.length > 0) {
+                    await fetchWatchlistCandles();
+                }
+
+                return data.watchlists || [];
             } else {
                 toast({
                     title: "Error",
-                    description: data.message || "Failed to search alerts",
+                    description: data.message || "Failed to search watchlist items",
                     variant: "destructive",
                 });
-                setError(data.message || "Failed to search alerts");
+                setError(data.message || "Failed to search watchlist items");
                 return [];
             }
         } catch (err) {
-            console.error("Error searching alerts:", err);
+            console.error("Error searching watchlist items:", err);
             if (!err.message?.includes("Session expired")) {
                 setError("Failed to connect to server. Please try again later.");
                 toast({
                     title: "Connection Error",
-                    description: "Failed to search alerts. Server may be unavailable.",
+                    description: "Failed to search watchlist items. Server may be unavailable.",
                     variant: "destructive",
                 });
             }
@@ -346,21 +407,23 @@ export function useAlert() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toast, refreshToken]);
 
     // Initial fetch
     useEffect(() => {
-        console.log("Initial alerts fetch...");
-        fetchAlerts();
-    }, [fetchAlerts]);
+        console.log("Initial watchlist fetch...");
+        fetchWatchlistItems();
+    }, [fetchWatchlistItems]);
 
     return {
-        alerts,
+        watchlistItems,
+        watchlistCandles,
         isLoading,
         error,
-        fetchAlerts,
-        addAlert,
-        removeAlert,
-        searchAlerts
+        fetchWatchlistItems,
+        addWatchlistItem,
+        removeWatchlistItem,
+        searchWatchlistItems,
+        fetchWatchlistCandles,
     };
 }

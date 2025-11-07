@@ -5,10 +5,10 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "../../compone
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs.jsx";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "../../components/ui/alert.jsx";
-import { usePortfolio } from "../../hooks/usePortfolio.js";
+import { usePortfolios } from "../../hooks/usePortfolios.js";
 
 const PortfolioList = ({ selectedPortfolioId }) => {
-    const { fetchPortfolioDetails, isLoading } = usePortfolio();
+    const { fetchPortfolioDetails, isLoading } = usePortfolios();
     const [portfolioData, setPortfolioData] = useState(null);
 
     useEffect(() => {

@@ -1,9 +1,9 @@
-// src/context/AlertContext.jsx
+// src/context/AlertsContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useAlert as useAlertHook } from '../hooks/useAlert';
+import { useAlerts as useAlertHook } from '../hooks/useAlerts.js';
 
 // Create the context
-const AlertContext = createContext(null);
+const AlertsContext = createContext(null);
 
 // Provider component
 export function AlertProvider({ children }) {
@@ -25,7 +25,7 @@ export function AlertProvider({ children }) {
 
     // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
-        console.log('[AlertContext] Refreshing with last search:', lastSearchParamsRef.current);
+        console.log('[AlertsContext] Refreshing with last search:', lastSearchParamsRef.current);
 
         if (lastSearchParamsRef.current.type === 'search') {
             alertData.searchAlerts(
@@ -70,17 +70,17 @@ export function AlertProvider({ children }) {
     };
 
     return (
-        <AlertContext.Provider value={contextValue}>
+        <AlertsContext.Provider value={contextValue}>
             {children}
-        </AlertContext.Provider>
+        </AlertsContext.Provider>
     );
 }
 
 // Custom hook to use the alert context
 export function useAlert() {
-    const context = useContext(AlertContext);
+    const context = useContext(AlertsContext);
     if (!context) {
-        throw new Error('useAlert must be used within an AlertProvider');
+        throw new Error('useAlerts must be used within an AlertProvider');
     }
     return context;
 }

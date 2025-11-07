@@ -1,13 +1,13 @@
-// src/context/AutomaticTradeContext.jsx
+// src/context/AutomaticTradeRulesContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useAutomaticTrade } from '../hooks/useAutomaticTrade';
+import { useAutomaticTradeRules } from '../hooks/useAutomaticTradeRules.js';
 
 // Create the context
-const AutomaticTradeContext = createContext(null);
+const AutomaticTradeRulesContext = createContext(null);
 
 // Provider component
 export function AutomaticTradeProvider({ children }) {
-    const automaticTradeData = useAutomaticTrade();
+    const automaticTradeData = useAutomaticTradeRules();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
     // Use a ref for last search params to prevent unnecessary renders
@@ -30,7 +30,7 @@ export function AutomaticTradeProvider({ children }) {
 
     // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
-        console.log('[AutomaticTradeContext] Refreshing with last search:', lastSearchParamsRef.current);
+        console.log('[AutomaticTradeRulesContext] Refreshing with last search:', lastSearchParamsRef.current);
 
         if (lastSearchParamsRef.current.type === 'search') {
             automaticTradeData.searchAutomaticTradeRules(
@@ -108,15 +108,15 @@ export function AutomaticTradeProvider({ children }) {
     };
 
     return (
-        <AutomaticTradeContext.Provider value={contextValue}>
+        <AutomaticTradeRulesContext.Provider value={contextValue}>
             {children}
-        </AutomaticTradeContext.Provider>
+        </AutomaticTradeRulesContext.Provider>
     );
 }
 
 // Custom hook to use the automatic trade context
 export function useAutomaticTradeContext() {
-    const context = useContext(AutomaticTradeContext);
+    const context = useContext(AutomaticTradeRulesContext);
     if (!context) {
         throw new Error('useAutomaticTradeContext must be used within an AutomaticTradeProvider');
     }

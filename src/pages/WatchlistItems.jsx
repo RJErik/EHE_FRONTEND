@@ -1,8 +1,8 @@
-import SearchWatchlist from "@/feature/watchlist/SearchWatchlist.jsx";
-import AddWatchlist from "@/feature/watchlist/AddWatchlist.jsx";
-import WatchlistDisplay from "@/feature/watchlist/WatchlistDisplay.jsx";
+import SearchWatchlistItems from "@/feature/watchlist/SearchWatchlistItems.jsx";
+import CreateWatchlistItem from "@/feature/watchlist/CreateWatchlistItem.jsx";
+import WatchlistItemList from "@/feature/watchlist/WatchlistItemList.jsx";
 
-const Watchlist = () => {
+const WatchlistItems = () => {
     return (
         <div className="flex flex-col">
             <main className="flex-1 p-4">
@@ -12,13 +12,13 @@ const Watchlist = () => {
                     <div className="flex flex-col md:flex-row gap-6">
                         {/* Left section - Search and Add */}
                         <div className="w-full md:w-1/4">
-                            <SearchWatchlist />
-                            <AddWatchlist />
+                            <SearchWatchlistItems />
+                            <CreateWatchlistItem />
                         </div>
 
                         {/* Right section - List of watchlist items */}
                         <div className="w-full md:w-3/4">
-                            <WatchlistDisplay />
+                            <WatchlistItemList />
                         </div>
                     </div>
                 </div>
@@ -27,4 +27,4 @@ const Watchlist = () => {
     );
 };
 
-export default Watchlist;
+export default WatchlistItems;

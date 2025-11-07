@@ -1,8 +1,8 @@
 // src/pages/Alerts.jsx
 import SearchAlerts from "@/feature/alert/SearchAlerts.jsx";
 import CreateAlert from "@/feature/alert/CreateAlert.jsx";
-import AlertsList from "@/feature/alert/AlertsList.jsx";
-import { AlertProvider } from "../context/AlertContext";
+import AlertList from "@/feature/alert/AlertList.jsx";
+import { AlertProvider } from "../context/AlertsContext.jsx";
 
 const Alerts = () => {
     return (
@@ -21,7 +21,7 @@ const Alerts = () => {
 
                             {/* Right section - List of alerts */}
                             <div className="w-full md:w-3/4">
-                                <AlertsList />
+                                <AlertList />
                             </div>
                         </div>
                     </div>

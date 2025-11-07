@@ -1,11 +1,11 @@
-// src/components/portfolio/PortfoliosDisplay.jsx
+// src/components/portfolio/PortfolioList.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
-import { usePortfolioContext } from "../../context/PortfolioContext.jsx";
+import { usePortfolioContext } from "../../context/PortfoliosContext.jsx";
 import { Loader2 } from "lucide-react";
 import PortfolioItemCard from "./PortfolioItemCard.jsx";
 import { useEffect, useRef } from "react";
 
-const PortfoliosDisplay = ({ onSelectPortfolio }) => {
+const PortfolioList = ({ onSelectPortfolio }) => {
     const {
         portfolios,
         isLoading,
@@ -22,7 +22,7 @@ const PortfoliosDisplay = ({ onSelectPortfolio }) => {
     // Force refresh when the component mounts
     useEffect(() => {
         if (!initialFetchDoneRef.current) {
-            console.log("PortfoliosDisplay mounted - fetching items");
+            console.log("PortfolioList mounted - fetching items");
             fetchPortfolios();
             initialFetchDoneRef.current = true;
         }
@@ -90,4 +90,4 @@ const PortfoliosDisplay = ({ onSelectPortfolio }) => {
     );
 };
 
-export default PortfoliosDisplay;
+export default PortfolioList;

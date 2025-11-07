@@ -1,12 +1,12 @@
-// src/components/alert/AlertsList.jsx
+// src/components/alert/AlertList.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
-import { useAlert } from "../../context/AlertContext.jsx";
+import { useAlert } from "../../context/AlertsContext.jsx";
 import { useAlertWebSocket } from "../../context/AlertWebSocketContext.jsx";
 import { Loader2 } from "lucide-react";
 import AlertItemCard from "./AlertItemCard.jsx";
 import { useEffect, useCallback, useRef } from "react";
 
-const AlertsList = () => {
+const AlertList = () => {
     const { alerts, isLoading, error, removeAlert, fetchAlerts, refreshLatestSearch, lastUpdate } = useAlert();
     const { registerAlertCallback } = useAlertWebSocket();
 
@@ -16,7 +16,7 @@ const AlertsList = () => {
     // Fetch alerts only on initial mount
     useEffect(() => {
         if (!initialFetchDoneRef.current) {
-            console.log("AlertsList mounted - fetching alerts");
+            console.log("AlertList mounted - fetching alerts");
             fetchAlerts();
             initialFetchDoneRef.current = true;
         }
@@ -24,7 +24,7 @@ const AlertsList = () => {
 
     // Memoize the alert callback to prevent effect regeneration
     const alertCallback = useCallback((alertMessage) => {
-        console.log('[AlertsList] Received alert notification, refreshing list');
+        console.log('[AlertList] Received alert notification, refreshing list');
         refreshLatestSearch();
     }, [refreshLatestSearch]);
 
@@ -71,4 +71,4 @@ const AlertsList = () => {
     );
 };
 
-export default AlertsList;
+export default AlertList;

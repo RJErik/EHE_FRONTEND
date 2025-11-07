@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button.jsx";
-import { ModeToggle } from "@/feature/Mode-toggle.jsx";
+import { ModeToggle } from "@/feature/ModeToggle.jsx";
 import { Menubar } from "../components/ui/menubar.jsx";
 import LogoutDialog from "./LogoutDialog.jsx";
 import { useLogout } from "../hooks/useLogout.js";
@@ -20,11 +20,11 @@ const Header = ({ userName = "User" }) => {
         switch (path) {
             case '/': return 'home';
             case '/account': return 'account';
-            case '/portfolio': return 'portfolio';
+            case '/portfolios': return 'portfolios';
             case '/stock-market': return 'stockMarket';
             case '/alerts': return 'alerts';
-            case '/automatic-transactions': return 'automaticTransactions';
-            case '/watchlist': return 'watchlist';
+            case '/automatic-trade-rules': return 'automaticTradeRules';
+            case '/watchlistItems': return 'watchlist-items';
             default: return 'home';
         }
     };
@@ -35,11 +35,11 @@ const Header = ({ userName = "User" }) => {
         const pathMap = {
             'home': '/',
             'account': '/account',
-            'portfolio': '/portfolio',
+            'portfolios': '/portfolios',
             'stockMarket': '/stock-market',
             'alerts': '/alerts',
-            'automaticTransactions': '/automatic-transactions',
-            'watchlist': '/watchlist'
+            'automaticTradeRules': '/automatic-trade-rules',
+            'watchlistItems': '/watchlist-items'
         };
 
         const path = pathMap[page] || '/';
@@ -84,8 +84,8 @@ const Header = ({ userName = "User" }) => {
                         </Button>
                         <Button
                             variant="outline"
-                            className={currentPage === 'portfolio' ? 'bg-muted' : ''}
-                            onClick={() => handleNavigation("portfolio")}
+                            className={currentPage === 'portfolios' ? 'bg-muted' : ''}
+                            onClick={() => handleNavigation("portfolios")}
                         >
                             Portfolio
                         </Button>
@@ -105,15 +105,15 @@ const Header = ({ userName = "User" }) => {
                         </Button>
                         <Button
                             variant="outline"
-                            className={currentPage === 'automaticTransactions' ? 'bg-muted' : ''}
-                            onClick={() => handleNavigation("automaticTransactions")}
+                            className={currentPage === 'automaticTradeRules' ? 'bg-muted' : ''}
+                            onClick={() => handleNavigation("automaticTradeRules")}
                         >
-                            Automatic Transactions
+                            Automatic Trade Rule
                         </Button>
                         <Button
                             variant="outline"
-                            className={currentPage === 'watchlist' ? 'bg-muted' : ''}
-                            onClick={() => handleNavigation("watchlist")}
+                            className={currentPage === 'watchlistItems' ? 'bg-muted' : ''}
+                            onClick={() => handleNavigation("watchlistItems")}
                         >
                             Watchlist
                         </Button>

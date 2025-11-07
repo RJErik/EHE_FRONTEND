@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Separator } from "../../components/ui/separator.jsx";
 import { cn } from "../../lib/utils.js";
 
-const AutomaticTransactionItemCard = ({ rule, onRemove }) => {
+const AutomaticTradeRuleItemCard = ({ rule, onRemove }) => {
     const isPriceAbove = rule.conditionType === "PRICE_ABOVE";
     const isPriceBelow = rule.conditionType === "PRICE_BELOW";
     const isBuy = rule.actionType === "BUY";
@@ -67,4 +67,4 @@ const AutomaticTransactionItemCard = ({ rule, onRemove }) => {
     );
 };
 
-export default AutomaticTransactionItemCard;
+export default AutomaticTradeRuleItemCard;

@@ -1,10 +1,10 @@
 import { Card, CardContent } from "../../components/ui/card.jsx";
-import { useWatchlist } from "../../context/WatchlistContext.jsx";
+import { useWatchlist } from "../../context/WatchlistItemsContext.jsx";
 import { Loader2 } from "lucide-react";
 import WatchlistItemCard from "./WatchlistItemCard.jsx";
 import { useEffect, useRef } from "react";
 
-const WatchlistDisplay = () => {
+const WatchlistItemList = () => {
     const { watchlistItems, isLoading, error, removeWatchlistItem, fetchWatchlistItems, lastUpdate } = useWatchlist();
 
     // Use a ref to prevent multiple fetches on initial render
@@ -13,7 +13,7 @@ const WatchlistDisplay = () => {
     // Force refresh when the component mounts
     useEffect(() => {
         if (!initialFetchDoneRef.current) {
-            console.log("WatchlistDisplay mounted - fetching items");
+            console.log("WatchlistItemList mounted - fetching items");
             fetchWatchlistItems();
             initialFetchDoneRef.current = true;
         }
@@ -51,4 +51,4 @@ const WatchlistDisplay = () => {
     );
 };
 
-export default WatchlistDisplay;
+export default WatchlistItemList;

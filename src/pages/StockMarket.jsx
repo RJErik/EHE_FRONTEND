@@ -29,7 +29,7 @@ const StockMarket = () => {
                                 </div>
                             </div>
 
-                            {/* Right section - Portfolio and Trading */}
+                            {/* Right section - Portfolios and Trading */}
                             <div className="w-full md:w-1/3 space-y-4">
                                 <PortfolioSelector
                                     selectedPortfolioId={selectedPortfolioId}

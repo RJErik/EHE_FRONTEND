@@ -1,9 +1,9 @@
-// src/hooks/usePortfolio.js
+// src/hooks/usePortfolios.js
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
-export function usePortfolio() {
+export function usePortfolios() {
     const [portfolios, setPortfolios] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -84,7 +84,7 @@ export function usePortfolio() {
         if (!portfolioId) {
             toast({
                 title: "Validation Error",
-                description: "Portfolio ID is required",
+                description: "Portfolios ID is required",
                 variant: "destructive",
             });
             return null;
@@ -136,7 +136,7 @@ export function usePortfolio() {
             }
 
             const data = await response.json();
-            console.log("Portfolio details received:", data);
+            console.log("Portfolios details received:", data);
 
             if (data.success) {
                 return data.portfolio;
@@ -170,7 +170,7 @@ export function usePortfolio() {
         if (!portfolioName || !apiKeyId) {
             toast({
                 title: "Validation Error",
-                description: "Portfolio name and API key are required",
+                description: "Portfolios name and API key are required",
                 variant: "destructive",
             });
             return false;
@@ -309,7 +309,7 @@ export function usePortfolio() {
 
                 toast({
                     title: "Success",
-                    description: data.message || "Portfolio deleted successfully",
+                    description: data.message || "Portfolios deleted successfully",
                 });
 
                 return true;

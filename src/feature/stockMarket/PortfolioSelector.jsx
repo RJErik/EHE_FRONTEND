@@ -2,10 +2,10 @@ import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { Label } from "../../components/ui/label.jsx";
 import { Loader2 } from "lucide-react";
-import { usePortfolio } from "../../hooks/usePortfolio.js";
+import { usePortfolios } from "../../hooks/usePortfolios.js";
 
 const PortfolioSelector = ({ selectedPortfolioId, onPortfolioChange }) => {
-    const { portfolios, isLoading } = usePortfolio();
+    const { portfolios, isLoading } = usePortfolios();
 
     return (
         <Card className="w-full">

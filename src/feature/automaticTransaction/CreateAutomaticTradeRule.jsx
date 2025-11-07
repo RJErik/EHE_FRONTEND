@@ -1,4 +1,4 @@
-// src/components/automaticTransaction/CreateAutomaticTransaction.jsx
+// src/components/automaticTransaction/CreateAutomaticTradeRule.jsx
 import { useState, useEffect } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -10,9 +10,9 @@ import { useToast } from "../../hooks/use-toast.js";
 import { Loader2 } from "lucide-react";
 import { useStockData } from "../../hooks/useStockData.js";
 import { useTrading } from "../../hooks/useTrading.js";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeContext.jsx";
+import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
 
-const CreateAutomaticTransaction = () => {
+const CreateAutomaticTradeRule = () => {
     // Toast for notifications
     const { toast } = useToast();
 
@@ -490,4 +490,4 @@ const CreateAutomaticTransaction = () => {
     );
 };
 
-export default CreateAutomaticTransaction;
+export default CreateAutomaticTradeRule;

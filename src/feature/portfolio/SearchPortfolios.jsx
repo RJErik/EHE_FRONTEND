@@ -1,14 +1,14 @@
-// src/components/portfolio/SearchPortfolio.jsx
+// src/components/portfolio/SearchPortfolios.jsx
 import { useState } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
-import { usePortfolioContext } from "../../context/PortfolioContext.jsx";
+import { usePortfolioContext } from "../../context/PortfoliosContext.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
 import { Loader2, RefreshCw } from "lucide-react";
 
-const SearchPortfolio = () => {
+const SearchPortfolios = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [minValue, setMinValue] = useState("");
@@ -146,4 +146,4 @@ const SearchPortfolio = () => {
     );
 };
 
-export default SearchPortfolio;
+export default SearchPortfolios;

@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
-import { useAlert } from "../../context/AlertContext.jsx";
+import { useAlert } from "../../context/AlertsContext.jsx";
 import { Loader2, RefreshCw } from "lucide-react";
 
 const SearchAlerts = () => {

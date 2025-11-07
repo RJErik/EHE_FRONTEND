@@ -1,8 +1,23 @@
 import AccountProfile from "@/feature/account/AccountProfile.jsx";
-import ApiKeyManager from "@/feature/account/ApiKeyManager.jsx";
+import ApiKeyList from "@/feature/account/ApiKeyList.jsx";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { Button } from "../components/ui/button.jsx";
+import DeactivateAccountDialog from "@/feature/account/DeactivateAccountDialog.jsx";
+import { useDeactivateAccount } from "../../hooks/useDeactivateAccount.js";
+import { useState } from "react";
 
 const Account = () => {
+    const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+    const { deactivateAccount, isLoading: isDeactivating } = useDeactivateAccount();
+
+    const handleDeactivateClick = () => {
+        setDeactivateDialogOpen(true);
+    };
+
+    const handleDeactivateConfirm = async () => {
+        await deactivateAccount();
+    };
+
     return (
         <div className="min-h-screen flex flex-col">
             <main className="flex-1 p-4">
@@ -34,10 +49,27 @@ const Account = () => {
                     </div>
 
                     <div className="w-full md:w-1/2 md:border-t md:border-l pt-8 md:pt-0 md:pl-8">
-                        <ApiKeyManager />
+                        <ApiKeyList />
                     </div>
                 </div>
+
+                <div className="container mx-auto mt-8">
+                    <Button
+                        variant="destructive"
+                        onClick={handleDeactivateClick}
+                        className="w-full"
+                    >
+                        Deactivate Account
+                    </Button>
+                </div>
             </main>
+
+            <DeactivateAccountDialog
+                open={deactivateDialogOpen}
+                onOpenChange={setDeactivateDialogOpen}
+                onConfirm={handleDeactivateConfirm}
+                isLoading={isDeactivating}
+            />
         </div>
     );
 };
