@@ -8,7 +8,7 @@ import LogoutDialog from "./LogoutDialog.jsx";
 import { useLogout } from "../hooks/useLogout.js";
 import Logo from "../assets/Logo.png";
 
-const Header = ({ userName = "User" }) => {
+const Header = () => {
     const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
     const { logout, isLoading } = useLogout();
     const navigate = useNavigate();
