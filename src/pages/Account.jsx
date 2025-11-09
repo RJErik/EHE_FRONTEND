@@ -3,7 +3,7 @@ import ApiKeyList from "@/feature/account/ApiKeyList.jsx";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Button } from "../components/ui/button.jsx";
 import DeactivateAccountDialog from "@/feature/account/DeactivateAccountDialog.jsx";
-import { useDeactivateAccount } from "../../hooks/useDeactivateAccount.js";
+import { useDeactivateAccount } from "../hooks/useDeactivateAccount.js";
 import { useState } from "react";
 
 const Account = () => {
