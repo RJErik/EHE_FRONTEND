@@ -898,11 +898,12 @@ export function useCandleSubscription() {
 
         try {
             const indRange = computeRequiredIndicatorRange();
-            if (lastIndicatorRequestRef.current === JSON.stringify(indRange)) {
+            const key = indRange ? `${indRange.start}|${indRange.end}|${indicators.length}` : 'none';
+            if (lastIndicatorRequestRef.current === key) {
                 console.log('[useCandleSubscription] Skipping indicator update; range unchanged');
                 return;
             }
-            lastIndicatorRequestRef.current = JSON.stringify(indRange);
+            lastIndicatorRequestRef.current = key;
             await subscribeToIndicatorCandles(platformName, stockSymbol, timeframe);
         } catch (err) {
             console.error("[useCandleSubscription] Failed to update indicator subscription:", err);

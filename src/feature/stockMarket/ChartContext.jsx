@@ -68,6 +68,15 @@ export function ChartProvider({ children }) {
     // Track the last base buffer range and timeframe used for computing indicator ranges.
     // This helps detect when timeframe changed while the base buffer hasn't updated yet.
     const lastIndicatorBasisRef = useRef({ startBuffer: null, endBuffer: null, timeframeInMs: null });
+    // Plan for indicator lookback so we don't keep extending additively on minor updates
+    const indicatorLookbackPlanRef = useRef({
+        baselineStart: null,
+        baselineEnd: null,
+        appliedLookbackMs: 0,
+        targetStart: null,
+        targetEnd: null,
+        timeframeMs: null
+    });
 
     // Snapshot each timeframe change until the base buffer realigns to that timeframe
     // or is reinitialized. While this snapshot is present, indicator range calculation
@@ -574,14 +583,27 @@ export function ChartProvider({ children }) {
     }, [displayCandles, displayedCandles, indicators, calculateMaxLookback, timeframeInMs]);
 
 
-    // Indicator range based on full base buffer, not just the visible window
+    // Indicator range based on a fixed plan so we don't re-extend additively for small updates
     const computeIndicatorRangeForBaseBuffer = useCallback(() => {
         if (!displayCandles.length) return { start: null, end: null, lookback: 0 };
         const maxLookback = calculateMaxLookback(indicators);
         const startBuffer = displayCandles[0]?.timestamp;
         const endBuffer = displayCandles[displayCandles.length - 1]?.timestamp;
         if (!startBuffer || !endBuffer) return { start: null, end: null, lookback: maxLookback };
-        const start = startBuffer - (maxLookback * timeframeInMs);
+
+        // If we have an existing plan for the current timeframe, honor its fixed targets
+        const plan = indicatorLookbackPlanRef.current;
+        const tfOk = plan && plan.timeframeMs === timeframeInMs && plan.appliedLookbackMs >= 0;
+        if (tfOk && plan.targetStart != null && plan.targetEnd != null) {
+            const start = plan.targetStart;
+            // Extend end at least to the planned target, but allow natural growth with new data
+            const end = Math.max(endBuffer, plan.targetEnd);
+            return { start, end, lookback: maxLookback };
+        }
+
+        // Fallback: compute relative to current buffer
+        const applied = maxLookback * timeframeInMs;
+        const start = Math.max(0, startBuffer - applied);
         const end = endBuffer;
         return { start, end, lookback: maxLookback };
     }, [displayCandles, indicators, calculateMaxLookback, timeframeInMs]);
@@ -1293,13 +1315,43 @@ export function ChartProvider({ children }) {
         }
     }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging, calculateRequiredDataRange]);
 
-    // Recalculate indicators when the indicator list itself changes
+    // Recalculate indicators when the indicator list itself changes and set a stable lookback plan
     useEffect(() => {
-        if (!indicators.length) return;
+        if (!indicators.length) {
+            // Clear plan when no indicators
+            indicatorLookbackPlanRef.current = { baselineStart: null, baselineEnd: null, appliedLookbackMs: 0, targetStart: null, targetEnd: null, timeframeMs: timeframeInMs };
+            return;
+        }
+        // Create/refresh the lookback plan against the current buffer baselines
+        try {
+            const maxLookback = calculateMaxLookback(indicators);
+            const baselineStart = displayCandles[0]?.timestamp;
+            const baselineEnd = displayCandles[displayCandles.length - 1]?.timestamp;
+            if (baselineStart && baselineEnd) {
+                const appliedMs = maxLookback * timeframeInMs;
+                const targetStart = Math.max(0, baselineStart - appliedMs);
+                const targetEnd = baselineEnd + appliedMs;
+                indicatorLookbackPlanRef.current = {
+                    baselineStart,
+                    baselineEnd,
+                    appliedLookbackMs: appliedMs,
+                    targetStart,
+                    targetEnd,
+                    timeframeMs: timeframeInMs
+                };
+                console.log('[Indicator Plan] Established plan:', {
+                    baselineStart: new Date(baselineStart).toISOString(),
+                    baselineEnd: new Date(baselineEnd).toISOString(),
+                    targetStart: new Date(targetStart).toISOString(),
+                    targetEnd: new Date(targetEnd).toISOString(),
+                    appliedLookbackMs: appliedMs,
+                    timeframeInMs
+                });
+            }
+        } catch (_) {}
         console.log("[ChartContext] Indicators changed - applying to display candles");
-        // Intentionally avoid depending on the function identity to prevent loops
         applyIndicatorsToCandleDisplay();
-    }, [indicators.length]);
+    }, [indicators.length, timeframeInMs]);
 
     // Recalculate indicators when the base buffer changes for base-related reasons (avoid loops)
     useEffect(() => {
@@ -1316,6 +1368,28 @@ export function ChartProvider({ children }) {
             reason.startsWith('trim_after_merge')
         );
         if (!shouldApply) return;
+
+        // If timeframe changed with no new initialize, refresh the plan once
+        try {
+            const plan = indicatorLookbackPlanRef.current;
+            if (!plan || plan.timeframeMs !== timeframeInMs) {
+                const maxLookback = calculateMaxLookback(indicators);
+                const baselineStart = displayCandles[0]?.timestamp;
+                const baselineEnd = displayCandles[displayCandles.length - 1]?.timestamp;
+                if (baselineStart && baselineEnd) {
+                    const appliedMs = maxLookback * timeframeInMs;
+                    indicatorLookbackPlanRef.current = {
+                        baselineStart,
+                        baselineEnd,
+                        appliedLookbackMs: appliedMs,
+                        targetStart: Math.max(0, baselineStart - appliedMs),
+                        targetEnd: baselineEnd + appliedMs,
+                        timeframeMs: timeframeInMs
+                    };
+                }
+            }
+        } catch (_) {}
+
         console.log(`[ChartContext] Base buffer changed (reason="${reason}") - applying indicators`);
         applyIndicatorsToCandleDisplay();
     }, [displayCandles]);
@@ -1376,6 +1450,9 @@ export function ChartProvider({ children }) {
     // Monitor indicator changes to update indicator subscription requirements (do not alter chart buffer)
     useEffect(() => {
         if (displayCandles.length === 0) return;
+        // Avoid triggering due to applyIndicatorsToCandleDisplay side-effect
+        const reason = lastUpdateReasonRef.current || '';
+        if (reason.startsWith('apply_indicators')) return;
 
         // Only fire when indicators change or an explicit update was requested (e.g., base buffer actually changed)
         if ((indicators.length > 0 || shouldUpdateSubscription) && !isProcessingIndicatorUpdateRef.current) {
