@@ -27,7 +27,7 @@ const SubscriptionManager = {
     isConnected: false,
     userQueueSubscription: null,
 
-    // Track message handlers
+    // Track message handlers (single-subscription path uses chart only)
     messageHandlers: {
         chart: new Set(),
         indicator: new Set()
@@ -43,7 +43,7 @@ const SubscriptionManager = {
     },
 
     // Track pending unsubscribe requests to know which type was intended
-    pendingUnsubscribes: {}, // { [subscriptionId]: 'chart' | 'indicator' }
+    pendingUnsubscribes: {}, // { [subscriptionId]: 'chart' }
 
     // Store subscription for reuse
     setActiveSubscription(type, id) {
@@ -92,7 +92,7 @@ const SubscriptionManager = {
         this.heartbeatCount++;
 
         const isChartActive = subscriptionId === this.activeSubscriptions.chart;
-        const isIndicatorActive = subscriptionId === this.activeSubscriptions.indicator;
+        const isIndicatorActive = false; // indicator path removed
         const timestamp = new Date().toISOString().substr(11, 12);
 
         let subscriptionType = "stale";
@@ -196,18 +196,12 @@ export function WebSocketProvider({ children, currentPage }) {
             const id = data.subscriptionId;
             const type = (data.subscriptionType || '').toLowerCase();
             const idIsChart = id && id === SubscriptionManager.activeSubscriptions.chart;
-            const idIsIndicator = id && id === SubscriptionManager.activeSubscriptions.indicator;
+            const idIsIndicator = false; // indicator path removed
 
             if (idIsChart || type === 'chart') {
                 SubscriptionManager.messageHandlers.chart.forEach(handler => {
                     try { handler(data); } catch (err) {
                         console.error("[CandleWebSocketContext] Error in chart message handler:", err);
-                    }
-                });
-            } else if (idIsIndicator || type === 'indicator') {
-                SubscriptionManager.messageHandlers.indicator.forEach(handler => {
-                    try { handler(data); } catch (err) {
-                        console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
                     }
                 });
             } else {
@@ -224,7 +218,7 @@ export function WebSocketProvider({ children, currentPage }) {
 
         // Determine which subscription this message belongs to
         const isChartSubscription = data.subscriptionId === SubscriptionManager.activeSubscriptions.chart;
-        const isIndicatorSubscription = data.subscriptionId === SubscriptionManager.activeSubscriptions.indicator;
+        const isIndicatorSubscription = false; // indicator path removed
 
         // Route message to appropriate handlers
         if (isChartSubscription) {
@@ -237,16 +231,6 @@ export function WebSocketProvider({ children, currentPage }) {
                 }
             });
         }
-        else if (isIndicatorSubscription) {
-            console.log(`[WebSocketContext] Routing message to indicator handlers for subscription ${data.subscriptionId}`);
-            SubscriptionManager.messageHandlers.indicator.forEach(handler => {
-                try {
-                    handler(data);
-                } catch (err) {
-                    console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
-                }
-            });
-        }
         // Handle initial data responses or messages without known subscription ID
         else if (!data.subscriptionId || data.updateType === undefined) {
             // Deterministic routing by explicit type if available
@@ -254,12 +238,6 @@ export function WebSocketProvider({ children, currentPage }) {
                 SubscriptionManager.messageHandlers.chart.forEach(handler => {
                     try { handler(data); } catch (err) {
                         console.error("[CandleWebSocketContext] Error in chart message handler:", err);
-                    }
-                });
-            } else if (data.subscriptionType === 'INDICATOR') {
-                SubscriptionManager.messageHandlers.indicator.forEach(handler => {
-                    try { handler(data); } catch (err) {
-                        console.error("[CandleWebSocketContext] Error in indicator message handler:", err);
                     }
                 });
             } else {
@@ -356,6 +334,46 @@ export function WebSocketProvider({ children, currentPage }) {
         return SubscriptionManager.pendingSubscriptionRequests[requestKey];
     };
 
+    // Update an existing subscription (single long-lived chart subscription)
+    const updateSubscription = async ({
+        subscriptionId,
+        newStartDate,
+        newEndDate,
+        resetData = false,
+        subscriptionType = 'CHART'
+    }) => {
+        if (!subscriptionId) {
+            console.warn('[WebSocketContext] Missing subscriptionId for update-subscription');
+            return Promise.reject(new Error('Missing subscriptionId'));
+        }
+
+        // Compose a dedupe key for in-flight updates
+        const key = `update:${subscriptionId}:${newStartDate || ''}:${newEndDate || ''}:${resetData}:${subscriptionType}`;
+        if (SubscriptionManager.pendingSubscriptionRequests[key]) {
+            return SubscriptionManager.pendingSubscriptionRequests[key];
+        }
+
+        SubscriptionManager.pendingSubscriptionRequests[key] = (async () => {
+            try {
+                await webSocketService.safeSend('/app/candles/update-subscription', {
+                    subscriptionId,
+                    newStartDate: newStartDate ? new Date(newStartDate).toISOString() : null,
+                    newEndDate: newEndDate ? new Date(newEndDate).toISOString() : null,
+                    resetData,
+                    subscriptionType
+                });
+                return 'pending';
+            } catch (err) {
+                console.error('[WebSocketContext] Error sending update-subscription:', err);
+                throw err;
+            } finally {
+                setTimeout(() => { delete SubscriptionManager.pendingSubscriptionRequests[key]; }, 750);
+            }
+        })();
+
+        return SubscriptionManager.pendingSubscriptionRequests[key];
+    };
+
     // Explicitly unsubscribe a specific type
     const unsubscribe = async (type) => {
         if (!type || !SubscriptionManager.activeSubscriptions[type]) {
@@ -385,15 +403,10 @@ export function WebSocketProvider({ children, currentPage }) {
     // Unsubscribe from all active subscriptions
     const unsubscribeAll = async () => {
         const results = [];
-
         if (SubscriptionManager.activeSubscriptions.chart) {
             results.push(await unsubscribe('chart'));
         }
-
-        if (SubscriptionManager.activeSubscriptions.indicator) {
-            results.push(await unsubscribe('indicator'));
-        }
-
+        // indicator path removed; nothing else to unsubscribe
         return results.every(success => success);
     };
 
@@ -425,6 +438,7 @@ export function WebSocketProvider({ children, currentPage }) {
         registerHandler: SubscriptionManager.registerHandler.bind(SubscriptionManager),
         unregisterHandler: SubscriptionManager.unregisterHandler.bind(SubscriptionManager),
         requestSubscription,
+        updateSubscription,
         unsubscribe,
         unsubscribeAll,
         setActiveSubscription: SubscriptionManager.setActiveSubscription.bind(SubscriptionManager),

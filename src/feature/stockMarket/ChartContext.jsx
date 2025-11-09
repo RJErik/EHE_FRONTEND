@@ -5,9 +5,8 @@ import { calculateIndicator } from "./indicators/indicatorCalculations.js";
 export const ChartContext = createContext(null);
 
 export function ChartProvider({ children }) {
-    // Dual candle storage - one for display, one for indicator calculations
-    const [displayCandles, setDisplayCandles] = useState([]); // For rendering charts
-    const [indicatorCandles, setIndicatorCandles] = useState([]); // For calculating indicators
+    // Single candle buffer used for both display and indicator calculations
+    const [displayCandles, setDisplayCandles] = useState([]);
     const [candleData, setCandleData] = useState([]); // Currently visible candles
 
     // Add isDataGenerationEnabled state for CandleChart component
@@ -437,16 +436,7 @@ export function ChartProvider({ children }) {
                 subscriptionEndDateRef.current = newEndTs;
             }
 
-            // Indicators: ensure sufficient lookback retained using timestamps
-            if (indicatorCandles.length) {
-                const maxLookback = calculateMaxLookback(indicators);
-                const requiredStartTs = Math.max(0, (trimmed[0]?.timestamp || newStartTs || 0) - (maxLookback * timeframeInMs));
-                const requiredEndTs = trimmed[trimmed.length - 1]?.timestamp || newEndTs;
-                const trimmedIndicators = indicatorCandles.filter(c =>
-                    c && typeof c.timestamp === 'number' && c.timestamp >= requiredStartTs && c.timestamp <= requiredEndTs
-                );
-                setIndicatorCandles(trimmedIndicators);
-            }
+            // Single buffer: indicator lookback handled by range requests
 
             return { finalBuffer: trimmed, finalViewStart: newView };
         };
@@ -462,44 +452,29 @@ export function ChartProvider({ children }) {
         }, 0);
 
         // Defer trimming in the effect remains as a secondary safety net
-    }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo, indicatorCandles, indicators, calculateMaxLookback]);
+    }, [displayCandles, displayedCandles, timeframeInMs, updateDisplayCandles, viewStartIndex, reanchorTo, indicators, calculateMaxLookback]);
 
-    // Merge indicator calculation candles with optional reset
-    const mergeIndicatorCandles = useCallback((newCandles = [], opts = {}) => {
-        const { reset = false } = opts;
-        if (reset) {
-            setIndicatorCandles(dedupeAndSort(newCandles));
-            return;
-        }
-        setIndicatorCandles(prev => dedupeAndSort([...(prev || []), ...(newCandles || [])]));
-    }, [dedupeAndSort]);
+    // mergeIndicatorCandles removed in single-buffer mode
 
     
 
     // Helper function to calculate indicators for a buffer
     const calculateIndicatorsForBuffer = useCallback((buffer, currentIndicators) => {
         if (!buffer.length || !currentIndicators.length) return buffer;
-
         console.log("[ChartContext] Calculating indicators for buffer with length:", buffer.length);
-
         return buffer.map((candle, candleIndex) => {
-            const updatedCandle = {
-                ...candle,
-                indicatorValues: candle.indicatorValues || {}
-            };
-
-            currentIndicators.forEach(indicator => {
+            const updated = { ...candle, indicatorValues: candle.indicatorValues || {} };
+            currentIndicators.forEach(ind => {
                 try {
-                    const fullValues = calculateIndicator(indicator, buffer);
-                    if (fullValues && candleIndex < fullValues.length) {
-                        updatedCandle.indicatorValues[indicator.id] = fullValues[candleIndex];
+                    const values = calculateIndicator(ind, buffer);
+                    if (values && candleIndex < values.length) {
+                        updated.indicatorValues[ind.id] = values[candleIndex];
                     }
                 } catch (err) {
-                    console.error(`Error calculating ${indicator.name} for candle at index ${candleIndex}:`, err);
+                    console.error(`Error calculating ${ind.name} for candle at index ${candleIndex}:`, err);
                 }
             });
-
-            return updatedCandle;
+            return updated;
         });
     }, []);
 
@@ -613,157 +588,17 @@ export function ChartProvider({ children }) {
 
     // Function to apply calculated indicator values to display candles
     const applyIndicatorsToCandleDisplay = useCallback(() => {
-        if (!displayCandles.length || !indicatorCandles.length || !indicators.length) {
+        if (!displayCandles.length || !indicators.length) {
             console.log("[ChartContext] Cannot apply indicators - missing data or no indicators", {
                 displayCandlesLength: displayCandles.length,
-                indicatorCandlesLength: indicatorCandles.length,
                 indicatorsCount: indicators.length
             });
             return;
         }
-
-        // Verify indicator candles have the needed history
-        if (indicatorCandles.length > 0 && displayCandles.length > 0) {
-            const firstDisplayTimestamp = displayCandles[0].timestamp;
-            const firstIndicatorTimestamp = indicatorCandles[0].timestamp;
-
-            // Check if we have sufficient lookback for calculation
-            const maxLookback = calculateMaxLookback(indicators);
-            const firstRequiredTimestamp = firstDisplayTimestamp - (maxLookback * timeframeInMs);
-
-            if (firstIndicatorTimestamp > firstRequiredTimestamp) {
-                console.warn(`[ChartContext] Insufficient indicator history! Need data from ${new Date(firstRequiredTimestamp).toISOString()} but have from ${new Date(firstIndicatorTimestamp).toISOString()}`);
-                // Consider requesting more data or showing a warning
-            }
-        }
-
-        // Log information about the current candle data (BEFORE processing)
-        console.log("===== BEFORE INDICATOR PROCESSING =====");
-
-        // Display candles timestamp info
-        const firstDisplayCandle = displayCandles[0];
-        const lastDisplayCandle = displayCandles[displayCandles.length - 1];
-
-        console.log("[ChartContext] Display candles range (BEFORE):", {
-            count: displayCandles.length,
-            firstTimestamp: firstDisplayCandle ? new Date(firstDisplayCandle.timestamp).toISOString() : 'none',
-            lastTimestamp: lastDisplayCandle ? new Date(lastDisplayCandle.timestamp).toISOString() : 'none'
-        });
-
-        // Indicator candles timestamp info
-        const firstIndicatorCandle = indicatorCandles[0];
-        const lastIndicatorCandle = indicatorCandles[indicatorCandles.length - 1];
-
-        console.log("[ChartContext] Indicator candles range:", {
-            count: indicatorCandles.length,
-            firstTimestamp: firstIndicatorCandle ? new Date(firstIndicatorCandle.timestamp).toISOString() : 'none',
-            lastTimestamp: lastIndicatorCandle ? new Date(lastIndicatorCandle.timestamp).toISOString() : 'none'
-        });
-
-        // Active indicators summary
-        console.log("[ChartContext] Active indicators:", indicators.map(ind => ({
-            id: ind.id.substring(0, 8) + '...',  // Truncate ID for readability
-            name: ind.name,
-            type: ind.type
-        })));
-
-        // First calculate indicators on the indicator candle buffer
-        console.log("[ChartContext] Calculating indicators for candle buffer...");
-        const processedIndicatorCandles = calculateIndicatorsForBuffer(indicatorCandles, indicators);
-
-        // Create a map of timestamp to calculated indicator values
-        console.log("[ChartContext] Creating timestamp mapping...");
-        const indicatorValuesByTimestamp = {};
-        let mappedTimestamps = 0;
-
-        processedIndicatorCandles.forEach(candle => {
-            if (candle.timestamp && candle.indicatorValues) {
-                indicatorValuesByTimestamp[candle.timestamp] = candle.indicatorValues;
-                mappedTimestamps++;
-            }
-        });
-
-        console.log(`[ChartContext] Created timestamp map with ${mappedTimestamps} entries`);
-
-        // Apply indicator values to display candles
-        console.log("[ChartContext] Applying indicator values to display candles...");
-
-        let matchedCandles = 0;
-        const updatedDisplayCandles = displayCandles.map(candle => {
-            const calculatedValues = indicatorValuesByTimestamp[candle.timestamp];
-            if (calculatedValues) {
-                matchedCandles++;
-                return {
-                    ...candle,
-                    indicatorValues: calculatedValues
-                };
-            }
-            return candle;
-        });
-
-        console.log(`[ChartContext] Matched ${matchedCandles} out of ${displayCandles.length} display candles with indicator values`);
-
-        // Check for any display candles that didn't get indicator values
-        if (matchedCandles < displayCandles.length) {
-            console.warn(`[ChartContext] Warning: ${displayCandles.length - matchedCandles} display candles did not receive indicator values`);
-
-            // Log a few sample missing timestamps
-            const missingSampleSize = Math.min(5, displayCandles.length - matchedCandles);
-            const missingSamples = displayCandles
-                .filter(candle => !indicatorValuesByTimestamp[candle.timestamp])
-                .slice(0, missingSampleSize)
-                .map(candle => new Date(candle.timestamp).toISOString());
-
-            console.warn(`[ChartContext] Sample missing timestamps: ${JSON.stringify(missingSamples)}`);
-        }
-
-        // Update the display candles with calculated indicators
-        updateDisplayCandles(updatedDisplayCandles, "apply_indicators");
-
-        // Log information AFTER processing
-        console.log("===== AFTER INDICATOR PROCESSING =====");
-
-        // Display candles timestamp info AFTER processing
-        const firstUpdatedDisplayCandle = updatedDisplayCandles[0];
-        const lastUpdatedDisplayCandle = updatedDisplayCandles[updatedDisplayCandles.length - 1];
-
-        console.log("[ChartContext] Display candles range (AFTER):", {
-            count: updatedDisplayCandles.length,
-            firstTimestamp: firstUpdatedDisplayCandle ? new Date(firstUpdatedDisplayCandle.timestamp).toISOString() : 'none',
-            lastTimestamp: lastUpdatedDisplayCandle ? new Date(lastUpdatedDisplayCandle.timestamp).toISOString() : 'none'
-        });
-
-        // Get the first and last candles with indicator values
-        const firstCandleWithIndicator = updatedDisplayCandles.find(c =>
-            c.indicatorValues && Object.keys(c.indicatorValues).length > 0);
-        const lastCandleWithIndicator = [...updatedDisplayCandles].reverse().find(c =>
-            c.indicatorValues && Object.keys(c.indicatorValues).length > 0);
-
-        console.log("[ChartContext] Final display candles with indicators:", {
-            total: updatedDisplayCandles.length,
-            withIndicators: matchedCandles,
-            firstIndicatorTimestamp: firstCandleWithIndicator
-                ? new Date(firstCandleWithIndicator.timestamp).toISOString()
-                : 'none',
-            lastIndicatorTimestamp: lastCandleWithIndicator
-                ? new Date(lastCandleWithIndicator.timestamp).toISOString()
-                : 'none'
-        });
-
-        // Sample of indicator values for the first candle with indicators
-        if (firstCandleWithIndicator) {
-            const sampleIndicatorValues = {};
-            Object.entries(firstCandleWithIndicator.indicatorValues).forEach(([id, value]) => {
-                const indicator = indicators.find(ind => ind.id === id);
-                sampleIndicatorValues[indicator ? indicator.name : id] =
-                    typeof value === 'object' ? JSON.stringify(value) : value;
-            });
-
-            console.log("[ChartContext] Sample indicator values for first candle:", sampleIndicatorValues);
-        }
-
-        console.log("======================================");
-    }, [indicatorCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles, calculateMaxLookback, timeframeInMs]);
+        console.log("[ChartContext] Calculating and applying indicators on single buffer...");
+        const processed = calculateIndicatorsForBuffer(displayCandles, indicators);
+        updateDisplayCandles(processed, 'apply_indicators_single_buffer');
+    }, [displayCandles, indicators, calculateIndicatorsForBuffer, updateDisplayCandles]);
 
     // Modified effect to track timestamp changes and their causes
     useEffect(() => {
@@ -1191,18 +1026,8 @@ export function ChartProvider({ children }) {
             subscriptionEndDateRef.current = newEndTs;
         }
 
-        // Indicators: ensure sufficient lookback retained using timestamps
-        if (indicatorCandles.length) {
-            const maxLookback = calculateMaxLookback(indicators);
-            const requiredStartTs = Math.max(0, (trimmed[0]?.timestamp || newStartTs || 0) - (maxLookback * timeframeInMs));
-            const requiredEndTs = trimmed[trimmed.length - 1]?.timestamp || newEndTs;
-
-            const trimmedIndicators = indicatorCandles.filter(c =>
-                c && typeof c.timestamp === 'number' && c.timestamp >= requiredStartTs && c.timestamp <= requiredEndTs
-            );
-            setIndicatorCandles(trimmedIndicators);
-        }
-    }, [displayCandles, indicatorCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, updateDisplayCandles, timeframeInMs]);
+        // Single buffer: lookback is inherently preserved by base trimming strategy
+    }, [displayCandles, viewStartIndex, displayedCandles, indicators, calculateMaxLookback, updateDisplayCandles, timeframeInMs]);
 
     // Calculate the required data range for websocket requests
     const calculateRequiredDataRange = useCallback(() => {
@@ -1468,27 +1293,32 @@ export function ChartProvider({ children }) {
         }
     }, [viewStartIndex, displayCandles, checkBufferThresholds, isDragging, calculateRequiredDataRange]);
 
-    // Recalculate indicators when indicators list changes or indicator candles change
+    // Recalculate indicators when the indicator list itself changes
     useEffect(() => {
         if (!indicators.length) return;
-
-        console.log("[ChartContext] Indicators or indicator data changed - applying to display candles");
+        console.log("[ChartContext] Indicators changed - applying to display candles");
+        // Intentionally avoid depending on the function identity to prevent loops
         applyIndicatorsToCandleDisplay();
+    }, [indicators.length]);
 
-        // If indicator buffer is too small (e.g., after restart), request indicator refresh via event
-        try {
-            const maxLookback = calculateMaxLookback(indicators);
-            const needFrom = (displayCandles[0]?.timestamp || 0) - (maxLookback * timeframeInMs);
-            const haveFrom = indicatorCandles[0]?.timestamp;
-            if (Number.isFinite(needFrom) && Number.isFinite(haveFrom) && haveFrom > needFrom) {
-                console.log('[ChartContext] Indicator history insufficient after change; requesting resubscribe');
-                window.dispatchEvent(new CustomEvent('indicatorRequirementsChanged', {
-                    detail: { force: true }
-                }));
-            }
-        } catch (_) {}
-
-    }, [indicators, indicatorCandles.length, applyIndicatorsToCandleDisplay, displayCandles, timeframeInMs, calculateMaxLookback]);
+    // Recalculate indicators when the base buffer changes for base-related reasons (avoid loops)
+    useEffect(() => {
+        if (!indicators.length) return;
+        const reason = lastUpdateReasonRef.current || '';
+        // Skip if the change was caused by applying indicators
+        if (reason.startsWith('apply_indicators')) return;
+        // Only recompute for base buffer mutations
+        const shouldApply = (
+            reason.startsWith('merge_base') ||
+            reason.startsWith('initialize_selection') ||
+            reason.startsWith('update') ||
+            reason === 'trim_buffers' ||
+            reason.startsWith('trim_after_merge')
+        );
+        if (!shouldApply) return;
+        console.log(`[ChartContext] Base buffer changed (reason="${reason}") - applying indicators`);
+        applyIndicatorsToCandleDisplay();
+    }, [displayCandles]);
 
     // Update visible data when viewStartIndex changes or display candles change
     useEffect(() => {
@@ -1773,11 +1603,7 @@ export function ChartProvider({ children }) {
         // Data
         displayCandles,
         setDisplayCandles: updateDisplayCandles, // Use enhanced setter
-        indicatorCandles,
-        setIndicatorCandles: (newCandles) => {
-            lastUpdateReasonRef.current = "update_indicator_candles";
-            setIndicatorCandles(newCandles);
-        },
+        // Single buffer only; no separate indicatorCandles
         candleData,
 
         // View state
@@ -1845,7 +1671,7 @@ export function ChartProvider({ children }) {
         // New cleaner API used by subscription layer
         initializeOnSelection,
         mergeBaseCandles,
-        mergeIndicatorCandles,
+        // mergeIndicatorCandles removed
         computeRequiredIndicatorRange,
         computeAndStoreInitialChartRange,
         getLastInitialChartRange,
