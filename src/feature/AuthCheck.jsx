@@ -1,6 +1,5 @@
 // src/components/AuthCheck.jsx
 import { useState, useEffect } from 'react';
-import tokenRenewalService from '../services/token-renewal.js';
 
 function AuthCheck({ children }) {
     const [authState, setAuthState] = useState({
@@ -25,9 +24,6 @@ function AuthCheck({ children }) {
                 }
 
                 setAuthState({ isLoading: false, isAuthenticated: true });
-
-                // Start periodic token renewal after successful authentication
-                tokenRenewalService.startTokenRenewal();
             } catch (error) {
                 console.error('Authentication failed:', error);
                 // Redirect to login app
@@ -36,11 +32,6 @@ function AuthCheck({ children }) {
         };
 
         verifyAuth();
-
-        // Cleanup: stop token renewal when the component unmounts
-        return () => {
-            tokenRenewalService.stopTokenRenewal();
-        };
     }, []);
 
     if (authState.isLoading) {
