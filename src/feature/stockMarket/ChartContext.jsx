@@ -159,6 +159,20 @@ export function ChartProvider({ children }) {
             }
         } catch (_) {}
 
+        // ✅ CHANGE 1: Clear all indicator-related refs to prevent stock-change duplication
+        console.log('[Chart Init] Clearing indicator refs to prevent stock-change duplication');
+        lastIndicatorBasisRef.current = null;
+        indicatorLookbackPlanRef.current = {
+            baselineStart: null,
+            baselineEnd: null,
+            appliedLookbackMs: 0,
+            targetStart: null,
+            targetEnd: null,
+            timeframeMs: null
+        };
+        lastChartInitialRangeRef.current = null;
+        timeframeSwitchRef.current = null;
+
         const initialDisplayed = 100;
         setDisplayedCandles(initialDisplayed);
         // Show the latest candles on initial load: right-align the window
@@ -172,7 +186,7 @@ export function ChartProvider({ children }) {
         // Base buffer is now ready for current timeframe
         baseBufferReadyForTimeframeRef.current = true;
         baseBufferReadyTfRef.current = timeframeInMs;
-    }, [dedupeAndSort, updateDisplayCandles]);
+    }, [dedupeAndSort, updateDisplayCandles, timeframeInMs]);
 
     // Calculate max lookback needed for all indicators
     const calculateMaxLookback = useCallback((currentIndicators = []) => {
@@ -504,6 +518,35 @@ export function ChartProvider({ children }) {
         const currentStartBuffer = firstBufferCandle.timestamp;
         const currentEndBuffer = lastBufferCandle.timestamp;
 
+        // ✅ NEW: Detect if buffer just changed due to merge - avoid cascade
+        // If the buffer start/end changed from what we last recorded, it's likely because
+        // a merge just happened from a previous indicator extension. Don't recalculate yet.
+        if (lastIndicatorBasisRef.current) {
+            const bufferRangeChanged =
+                lastIndicatorBasisRef.current.startBuffer !== currentStartBuffer ||
+                lastIndicatorBasisRef.current.endBuffer !== currentEndBuffer;
+
+            if (bufferRangeChanged && indicatorLookbackPlanRef.current && indicatorLookbackPlanRef.current.targetStart != null) {
+                console.log('[ChartContext] Buffer range changed from merge, using last planned range to prevent cascade:', {
+                    previousStart: new Date(lastIndicatorBasisRef.current.startBuffer).toISOString(),
+                    currentStart: new Date(currentStartBuffer).toISOString(),
+                    previousEnd: new Date(lastIndicatorBasisRef.current.endBuffer).toISOString(),
+                    currentEnd: new Date(currentEndBuffer).toISOString(),
+                    reusing: {
+                        start: new Date(indicatorLookbackPlanRef.current.targetStart).toISOString(),
+                        end: new Date(indicatorLookbackPlanRef.current.targetEnd).toISOString()
+                    }
+                });
+                // Update basis to current to prevent re-triggering this guard
+                lastIndicatorBasisRef.current = { startBuffer: currentStartBuffer, endBuffer: currentEndBuffer, timeframeInMs };
+                return {
+                    start: indicatorLookbackPlanRef.current.targetStart,
+                    end: indicatorLookbackPlanRef.current.targetEnd,
+                    lookback: maxLookback
+                };
+            }
+        }
+
         // Detect timeframe change while base buffer range hasn't moved yet
         const prev = lastIndicatorBasisRef.current || {};
         const sameRange = prev.startBuffer === currentStartBuffer && prev.endBuffer === currentEndBuffer;
@@ -566,7 +609,6 @@ export function ChartProvider({ children }) {
             requiredEnd: new Date(end).toISOString(),
             candleCount: displayCandles.length,
             timeframeInMs,
-
             maxLookback
         });
 
