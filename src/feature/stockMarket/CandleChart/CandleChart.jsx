@@ -32,26 +32,21 @@ const isInChartArea = ({ x, y }, rect) => (
 const CandleChart = () => {
     const chartRef = useRef(null);
     const dragStartXRef = useRef(null);
-    const dragStartViewIndexRef = useRef(null); // Store viewStartIndex at drag start
+    const dragStartViewIndexRef = useRef(null);
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
-
-    // Add mouseX state to track horizontal position for hover recalculation
     const [mouseX, setMouseX] = useState(null);
 
-    // Use the shared chart context instead of local state
+    // Use the shared chart context
     const {
         candleData: data,
-        displayCandles, // Fix: Changed from historicalBuffer to displayCandles
+        displayCandles,
         viewStartIndex,
         setViewStartIndex,
-        setDisplayCandles,
-        setIndicatorCandles,
         isDragging,
         setIsDragging,
         isLogarithmic,
         setIsLogarithmic,
         hoveredCandle,
-        setHoveredCandle,
         currentMouseY,
         setCurrentMouseY,
         activeTimestamp,
@@ -64,30 +59,36 @@ const CandleChart = () => {
         setHoveredIndex,
         isFollowingLatest,
         setIsFollowingLatest,
-        setIsWaitingForData,
-        timeframeInMs,
-        isFutureRequestInFlight
-    } = useContext(ChartContext) || {}; // Add fallback empty object
-
+        setIsWaitingForData
+    } = useContext(ChartContext) || {};
 
     useEffect(() => {
-        if (!data) return; // Guard against undefined data
+        if (!data) return;
 
         console.log("[CandleChart] Received updated data - Length:", data.length,
             "ViewIndex:", viewStartIndex,
             "DisplayedCandles:", displayedCandles,
-            "Buffer Length:", displayCandles?.length || 0,
-            "First Candle:", data[0]?.timestamp,
-            "Last Candle:", data[data.length-1]?.timestamp);
+            "Buffer Length:", displayCandles?.length || 0);
     }, [data, viewStartIndex, displayedCandles, displayCandles?.length]);
 
-    const DEFAULT_DISPLAY_CANDLES = 100; // Define constant here for reset function
+    const DEFAULT_DISPLAY_CANDLES = 100;
 
-    // Get main indicators that should be displayed on the candle chart
+    // Get main indicators
     const { indicators } = useIndicators();
     const mainIndicators = useMemo(() => (
         Array.isArray(indicators) ? indicators.filter(ind => ind.category === "main") : []
     ), [indicators]);
+
+    // Helper to check if viewing latest candles
+    const isViewingLatest = useCallback(() => {
+        if (!displayCandles || displayCandles.length === 0) return true;
+
+        const lastVisibleIndex = viewStartIndex + displayedCandles - 1;
+        const lastDataIndex = displayCandles.length - 1;
+
+        // Viewing the last candle
+        return lastVisibleIndex >= lastDataIndex;
+    }, [displayCandles, viewStartIndex, displayedCandles]);
 
     // Helper function to update hovered candle based on timestamp
     const updateHoveredCandleByTimestamp = useCallback((timestamp) => {
@@ -96,54 +97,44 @@ const CandleChart = () => {
         const newHoveredIndex = data.findIndex(candle => candle.timestamp === timestamp);
         if (newHoveredIndex >= 0) {
             setHoveredIndex(newHoveredIndex);
-            setHoveredCandle(data[newHoveredIndex]);
             return true;
         }
         return false;
-    }, [data, setHoveredIndex, setHoveredCandle]);
+    }, [data, setHoveredIndex]);
 
     // D3 chart rendering
     useEffect(() => {
         const el = chartRef.current;
         if (!data || !Array.isArray(data) || data.length === 0 || !el) return;
 
-        // Check if this is a buffer update - if buffer size changed but we still have data
         const possibleBufferUpdate = displayCandles.length > data.length + displayedCandles;
-        
-        if (possibleBufferUpdate) {
-            console.log("[CandleChart] Detected possible buffer update - maintaining view position");
-        }
 
         renderCandleChart({
             chartRef,
             data,
             isLogarithmic,
             isDragging,
-            setHoveredCandle,
             setCurrentMouseY,
             setActiveTimestamp,
             activeTimestamp,
             currentMouseY,
             displayedCandles,
-            mainIndicators: mainIndicators || [], // Ensure array even if undefined
+            mainIndicators: mainIndicators || [],
             hoveredIndex,
             setHoveredIndex,
-            viewStartIndex, // Pass the current viewStartIndex
-            isMouseOverChart, // Added this parameter
-            isBufferUpdate: possibleBufferUpdate // Indicate this may be a buffer update
+            viewStartIndex,
+            isMouseOverChart,
+            isBufferUpdate: possibleBufferUpdate
         });
 
-        // Add window resize handler
         const handleResize = () => {
             if (!data || !Array.isArray(data) || data.length === 0) return;
 
-            // Re-render on resize
             renderCandleChart({
                 chartRef,
                 data,
                 isLogarithmic,
                 isDragging,
-                setHoveredCandle,
                 setCurrentMouseY,
                 setActiveTimestamp,
                 activeTimestamp,
@@ -152,16 +143,15 @@ const CandleChart = () => {
                 mainIndicators: mainIndicators || [],
                 hoveredIndex,
                 setHoveredIndex,
-                viewStartIndex, // Pass the current viewStartIndex
-                isMouseOverChart, // Also pass mouse over state
-                isBufferUpdate: true // Always preserve position on resize
+                viewStartIndex,
+                isMouseOverChart,
+                isBufferUpdate: true
             });
         };
 
         window.addEventListener('resize', handleResize);
         return () => {
             window.removeEventListener('resize', handleResize);
-            // Optional: Clear SVG on unmount or when dependencies change significantly
             if (el) {
                 const svg = el.querySelector('svg');
                 if (svg) {
@@ -169,11 +159,10 @@ const CandleChart = () => {
                 }
             }
         };
-    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex, viewStartIndex, isMouseOverChart, displayCandles.length, setHoveredCandle, setCurrentMouseY, setActiveTimestamp, setHoveredIndex]);
+    }, [data, isLogarithmic, currentMouseY, activeTimestamp, isDragging, displayedCandles, mainIndicators, hoveredIndex, viewStartIndex, isMouseOverChart, displayCandles.length, setCurrentMouseY, setActiveTimestamp, setHoveredIndex]);
 
-    // Backup mechanism: Effect to recalculate hover based on timestamp when displayed candles change
+    // Auto-recalculate hover on data changes
     useEffect(() => {
-        // Skip if dragging, no data, not hovering or no active timestamp
         if (isDragging || !data?.length || !isMouseOverChart || !activeTimestamp) {
             return;
         }
@@ -181,7 +170,15 @@ const CandleChart = () => {
         updateHoveredCandleByTimestamp(activeTimestamp);
     }, [displayedCandles, viewStartIndex, data?.length, isDragging, isMouseOverChart, activeTimestamp, updateHoveredCandleByTimestamp]);
 
-    // Helper to apply centered zoom and preserve hover by timestamp
+    // Auto-disable follow mode when scrolling away
+    useEffect(() => {
+        if (isFollowingLatest && !isViewingLatest()) {
+            console.log('[CandleChart] User scrolled away from latest - disabling follow mode');
+            setIsFollowingLatest(false);
+        }
+    }, [viewStartIndex, isFollowingLatest, isViewingLatest, setIsFollowingLatest]);
+
+    // Centered zoom helper
     const applyCenteredZoom = useCallback((newDisplayed, timestampToTrack) => {
         const middleIndex = viewStartIndex + Math.floor(displayedCandles / 2);
         const newViewStartIndex = middleIndex - Math.floor(newDisplayed / 2);
@@ -194,13 +191,10 @@ const CandleChart = () => {
         }
     }, [viewStartIndex, displayedCandles, displayCandles.length, setDisplayedCandles, setViewStartIndex, updateHoveredCandleByTimestamp]);
 
-    // Zoom control handlers with immediate timestamp tracking
+    // Zoom handlers
     const handleZoomIn = () => {
         if (!data?.length) return;
-
-        // Store the current timestamp to maintain after zoom
         const timestampToTrack = activeTimestamp;
-
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP);
         applyCenteredZoom(newDisplayedCandles, timestampToTrack);
@@ -208,10 +202,7 @@ const CandleChart = () => {
 
     const handleZoomOut = () => {
         if (!data?.length) return;
-
-        // Store the current timestamp to maintain after zoom
         const timestampToTrack = activeTimestamp;
-
         const ZOOM_STEP = 10;
         const newDisplayedCandles = Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
         applyCenteredZoom(newDisplayedCandles, timestampToTrack);
@@ -219,49 +210,36 @@ const CandleChart = () => {
 
     const handleResetZoom = () => {
         if (!data?.length) return;
-
-        // Store the current timestamp to maintain after zoom
         applyCenteredZoom(DEFAULT_DISPLAY_CANDLES, activeTimestamp);
     };
 
-    // Restart: clear local state and dispatch a global restart request
-    const handleGoToStart = () => {
-        try {
-            console.log('[CandleChart] Restart requested via button');
-            // Clear buffers and UI hover state to force initialize path
-            setDisplayCandles?.([]);
-            setIndicatorCandles?.([]);
-            setIsWaitingForData?.(true);
-            setHoveredCandle?.(null);
-            setActiveTimestamp?.(null);
-            setHoveredIndex?.(null);
+    // Go to Start - reload fresh data for current stock
+    const handleGoToStart = useCallback(() => {
+        console.log('[CandleChart] Requesting restart to fresh data');
 
-            // Reset zoom to default for a true "fresh" feel
-            setDisplayedCandles?.(DEFAULT_DISPLAY_CANDLES);
+        // Clear UI state
+        setHoveredIndex(null);
+        setActiveTimestamp(null);
+        setCurrentMouseY(null);
+        setIsWaitingForData(true);
 
-            // Ask the subscription layer to resubscribe using current selection
-            window.dispatchEvent(new CustomEvent('restartChartRequested'));
-            console.log('[CandleChart] Dispatched restartChartRequested');
-        } catch (e) {
-            console.error('[CandleChart] Failed to dispatch restart:', e);
-        }
-    };
+        // Dispatch restart event - subscription hook will handle it
+        window.dispatchEvent(new CustomEvent('restartChartRequested'));
+    }, [setHoveredIndex, setActiveTimestamp, setCurrentMouseY, setIsWaitingForData, setIsFollowingLatest]);
 
-    // Handle zoom functionality with immediate timestamp tracking
+    // Wheel zoom handler
     const handleWheel = useCallback((e) => {
-        e.preventDefault(); // Prevent page scrolling
+        e.preventDefault();
         if (!data?.length) return;
 
-        // Store the current timestamp to maintain after zoom
         const timestampToTrack = activeTimestamp;
-
         const isZoomIn = e.deltaY < 0;
         const el = chartRef.current;
         if (!el) return;
         const { rect, innerWidth } = getChartMetrics(el);
         const rel = getRelativePosition(e, rect);
         const mouseXInner = rel.x - CHART_MARGINS.left;
-        const mouseXRatio = Math.max(0, Math.min(1, mouseXInner / innerWidth)); // Clamp ratio [0, 1]
+        const mouseXRatio = Math.max(0, Math.min(1, mouseXInner / innerWidth));
 
         const candleIndexUnderMouse = Math.floor(mouseXRatio * displayedCandles);
         const absoluteIndexUnderMouse = viewStartIndex + candleIndexUnderMouse;
@@ -271,43 +249,37 @@ const CandleChart = () => {
             ? Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP)
             : Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
 
-        // If the number of candles didn't change, do nothing
         if (newDisplayedCandles === displayedCandles) return;
 
-        // Calculate the new index ratio under the mouse for the new zoom level
         const newCandleIndexUnderMouse = Math.floor(mouseXRatio * newDisplayedCandles);
         let newViewStartIndex = absoluteIndexUnderMouse - newCandleIndexUnderMouse;
 
-        // Adjust start index to stay within bounds
         newViewStartIndex = Math.max(
             0,
             Math.min(newViewStartIndex, displayCandles.length - newDisplayedCandles)
         );
 
-        // Update zoom state
         setDisplayedCandles(newDisplayedCandles);
         setViewStartIndex(newViewStartIndex);
 
-        // Immediately update hover position based on timestamp
         if (timestampToTrack) {
             updateHoveredCandleByTimestamp(timestampToTrack);
         }
     }, [data?.length, activeTimestamp, displayedCandles, viewStartIndex, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, displayCandles.length, setDisplayedCandles, setViewStartIndex, updateHoveredCandleByTimestamp]);
 
-    // Setup dragging events
+    // Drag and mouse event handlers
     useEffect(() => {
         const getCandleWidth = () => {
             if (chartRef.current && displayedCandles > 0) {
                 const chartWidth = chartRef.current.clientWidth;
-                // Use the actual chart drawing area width
-                const drawingWidth = chartWidth - 120; // Adjust for margins (60 left + 60 right)
+                const drawingWidth = chartWidth - 120;
                 return drawingWidth / displayedCandles;
             }
-            return 10; // Fallback width
+            return 10;
         };
 
         const handleMouseDown = (e) => {
-            if (e.button === 0) { // Only left mouse button
+            if (e.button === 0) {
                 const el = chartRef.current;
                 if (!el) return;
                 const { rect } = getChartMetrics(el);
@@ -317,7 +289,7 @@ const CandleChart = () => {
                 if (inside) {
                     setIsDragging(true);
                     dragStartXRef.current = e.clientX;
-                    dragStartViewIndexRef.current = viewStartIndex; // *** Store the starting index ***
+                    dragStartViewIndexRef.current = viewStartIndex;
                     if (chartRef.current) chartRef.current.style.cursor = 'grabbing';
                     e.preventDefault();
                 }
@@ -325,7 +297,6 @@ const CandleChart = () => {
         };
 
         const handleMouseMove = (e) => {
-            // Update X & Y positions for crosshair if mouse is over the chart AND not dragging
             if (chartRef.current && isMouseOverChart && !isDragging) {
                 const el = chartRef.current;
                 const { rect } = getChartMetrics(el);
@@ -339,51 +310,38 @@ const CandleChart = () => {
                 }
             }
 
-            // Handle dragging logic
             if (isDragging && dragStartXRef.current !== null && dragStartViewIndexRef.current !== null) {
-                // Store current timestamp before drag update
                 const timestampToTrack = activeTimestamp;
-
                 const currentX = e.clientX;
-                const deltaX = currentX - dragStartXRef.current; // Total pixel distance dragged
+                const deltaX = currentX - dragStartXRef.current;
                 const candleWidth = getCandleWidth();
 
                 if (candleWidth > 0) {
-                    // Calculate the total number of candles to shift based on total drag distance
                     const totalCandlesToShift = deltaX / candleWidth;
-
-                    // Calculate the target new index based on the index when drag started
                     const targetViewStartIndex = dragStartViewIndexRef.current - totalCandlesToShift;
-
-                    // Apply bounds and rounding
                     const newIndex = Math.round(targetViewStartIndex);
                     const boundedIndex = Math.max(
                         0,
                         Math.min(newIndex, displayCandles.length - displayedCandles)
                     );
 
-                    // Update state only if the index actually changes to avoid unnecessary re-renders
                     if (boundedIndex !== viewStartIndex) {
                         setViewStartIndex(boundedIndex);
 
-                        // Immediately update hover position based on timestamp while dragging
                         if (timestampToTrack) {
                             updateHoveredCandleByTimestamp(timestampToTrack);
                         }
                     }
                 }
-                // *** DO NOT reset dragStartXRef.current here ***
             }
         };
 
         const handleMouseUp = (e) => {
             if (isDragging) {
-                // Store timestamp before ending drag
                 const timestampToTrack = activeTimestamp;
-
                 setIsDragging(false);
                 dragStartXRef.current = null;
-                dragStartViewIndexRef.current = null; // *** Clear the starting index ***
+                dragStartViewIndexRef.current = null;
 
                 if (chartRef.current) {
                     const el = chartRef.current;
@@ -394,10 +352,9 @@ const CandleChart = () => {
                     setIsMouseOverChart(inside);
 
                     if (!inside) {
-                        setHoveredCandle(null);
+                        setHoveredIndex(null);
                         setCurrentMouseY(null);
                         setActiveTimestamp(null);
-                        setHoveredIndex(null);
                         setMouseX(null);
                     } else {
                         const xRelative = rel.x - CHART_MARGINS.left;
@@ -413,7 +370,6 @@ const CandleChart = () => {
             }
         };
 
-        // --- Mouse Enter/Leave/Wheel Logic --- (Mostly unchanged, added bounds checks)
         const handleMouseEnter = (e) => {
             const el = chartRef.current;
             if (!el) return;
@@ -429,21 +385,17 @@ const CandleChart = () => {
         };
 
         const handleMouseLeave = (e) => {
-            // Check if the mouse is truly leaving the chart element boundary
             if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
                 setIsMouseOverChart(false);
                 if (isDragging) {
-                    // If dragging stops because mouse left, treat it like mouse up
                     setIsDragging(false);
                     dragStartXRef.current = null;
-                    dragStartViewIndexRef.current = null; // Clear start index
+                    dragStartViewIndexRef.current = null;
                 }
-                // Clear crosshair state
-                setHoveredCandle(null);
+                setHoveredIndex(null);
                 setCurrentMouseY(null);
                 setActiveTimestamp(null);
-                setHoveredIndex(null);
-                setMouseX(null); // Also clear mouseX
+                setMouseX(null);
             }
         };
 
@@ -461,8 +413,6 @@ const CandleChart = () => {
             }
         };
 
-        // Global mouse move listener to catch mouse leaving the chart area *while not dragging*
-        // This helps clear the crosshair if the mouse moves out quickly.
         const handleGlobalMouseMoveForLeave = (e) => {
             if (chartRef.current && !isDragging && isMouseOverChart) {
                 const el = chartRef.current;
@@ -472,16 +422,14 @@ const CandleChart = () => {
 
                 if (!inside) {
                     setIsMouseOverChart(false);
-                    setHoveredCandle(null);
+                    setHoveredIndex(null);
                     setCurrentMouseY(null);
                     setActiveTimestamp(null);
-                    setHoveredIndex(null);
-                    setMouseX(null); // Also clear mouseX
+                    setMouseX(null);
                 }
             }
         };
 
-        // Attach event listeners
         const chartElement = chartRef.current;
         if (chartElement) {
             chartElement.addEventListener('mousedown', handleMouseDown);
@@ -489,12 +437,10 @@ const CandleChart = () => {
             chartElement.addEventListener('mouseenter', handleMouseEnter);
             chartElement.addEventListener('mouseleave', handleMouseLeave);
         }
-        // Use document listeners for move/up to capture events outside the chart element during drag
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
-        document.addEventListener('mousemove', handleGlobalMouseMoveForLeave); // Separate listener for leave detection
+        document.addEventListener('mousemove', handleGlobalMouseMoveForLeave);
 
-        // Cleanup
         return () => {
             if (chartElement) {
                 chartElement.removeEventListener('mousedown', handleMouseDown);
@@ -506,9 +452,9 @@ const CandleChart = () => {
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
-    }, [isDragging, viewStartIndex, displayCandles.length, displayedCandles, isMouseOverChart, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES, activeTimestamp, data.length, handleWheel, updateHoveredCandleByTimestamp, setIsDragging, setCurrentMouseY, setViewStartIndex, setHoveredCandle, setActiveTimestamp, setHoveredIndex, setMouseX]);
+    }, [isDragging, viewStartIndex, displayCandles.length, displayedCandles, isMouseOverChart, activeTimestamp, handleWheel, updateHoveredCandleByTimestamp, setIsDragging, setCurrentMouseY, setViewStartIndex, setActiveTimestamp, setHoveredIndex]);
 
-    // Calculate zoom percentage for display
+    // Calculate zoom percentage
     const zoomPercentage = Math.round(
         ((MAX_DISPLAY_CANDLES - displayedCandles) /
             (MAX_DISPLAY_CANDLES - MIN_DISPLAY_CANDLES)) * 100
@@ -519,30 +465,29 @@ const CandleChart = () => {
             <CardContent className="flex flex-col h-full p-4">
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col space-y-1">
-                        {/* Pass hoveredCandle and mainIndicators/hoveredIndex */}
                         <CandleInfoPanel candle={hoveredCandle} />
                         <MainIndicatorInfoPanel indicators={mainIndicators} hoveredIndex={hoveredIndex} />
                     </div>
                     <div className="flex items-center flex-shrink-0">
                         <button
                             onClick={handleGoToStart}
-                            disabled={!data?.length || (
-                                // Disable when already at right edge and no future request in-flight
-                                (Array.isArray(displayCandles) && displayCandles.length > 0 &&
-                                 (viewStartIndex + displayedCandles >= displayCandles.length) &&
-                                 !(isFutureRequestInFlight && isFutureRequestInFlight()))
-                            )}
-                            className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
-                            title="Go to start"
+                            disabled={!data?.length || isViewingLatest()}
+                            className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded mr-2 whitespace-nowrap hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Reset to fresh current data"
                         >
                             Go To Start
                         </button>
                         <button
-                            onClick={() => setIsFollowingLatest && setIsFollowingLatest(!isFollowingLatest)}
-                            className={`px-2 py-1 text-xs rounded mr-2 ${isFollowingLatest ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100'}`}
-                            title="Toggle follow latest"
+                            onClick={() => setIsFollowingLatest?.(!isFollowingLatest)}
+                            disabled={!isViewingLatest()}
+                            className={`px-2 py-1 text-xs rounded mr-2 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${
+                                isFollowingLatest
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600'
+                            }`}
+                            title={isViewingLatest() ? "Toggle auto-follow new candles" : "Scroll to latest to enable"}
                         >
-                            {isFollowingLatest ? 'Following latest' : 'Follow latest'}
+                            {isFollowingLatest ? '● Following' : 'Follow Latest'}
                         </button>
                         <div className="text-xs text-gray-500 mr-2 whitespace-nowrap">
                             Zoom: {zoomPercentage}%

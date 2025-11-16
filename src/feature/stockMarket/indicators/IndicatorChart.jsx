@@ -27,7 +27,7 @@ const IndicatorChart = ({ indicator }) => {
         setCurrentMouseY,
         hoveredIndex,
         setHoveredIndex,
-        historicalBuffer,
+        displayCandles,
         MIN_DISPLAY_CANDLES,
         MAX_DISPLAY_CANDLES
     } = useContext(ChartContext) || {};
@@ -162,7 +162,7 @@ const IndicatorChart = ({ indicator }) => {
                     const newIndex = Math.round(targetViewStartIndex);
                     const boundedIndex = Math.max(
                         0,
-                        Math.min(newIndex, historicalBuffer.length - displayedCandles)
+                        Math.min(newIndex, (displayCandles?.length || 0) - displayedCandles)
                     );
 
                     // Update state only if the index actually changes to avoid unnecessary re-renders
@@ -232,7 +232,7 @@ const IndicatorChart = ({ indicator }) => {
             // Adjust start index to stay within bounds
             newViewStartIndex = Math.max(
                 0,
-                Math.min(newViewStartIndex, historicalBuffer.length - newDisplayedCandles)
+                Math.min(newViewStartIndex, (displayCandles?.length || 0) - newDisplayedCandles)
             );
 
             setDisplayedCandles(newDisplayedCandles);
@@ -312,7 +312,7 @@ const IndicatorChart = ({ indicator }) => {
             document.removeEventListener('mouseup', handleMouseUp);
             document.removeEventListener('mousemove', handleGlobalMouseMoveForLeave);
         };
-    }, [isDragging, setIsDragging, viewStartIndex, setViewStartIndex, historicalBuffer.length, displayedCandles, setDisplayedCandles, setCurrentMouseY, isMouseOverChart, setMouseX, setHoveredIndex, setActiveTimestamp, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES]);
+    }, [isDragging, setIsDragging, viewStartIndex, setViewStartIndex, displayCandles.length, displayedCandles, setDisplayedCandles, setCurrentMouseY, isMouseOverChart, setMouseX, setHoveredIndex, setActiveTimestamp, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES]);
 
     // Helper function to extract indicator values from candle data
     const extractIndicatorValues = (candles, indicatorId, indicatorType) => {

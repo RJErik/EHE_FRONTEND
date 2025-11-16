@@ -6,7 +6,6 @@ export function renderCandleChart({
                                       data,
                                       isLogarithmic,
                                       isDragging,
-                                      setHoveredCandle,
                                       setCurrentMouseY,
                                       setActiveTimestamp,
                                       currentMouseY,
@@ -76,7 +75,8 @@ export function renderCandleChart({
 
         // Draw candles
         drawCandles(svg, data, xScale, yScale, candleWidth);
-// Draw main indicators if present
+
+        // Draw main indicators if present
         if (mainIndicators && mainIndicators.length > 0) {
             try {
                 drawIndicators(svg, data, mainIndicators, xScale, yScale);
@@ -112,7 +112,7 @@ export function renderCandleChart({
         // Create hover zones
         createHoverZones(
             svg, data, xScale, width, height, isDragging,
-            setActiveTimestamp, setHoveredCandle, setCurrentMouseY, updateCrosshair
+            setActiveTimestamp, setCurrentMouseY, updateCrosshair, setHoveredIndex
         );
 
         svg.on("mousemove", function(event) {
@@ -129,10 +129,9 @@ export function renderCandleChart({
             if (!isDragging) {
                 d3.selectAll(".candle-body").attr("stroke", "none");
                 crosshair.style("display", "none");
-                setHoveredCandle(null);
+                setHoveredIndex(null);
                 setCurrentMouseY(null);
                 setActiveTimestamp(null);
-                setHoveredIndex(null);
             }
         });
 
@@ -680,7 +679,7 @@ function updateCrosshairPosition(
 
 function createHoverZones(
     svg, data, xScale, width, height, isDragging,
-    setActiveTimestamp, setHoveredCandle, setCurrentMouseY, updateCrosshair
+    setActiveTimestamp, setCurrentMouseY, updateCrosshair, setHoveredIndex
 ) {
     try {
         if (!data || !data.length) return;
@@ -723,9 +722,9 @@ function createHoverZones(
                     // Always update the active timestamp regardless of dragging state
                     setActiveTimestamp(d.timestamp);
 
-                    // Only update hovered candle if not dragging
+                    // Only update hovered index if not dragging
                     if (!isDragging) {
-                        setHoveredCandle(d);
+                        setHoveredIndex(i);
                     }
                 })
                 .on("mousemove", function(event) {
