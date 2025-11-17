@@ -21,7 +21,7 @@ export function useJwtRefresh() {
 
         refreshPromiseRef = (async () => {
             try {
-                const response = await fetch("http://localhost:8080/api/user/renew-token", {
+                const response = await fetch("http://localhost:8080/api/session/renew-token", {
                     method: "POST",
                     credentials: "include",
                     headers: {

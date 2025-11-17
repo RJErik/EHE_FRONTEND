@@ -11,7 +11,7 @@ export function useLogout() {
 
         try {
             // Try to call the API but don't wait for the response
-            fetch("http://localhost:8080/api/user/logout", {
+            fetch("http://localhost:8080/api/session/logout", {
                 method: "POST",
                 credentials: "include",
                 headers: {

@@ -11,7 +11,7 @@ function AuthCheck({ children }) {
         const verifyAuth = async () => {
             try {
                 // Call the verify endpoint that checks JWT token using fetch
-                const response = await fetch('http://localhost:8080/api/user/verify-user', {
+                const response = await fetch('http://localhost:8080/api/session/verify-user', {
                     method: 'GET',
                     credentials: 'include', // Include cookies in request
                     headers: {
