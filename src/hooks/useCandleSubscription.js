@@ -3,14 +3,17 @@ import { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { ChartContext } from '@/feature/stockMarket/ChartContext';
 import { useWebSocket } from '../context/CandleWebSocketContext.jsx';
 import { useToast } from './use-toast';
+import { useJwtRefresh } from './useJwtRefresh';
+import candleApiService from '../services/candleApiService';
 
-const BUFFER_REQUEST_TIMEOUT = 10000; // 10 seconds
-const INDICATOR_REQUEST_TIMEOUT = 10000; // 10 seconds
+const REQUEST_TIMEOUT = 15000; // 15 seconds
+const WS_SEQUENCE_TIMEOUT = 5000; // 5 seconds to wait for WebSocket sequence
 
 export function useCandleSubscription() {
     const [isSubscribing, setIsSubscribing] = useState(false);
     const [error, setError] = useState(null);
     const { toast } = useToast();
+    const { refreshToken } = useJwtRefresh();
 
     const [currentDetails, setCurrentDetails] = useState({
         platformName: null,
@@ -18,1101 +21,738 @@ export function useCandleSubscription() {
         timeframe: null
     });
 
+    // WebSocket context (for live updates only)
     const {
         isConnected,
+        isInitialized,
+        subscribeToCandleUpdates,
+        unsubscribeFromCandleUpdates,
         registerHandler,
         unregisterHandler,
-        requestSubscription,
-        updateSubscription,
-        unsubscribe,
-        unsubscribeAll,
-        subscriptionIds,
-        currentSubscription
+        activeSubscriptionId,
+        latestCandleInfo
     } = useWebSocket();
 
+    // Chart context
     const chartContext = useContext(ChartContext);
     const {
-        initializeOnSelection,
-        mergeBaseCandles,
-        computeRequiredIndicatorRange,
-        updateSubscriptionDateRange,
+        initializeChart,
+        mergeCandles,
+        handleLiveCandleUpdate,
+        updateLatestKnownSequence,
+        setBufferLoading,
         setIsWaitingForData,
         displayedCandles,
         indicators,
-        BUFFER_SIZE_MULTIPLIER
+        calculateMaxLookback,
+        sequenceBounds,
+        BUFFER_SIZE,
+        FETCH_BATCH_SIZE
     } = chartContext;
 
+    // Refs for tracking state
     const pendingRequestsRef = useRef({
-        buffer: {
-            isRequesting: false,
-            direction: null,
-            requestId: null,
-            timeoutId: null
-        },
-        indicator: {
-            isRequesting: false,
-            requestId: null,
-            timeoutId: null
-        }
+        past: { inFlight: false, abortController: null },
+        future: { inFlight: false, abortController: null }
     });
 
-// Track previous subscription for timeframe change detection
     const previousSubscriptionRef = useRef({
         platformName: null,
         stockSymbol: null,
-        timeframe: null,
-        wasHistorical: false
+        timeframe: null
     });
 
-// Store anchor info for when data arrives
-    const pendingAnchorRef = useRef(null);
+    // Ref to store the latest sequence received from WebSocket during subscription
+    const latestSequenceFromWSRef = useRef(null);
 
-// Latest trimmed range to apply to the subscription
-    const pendingTrimRef = useRef(null);
+    // Initialize the API service with refresh token function
+    useEffect(() => {
+        candleApiService.setRefreshTokenFunction(refreshToken);
+    }, [refreshToken]);
 
-// Local ref to the latest chart subscription ID we saw from the server
-    const chartSubscriptionIdRef = useRef(null);
-
-// ==================== HELPERS ====================
-
-    const calculateStartDate = useCallback((endDate, timeframe, candleCount) => {
-        let timeframeMinutes = 1;
-
-        const tf = timeframe.toLowerCase();
-        if (tf.endsWith('m')) {
-            timeframeMinutes = parseInt(timeframe);
-        } else if (tf.endsWith('h')) {
-            timeframeMinutes = parseInt(timeframe) * 60;
-        } else if (tf.endsWith('d')) {
-            timeframeMinutes = parseInt(timeframe) * 60 * 24;
-        } else if (tf.endsWith('w')) {
-            timeframeMinutes = parseInt(timeframe) * 60 * 24 * 7;
-        }
-
-        const minutesBack = timeframeMinutes * candleCount;
-        return new Date(endDate.getTime() - (minutesBack * 60 * 1000));
-    }, []);
-
-    const transformCandle = useCallback((backendCandle, stockSymbol) => {
-        return {
-            timestamp: new Date(backendCandle.timestamp + 'Z').getTime(),
-            open: backendCandle.openPrice,
-            high: backendCandle.highPrice,
-            low: backendCandle.lowPrice,
-            close: backendCandle.closePrice,
-            volume: backendCandle.volume,
-            ticker: stockSymbol || currentDetails.stockSymbol,
-            indicatorValues: {}
-        };
-    }, [currentDetails.stockSymbol]);
+    // ==================== HELPERS ====================
 
     const parseTimeframeToMs = useCallback((timeframe) => {
         const tf = timeframe.toLowerCase();
-
-        if (tf.endsWith('m')) {
-            return parseInt(timeframe) * 60 * 1000;
-        } else if (tf.endsWith('h')) {
-            return parseInt(timeframe) * 60 * 60 * 1000;
-        } else if (tf.endsWith('d')) {
-            return parseInt(timeframe) * 24 * 60 * 60 * 1000;
-        } else if (tf.endsWith('w')) {
-            return parseInt(timeframe) * 7 * 24 * 60 * 60 * 1000;
-        }
-
+        if (tf.endsWith('m')) return parseInt(timeframe) * 60 * 1000;
+        if (tf.endsWith('h')) return parseInt(timeframe) * 60 * 60 * 1000;
+        if (tf.endsWith('d')) return parseInt(timeframe) * 24 * 60 * 60 * 1000;
+        if (tf.endsWith('w')) return parseInt(timeframe) * 7 * 24 * 60 * 60 * 1000;
         return 60 * 1000;
     }, []);
 
-    const calculateMaxLookback = useCallback((currentIndicators = []) => {
-        let maxLookback = 0;
-
-        const toPeriod = (v, fallback) => {
-            const n = Number(v);
-            const val = Number.isFinite(n) ? Math.floor(n) : fallback;
-            return Math.max(1, val);
+    /**
+     * Transform backend candle to frontend format
+     */
+    const transformCandle = useCallback((backendCandle) => {
+        return {
+            sequence: backendCandle.sequence,
+            timestamp: new Date(backendCandle.timestamp + 'Z').getTime(),
+            open: parseFloat(backendCandle.openPrice),
+            high: parseFloat(backendCandle.highPrice),
+            low: parseFloat(backendCandle.lowPrice),
+            close: parseFloat(backendCandle.closePrice),
+            volume: parseFloat(backendCandle.volume),
+            indicatorValues: {}
         };
+    }, []);
 
-        for (const indicator of currentIndicators) {
-            const type = indicator?.type;
-            const s = indicator?.settings ?? {};
-            let lookback = 0;
+    /**
+     * Transform array of backend candles
+     */
+    const transformCandles = useCallback((backendCandles) => {
+        if (!backendCandles || !Array.isArray(backendCandles)) return [];
+        return backendCandles.map(transformCandle);
+    }, [transformCandle]);
 
-            switch (type) {
-                case "sma":
-                case "ema":
-                    lookback = toPeriod(s.period ?? 14, 14) - 1;
-                    break;
-                case "rsi":
-                    lookback = toPeriod(s.period ?? 14, 14);
-                    break;
-                case "macd": {
-                    const fast = toPeriod(s.fastPeriod ?? 12, 12);
-                    const slow = toPeriod(s.slowPeriod ?? 26, 26);
-                    const signal = toPeriod(s.signalPeriod ?? 9, 9);
-                    lookback = (Math.max(fast, slow) - 1) + (signal - 1);
+    // ==================== DATA FETCHING ====================
+
+    /**
+     * Fetch initial/latest candles for a new subscription
+     * Prefers sequence-based fetch if latestSequence is provided, falls back to date-based
+     */
+    const fetchInitialCandles = useCallback(async (platformName, stockSymbol, timeframe, latestSequence = null) => {
+        console.log('[useCandleSubscription] fetchInitialCandles:', {
+            platformName,
+            stockSymbol,
+            timeframe,
+            latestSequence,
+            method: latestSequence ? 'sequence-based' : 'date-based (fallback)'
+        });
+
+        const maxLookback = calculateMaxLookback(indicators);
+        const totalNeeded = displayedCandles + BUFFER_SIZE + maxLookback;
+
+        try {
+            let response;
+
+            if (latestSequence) {
+                // PRIMARY METHOD: Fetch by sequence range ending at latest
+                const fromSeq = Math.max(1, latestSequence - totalNeeded + 1);
+                console.log('[useCandleSubscription] Fetching candles by sequence:', {
+                    platformName,
+                    stockSymbol,
+                    timeframe,
+                    fromSeq,
+                    toSeq: latestSequence,
+                    totalNeeded
+                });
+
+                response = await candleApiService.getCandlesBySequence(
+                    platformName,
+                    stockSymbol,
+                    timeframe,
+                    fromSeq,
+                    latestSequence
+                );
+            } else {
+                // FALLBACK METHOD: Fetch latest candles by date
+                console.log('[useCandleSubscription] Fetching latest candles (date-based fallback):', {
+                    platformName,
+                    stockSymbol,
+                    timeframe,
+                    totalNeeded
+                });
+
+                response = await candleApiService.getLatestCandles(
+                    platformName,
+                    stockSymbol,
+                    timeframe,
+                    totalNeeded
+                );
+            }
+
+            const candles = transformCandles(response.candles);
+
+            console.log('[useCandleSubscription] Initial candles fetched:', {
+                count: candles.length,
+                firstSeq: candles[0]?.sequence,
+                lastSeq: candles[candles.length - 1]?.sequence,
+                method: latestSequence ? 'sequence' : 'date'
+            });
+
+            return candles;
+        } catch (err) {
+            console.error('[useCandleSubscription] Error fetching initial candles:', err);
+            throw err;
+        }
+    }, [displayedCandles, BUFFER_SIZE, indicators, calculateMaxLookback, transformCandles]);
+
+    /**
+     * Fetch candles for timeframe switch (anchor to a timestamp)
+     */
+    const fetchCandlesForTimeframeSwitch = useCallback(async (
+        platformName,
+        stockSymbol,
+        newTimeframe,
+        anchorTimestamp
+    ) => {
+        console.log('[useCandleSubscription] fetchCandlesForTimeframeSwitch:', {
+            platformName,
+            stockSymbol,
+            newTimeframe,
+            anchorTimestamp: new Date(anchorTimestamp).toISOString()
+        });
+
+        const maxLookback = calculateMaxLookback(indicators);
+        const tfMs = parseTimeframeToMs(newTimeframe);
+
+        // Calculate date range around anchor
+        const bufferCandles = displayedCandles + BUFFER_SIZE + maxLookback;
+        const startDate = new Date(anchorTimestamp - (maxLookback * tfMs));
+        const endDate = new Date(Math.min(
+            anchorTimestamp + (displayedCandles + BUFFER_SIZE) * tfMs,
+            Date.now()
+        ));
+
+        try {
+            const response = await candleApiService.getCandlesByDate(
+                platformName,
+                stockSymbol,
+                newTimeframe,
+                startDate,
+                endDate
+            );
+
+            const candles = transformCandles(response.candles);
+
+            // Find the sequence of the candle at or after the anchor timestamp
+            let anchorSequence = null;
+            for (const candle of candles) {
+                if (candle.timestamp >= anchorTimestamp) {
+                    anchorSequence = candle.sequence;
                     break;
                 }
-                case "bb":
-                    lookback = toPeriod(s.period ?? 20, 20) - 1;
-                    break;
-                case "atr":
-                    lookback = toPeriod(s.period ?? 14, 14) - 1;
-                    break;
-                default:
-                    lookback = 50;
             }
 
-            if (lookback > maxLookback) maxLookback = lookback;
-        }
-
-        return maxLookback;
-    }, []);
-
-// Round timestamp down to timeframe boundary
-    const roundTimestampToTimeframeBoundary = useCallback((timestamp, timeframe) => {
-        const tfMs = parseTimeframeToMs(timeframe);
-        return Math.floor(timestamp / tfMs) * tfMs;
-    }, [parseTimeframeToMs]);
-
-// Check if user is viewing "current" data (at the latest edge)
-    const isViewingLatestData = useCallback(() => {
-        const candles = chartContext.displayCandles || [];
-        const startIdx = chartContext.viewStartIndex || 0;
-        const displayCount = chartContext.displayedCandles || 100;
-
-        if (candles.length === 0) return true;
-
-        // Calculate the index of the newest visible candle
-        const endIndex = Math.min(
-            startIdx + displayCount - 1,
-            candles.length - 1
-        );
-
-        // We're viewing latest if we can see the last candle in the dataset
-        return endIndex === candles.length - 1;
-    }, [chartContext]);
-
-// Get oldest visible candle timestamp
-    const getOldestVisibleTimestamp = useCallback(() => {
-        const candles = chartContext.displayCandles || [];
-        const startIdx = chartContext.viewStartIndex || 0;
-
-        if (candles.length === 0) return null;
-
-        const oldestVisibleCandle = candles[startIdx];
-        return oldestVisibleCandle?.timestamp || null;
-    }, [chartContext]);
-
-// Check if anchoring to timestamp would exceed current time
-    const wouldExceedCurrentTime = useCallback(
-        (anchorTimestamp, newTimeframe, candleCount) => {
-            const tfMs = parseTimeframeToMs(newTimeframe);
-            const projectedEnd = anchorTimestamp + (tfMs * candleCount);
-            const now = Date.now();
-
-            // Allow small buffer (1 timeframe) for current candle forming
-            return projectedEnd > (now + tfMs);
-        },
-        [parseTimeframeToMs]
-    );
-
-    const clearBufferRequestState = useCallback((requestId = null) => {
-        if (requestId && pendingRequestsRef.current.buffer.requestId !== requestId) {
-            return; // Not the current request
-        }
-
-        console.log('[useCandleSubscription] Clearing buffer request state');
-
-        if (pendingRequestsRef.current.buffer.timeoutId) {
-            clearTimeout(pendingRequestsRef.current.buffer.timeoutId);
-        }
-
-        pendingRequestsRef.current.buffer = {
-            isRequesting: false,
-            direction: null,
-            requestId: null,
-            timeoutId: null
-        };
-    }, []);
-
-    const clearIndicatorRequestState = useCallback((requestId = null) => {
-        if (requestId && pendingRequestsRef.current.indicator.requestId !== requestId) {
-            return; // Not the current request
-        }
-
-        console.log('[useCandleSubscription] Clearing indicator request state');
-
-        if (pendingRequestsRef.current.indicator.timeoutId) {
-            clearTimeout(pendingRequestsRef.current.indicator.timeoutId);
-        }
-
-        pendingRequestsRef.current.indicator = {
-            isRequesting: false,
-            requestId: null,
-            timeoutId: null
-        };
-    }, []);
-
-// ==================== TRIM / SUBSCRIPTION UPDATE HELPER ====================
-
-    const attemptTrimSubscriptionUpdate = useCallback(
-        async (overrideSubscriptionId) => {
-            const pendingTrim = pendingTrimRef.current;
-            if (!pendingTrim) return;
-
-            const subscriptionId =
-                overrideSubscriptionId ||
-                subscriptionIds.chart ||
-                chartSubscriptionIdRef.current;
-
-            if (!subscriptionId) {
-                console.log('[useCandleSubscription] Post-trim subscription id not ready yet', {
-                    overrideSubscriptionId,
-                    chartSubscriptionIdFromContext: subscriptionIds.chart,
-                    chartSubscriptionIdLocal: chartSubscriptionIdRef.current
-                });
-                return;
-            }
-
-            const { start, end, candleCount } = pendingTrim;
-
-            console.log('[useCandleSubscription] Updating subscription after buffer trim:', {
-                start: new Date(start).toISOString(),
-                end: new Date(end).toISOString(),
-                candleCount,
-                subscriptionId
+            console.log('[useCandleSubscription] Timeframe switch candles fetched:', {
+                count: candles.length,
+                anchorSequence,
+                firstSeq: candles[0]?.sequence,
+                lastSeq: candles[candles.length - 1]?.sequence
             });
 
-            try {
-                const startDate = new Date(start);
-                const endDate = new Date(end);
+            return { candles, anchorSequence };
+        } catch (err) {
+            console.error('[useCandleSubscription] Error fetching candles for timeframe switch:', err);
+            throw err;
+        }
+    }, [displayedCandles, BUFFER_SIZE, indicators, calculateMaxLookback, parseTimeframeToMs, transformCandles]);
 
-                // Update both actual and requested ranges in chart context
-                updateSubscriptionDateRange('actual', start, end);
-                updateSubscriptionDateRange('requested', start, end);
+    /**
+     * Fetch older candles (scroll left / past buffer)
+     */
+    const fetchOlderCandles = useCallback(async () => {
+        const { platformName, stockSymbol, timeframe } = currentDetails;
 
-                // Update server subscription
-                await updateSubscription({
-                    subscriptionId,
-                    newStartDate: startDate,
-                    newEndDate: endDate,
-                    resetData: false,
-                    subscriptionType: 'CHART'
-                });
-
-                console.log('[useCandleSubscription] Subscription updated after trim');
-                // Clear pending trim since it has been applied
-                pendingTrimRef.current = null;
-            } catch (err) {
-                console.error('[useCandleSubscription] Failed to update subscription after trim:', err);
-            }
-        },
-        [subscriptionIds.chart, updateSubscription, updateSubscriptionDateRange]
-    );
-
-// ==================== MESSAGE HANDLERS ====================
-
-    const handleCandleMessage = useCallback((data) => {
-        console.log('[useCandleSubscription] Received message:', data.updateType);
-
-        if (data.updateType === "HEARTBEAT") return;
-
-        if (data.success === false) {
-            console.error('[useCandleSubscription] Error:', data.message);
-            setError(data.message);
-            setIsWaitingForData(false);
-
-            // Clear all pending requests
-            clearBufferRequestState();
-            clearIndicatorRequestState();
-
-            toast({
-                title: "Data Error",
-                description: data.message,
-                variant: "destructive",
-                duration: 5000
-            });
+        if (!platformName || !stockSymbol || !timeframe) {
+            console.warn('[useCandleSubscription] No active subscription for fetchOlderCandles');
             return;
         }
 
-        if (data.candles && Array.isArray(data.candles)) {
-            console.log('[useCandleSubscription] Received candles:', data.candles.length);
-
-            if (data.platformName && data.stockSymbol && data.timeframe) {
-                setCurrentDetails({
-                    platformName: data.platformName,
-                    stockSymbol: data.stockSymbol,
-                    timeframe: data.timeframe
-                });
-            }
-
-            const transformedCandles = data.candles.map(c =>
-                transformCandle(c, data.stockSymbol)
-            );
-
-            const isBufferUpdate = pendingRequestsRef.current.buffer.isRequesting;
-            const isIndicatorUpdate = pendingRequestsRef.current.indicator.isRequesting;
-            const bufferDirection = pendingRequestsRef.current.buffer.direction;
-
-            if (isBufferUpdate || isIndicatorUpdate) {
-                const direction = isIndicatorUpdate ? 'past' : bufferDirection || 'unknown';
-
-                console.log('[useCandleSubscription] Processing update:', {
-                    type: isIndicatorUpdate ? 'indicator' : 'buffer',
-                    direction,
-                    candleCount: transformedCandles.length
-                });
-
-                mergeBaseCandles(transformedCandles, {
-                    direction,
-                    referenceTimestamp: data.referenceTimestamp,
-                    referenceOffset: data.referenceOffset
-                });
-
-                // Clear the appropriate request state
-                if (isBufferUpdate) {
-                    clearBufferRequestState(pendingRequestsRef.current.buffer.requestId);
-                }
-                if (isIndicatorUpdate) {
-                    clearIndicatorRequestState(pendingRequestsRef.current.indicator.requestId);
-                }
-            } else {
-                console.log('[useCandleSubscription] Initializing chart');
-
-                const metadata = {
-                    symbol: data.stockSymbol,
-                    platform: data.platformName,
-                    timeframe: data.timeframe ? parseTimeframeToMs(data.timeframe) : undefined
-                };
-
-                // Check if we have a pending anchor to apply
-                const anchorInfo = pendingAnchorRef.current;
-
-                initializeOnSelection(transformedCandles, metadata);
-
-                // Apply historical anchor if present
-                if (anchorInfo && anchorInfo.anchorTimestamp) {
-                    console.log('[useCandleSubscription] Applying historical anchor:', {
-                        anchor: new Date(anchorInfo.anchorTimestamp).toISOString()
-                    });
-
-                    // Find the index of the anchor candle (or nearest after it)
-                    const anchorIndex = transformedCandles.findIndex(
-                        c => c.timestamp >= anchorInfo.anchorTimestamp
-                    );
-
-                    if (anchorIndex >= 0) {
-                        // Use setTimeout to ensure the initialization has completed
-                        setTimeout(() => {
-                            chartContext.setViewStartIndex(anchorIndex);
-                            console.log('[useCandleSubscription] View anchored to index:', anchorIndex);
-                        }, 0);
-                    } else {
-                        console.warn('[useCandleSubscription] Could not find anchor candle in data');
-                    }
-
-                    // Clear pending anchor
-                    pendingAnchorRef.current = null;
-                }
-
-                // Update actual range after initialization
-                if (transformedCandles.length > 0) {
-                    const timestamps = transformedCandles.map(c => c.timestamp);
-                    const start = Math.min(...timestamps);
-                    const end = Math.max(...timestamps);
-                    updateSubscriptionDateRange('actual', start, end);
-                }
-            }
-
-            setIsWaitingForData(false);
-            setError(null);
+        if (pendingRequestsRef.current.past.inFlight) {
+            console.log('[useCandleSubscription] Past request already in flight');
+            return;
         }
-        else if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
-            console.log('[useCandleSubscription] Received updates:', data.updatedCandles.length);
 
-            const transformedCandles = data.updatedCandles.map(c =>
-                transformCandle(c, data.stockSymbol)
+        const { minLoadedSequence, oldestAvailableSequence } = sequenceBounds;
+
+        if (minLoadedSequence <= oldestAvailableSequence) {
+            console.log('[useCandleSubscription] Already at oldest available data');
+            return;
+        }
+
+        console.log('[useCandleSubscription] Fetching older candles:', {
+            minLoadedSequence,
+            fetchCount: FETCH_BATCH_SIZE
+        });
+
+        pendingRequestsRef.current.past.inFlight = true;
+        setBufferLoading('past', true);
+
+        try {
+            const response = await candleApiService.getCandlesBeforeSequence(
+                platformName,
+                stockSymbol,
+                timeframe,
+                minLoadedSequence,
+                FETCH_BATCH_SIZE
             );
 
-            mergeBaseCandles(transformedCandles, {
-                direction: 'future',
-                isUpdate: true
+            const candles = transformCandles(response.candles);
+
+            console.log('[useCandleSubscription] Older candles fetched:', {
+                count: candles.length,
+                firstSeq: candles[0]?.sequence,
+                lastSeq: candles[candles.length - 1]?.sequence
             });
+
+            if (candles.length > 0) {
+                mergeCandles(candles, { direction: 'past' });
+            } else {
+                setBufferLoading('past', false);
+            }
+        } catch (err) {
+            console.error('[useCandleSubscription] Error fetching older candles:', err);
+            setBufferLoading('past', false);
+
+            toast({
+                title: "Data Error",
+                description: "Failed to load older data",
+                variant: "destructive",
+                duration: 3000
+            });
+        } finally {
+            pendingRequestsRef.current.past.inFlight = false;
         }
-        else if (data.subscriptionId && data.updateType === undefined) {
-            console.log('[useCandleSubscription] Subscription confirmed');
+    }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
 
-            // Track latest chart subscription id locally
-            chartSubscriptionIdRef.current = data.subscriptionId;
+    /**
+     * Fetch newer candles (scroll right / future buffer)
+     */
+    const fetchNewerCandles = useCallback(async () => {
+        const { platformName, stockSymbol, timeframe } = currentDetails;
 
-            if (data.platformName && data.stockSymbol && data.timeframe) {
-                setCurrentDetails({
-                    platformName: data.platformName,
-                    stockSymbol: data.stockSymbol,
-                    timeframe: data.timeframe
+        if (!platformName || !stockSymbol || !timeframe) {
+            console.warn('[useCandleSubscription] No active subscription for fetchNewerCandles');
+            return;
+        }
+
+        if (pendingRequestsRef.current.future.inFlight) {
+            console.log('[useCandleSubscription] Future request already in flight');
+            return;
+        }
+
+        const { maxLoadedSequence, latestKnownSequence } = sequenceBounds;
+
+        if (maxLoadedSequence >= latestKnownSequence) {
+            console.log('[useCandleSubscription] Already at latest data');
+            return;
+        }
+
+        console.log('[useCandleSubscription] Fetching newer candles:', {
+            maxLoadedSequence,
+            latestKnownSequence,
+            fetchCount: FETCH_BATCH_SIZE
+        });
+
+        pendingRequestsRef.current.future.inFlight = true;
+        setBufferLoading('future', true);
+
+        try {
+            const response = await candleApiService.getCandlesAfterSequence(
+                platformName,
+                stockSymbol,
+                timeframe,
+                maxLoadedSequence,
+                FETCH_BATCH_SIZE,
+                latestKnownSequence
+            );
+
+            const candles = transformCandles(response.candles);
+
+            console.log('[useCandleSubscription] Newer candles fetched:', {
+                count: candles.length,
+                firstSeq: candles[0]?.sequence,
+                lastSeq: candles[candles.length - 1]?.sequence
+            });
+
+            if (candles.length > 0) {
+                mergeCandles(candles, { direction: 'future' });
+            } else {
+                setBufferLoading('future', false);
+            }
+        } catch (err) {
+            console.error('[useCandleSubscription] Error fetching newer candles:', err);
+            setBufferLoading('future', false);
+
+            toast({
+                title: "Data Error",
+                description: "Failed to load newer data",
+                variant: "destructive",
+                duration: 3000
+            });
+        } finally {
+            pendingRequestsRef.current.future.inFlight = false;
+        }
+    }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
+
+    /**
+     * Fetch additional data for indicator lookback
+     */
+    const fetchIndicatorData = useCallback(async (lookbackNeeded) => {
+        const { platformName, stockSymbol, timeframe } = currentDetails;
+
+        if (!platformName || !stockSymbol || !timeframe) {
+            return;
+        }
+
+        const { minLoadedSequence } = sequenceBounds;
+
+        if (minLoadedSequence <= 1) {
+            console.log('[useCandleSubscription] Already at oldest data for indicators');
+            return;
+        }
+
+        console.log('[useCandleSubscription] Fetching indicator data:', {
+            lookbackNeeded,
+            minLoadedSequence
+        });
+
+        try {
+            const response = await candleApiService.getCandlesBeforeSequence(
+                platformName,
+                stockSymbol,
+                timeframe,
+                minLoadedSequence,
+                lookbackNeeded
+            );
+
+            const candles = transformCandles(response.candles);
+
+            if (candles.length > 0) {
+                mergeCandles(candles, { direction: 'past' });
+            }
+        } catch (err) {
+            console.error('[useCandleSubscription] Error fetching indicator data:', err);
+        }
+    }, [currentDetails, sequenceBounds, transformCandles, mergeCandles]);
+
+    // ==================== WEBSOCKET MESSAGE HANDLER ====================
+
+    const handleWebSocketMessage = useCallback((message) => {
+        console.log('[useCandleSubscription] WebSocket message:', message.type);
+
+        switch (message.type) {
+            case 'SUBSCRIPTION_CONFIRMED':
+                console.log('[useCandleSubscription] Subscription confirmed');
+                break;
+
+            case 'INITIAL_CANDLE':
+                // WebSocket sends the initial/latest candle with sequence
+                console.log('[useCandleSubscription] Initial candle received:', {
+                    sequence: message.sequence,
+                    timestamp: message.timestamp
                 });
-            }
 
-            // If there is a pending trim, try to apply it now using this subscriptionId
-            if (pendingTrimRef.current) {
-                void attemptTrimSubscriptionUpdate(data.subscriptionId);
-            }
+                if (message.sequence) {
+                    // Store the sequence for use in fetchInitialCandles
+                    latestSequenceFromWSRef.current = message.sequence;
+                    updateLatestKnownSequence(message.sequence);
+                }
+                break;
+
+            case 'NEW_CANDLE':
+            case 'CANDLE_UPDATE':
+                // Handle live candle updates
+                if (message.candles && message.candles.length > 0) {
+                    const transformed = message.candles.map(c => ({
+                        sequence: c.sequence,
+                        timestamp: new Date(c.timestamp + 'Z').getTime(),
+                        open: parseFloat(c.openPrice),
+                        high: parseFloat(c.highPrice),
+                        low: parseFloat(c.lowPrice),
+                        close: parseFloat(c.closePrice),
+                        volume: parseFloat(c.volume),
+                        indicatorValues: {}
+                    }));
+
+                    handleLiveCandleUpdate(transformed, message.latestSequence);
+                }
+                break;
+
+            default:
+                console.log('[useCandleSubscription] Unknown message type:', message.type);
         }
+    }, [updateLatestKnownSequence, handleLiveCandleUpdate]);
 
-    }, [
-        transformCandle,
-        mergeBaseCandles,
-        initializeOnSelection,
-        setIsWaitingForData,
-        toast,
-        parseTimeframeToMs,
-        updateSubscriptionDateRange,
-        clearBufferRequestState,
-        clearIndicatorRequestState,
-        attemptTrimSubscriptionUpdate,
-        chartContext
-    ]);
+    // ==================== SUBSCRIPTION FUNCTIONS ====================
 
-// ==================== SUBSCRIPTION FUNCTIONS ====================
+    /**
+     * Wait for WebSocket to provide the latest sequence number
+     */
+    const waitForLatestSequence = useCallback((timeoutMs = WS_SEQUENCE_TIMEOUT) => {
+        return new Promise((resolve) => {
+            const startTime = Date.now();
 
+            const checkInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+
+                if (latestSequenceFromWSRef.current !== null) {
+                    console.log('[useCandleSubscription] Got sequence from WebSocket:', latestSequenceFromWSRef.current);
+                    clearInterval(checkInterval);
+                    resolve(latestSequenceFromWSRef.current);
+                } else if (elapsed >= timeoutMs) {
+                    console.warn('[useCandleSubscription] Timeout waiting for WebSocket sequence, will use date-based fallback');
+                    clearInterval(checkInterval);
+                    resolve(null);
+                }
+            }, 100); // Check every 100ms
+        });
+    }, []);
+
+    /**
+     * Subscribe to candles for a stock
+     */
     const subscribeToCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
         if (!platformName || !stockSymbol || !timeframe) {
             console.warn('[useCandleSubscription] Missing parameters');
             return Promise.reject(new Error("Missing required parameters"));
         }
 
+        // Check if already subscribed to same
         if (
             currentDetails.platformName === platformName &&
             currentDetails.stockSymbol === stockSymbol &&
             currentDetails.timeframe === timeframe &&
-            subscriptionIds.chart
+            activeSubscriptionId
         ) {
-            console.log('[useCandleSubscription] Already subscribed');
-            return Promise.resolve(subscriptionIds.chart);
+            console.log('[useCandleSubscription] Already subscribed to this');
+            return activeSubscriptionId;
         }
 
-        // Detect change type
-        const isPlatformOrStockChange =
-            previousSubscriptionRef.current.platformName !== platformName ||
-            previousSubscriptionRef.current.stockSymbol !== stockSymbol;
-
+        // Detect subscription change type
+        const prev = previousSubscriptionRef.current;
         const isTimeframeChangeOnly =
-            previousSubscriptionRef.current.platformName === platformName &&
-            previousSubscriptionRef.current.stockSymbol === stockSymbol &&
-            previousSubscriptionRef.current.timeframe !== timeframe &&
-            previousSubscriptionRef.current.timeframe !== null;
+            prev.platformName === platformName &&
+            prev.stockSymbol === stockSymbol &&
+            prev.timeframe !== timeframe &&
+            prev.timeframe !== null;
 
-        console.log('[useCandleSubscription] Subscription change type:', {
-            isPlatformOrStockChange,
-            isTimeframeChangeOnly,
-            previous: previousSubscriptionRef.current,
-            new: { platformName, stockSymbol, timeframe }
+        console.log('[useCandleSubscription] Subscribing:', {
+            platformName,
+            stockSymbol,
+            timeframe,
+            isTimeframeChangeOnly
         });
-
-        // Reset historical tracking on platform/stock change
-        if (isPlatformOrStockChange) {
-            previousSubscriptionRef.current.wasHistorical = false;
-        }
 
         setIsSubscribing(true);
         setIsWaitingForData(true);
+        setError(null);
 
-        // Clear all pending requests
-        clearBufferRequestState();
-        clearIndicatorRequestState();
+        // Reset the latest sequence ref
+        latestSequenceFromWSRef.current = null;
 
         try {
-            if (subscriptionIds.chart) {
-                console.log('[useCandleSubscription] Unsubscribing from existing subscription');
-                await unsubscribe('chart');
-                await new Promise(resolve => setTimeout(resolve, 300));
+            // Step 1: Unsubscribe from existing WebSocket subscription
+            if (activeSubscriptionId) {
+                await unsubscribeFromCandleUpdates();
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
 
-            const maxLookback = calculateMaxLookback(indicators);
-            const totalCandlesToRequest = displayedCandles + (BUFFER_SIZE_MULTIPLIER * 2) + maxLookback;
+            // Step 2: Subscribe to WebSocket FIRST to get the latest sequence
+            console.log('[useCandleSubscription] Subscribing to WebSocket...');
+            await subscribeToCandleUpdates(platformName, stockSymbol, timeframe);
 
-            let startDate, endDate, isHistoricalAnchor = false, anchorTimestamp = null;
+            // Step 3: Wait for WebSocket to send INITIAL_CANDLE with sequence
+            console.log('[useCandleSubscription] Waiting for latest sequence from WebSocket...');
+            const latestSequence = await waitForLatestSequence();
 
-            // Try to use historical anchor for timeframe-only changes
-            if (isTimeframeChangeOnly && !isViewingLatestData()) {
-                const oldestVisibleTs = getOldestVisibleTimestamp();
+            // Step 4: Fetch initial data via REST using the sequence
+            let candles;
+            let anchorSequence = null;
 
-                if (oldestVisibleTs) {
-                    anchorTimestamp = roundTimestampToTimeframeBoundary(
-                        oldestVisibleTs,
-                        timeframe
+            if (isTimeframeChangeOnly) {
+                // Get anchor timestamp from current view
+                const currentCandles = chartContext.displayCandles || [];
+                const viewStart = chartContext.viewStartIndex || 0;
+                const anchorCandle = currentCandles[viewStart];
+
+                if (anchorCandle) {
+                    const result = await fetchCandlesForTimeframeSwitch(
+                        platformName,
+                        stockSymbol,
+                        timeframe,
+                        anchorCandle.timestamp
                     );
-
-                    const tfMs = parseTimeframeToMs(timeframe);
-
-                    // FIXED: Only check if the VISIBLE range would exceed current time
-                    // not the entire buffer range
-                    const visibleEndTimestamp = anchorTimestamp + (displayedCandles * tfMs);
-                    const now = Date.now();
-                    const wouldExceed = visibleEndTimestamp > (now + tfMs);
-
-                    if (!wouldExceed) {
-                        // Safe to use historical anchor
-                        isHistoricalAnchor = true;
-
-                        // Request data with buffer on both sides
-                        startDate = new Date(anchorTimestamp - ((maxLookback + BUFFER_SIZE_MULTIPLIER) * tfMs));
-                        endDate = new Date(Math.min(
-                            anchorTimestamp + ((displayedCandles + BUFFER_SIZE_MULTIPLIER) * tfMs),
-                            Date.now()
-                        ));
-
-                        console.log('[useCandleSubscription] Using historical anchor:', {
-                            oldestVisible: new Date(oldestVisibleTs).toISOString(),
-                            anchor: new Date(anchorTimestamp).toISOString(),
-                            start: startDate.toISOString(),
-                            end: endDate.toISOString(),
-                            visibleEnd: new Date(visibleEndTimestamp).toISOString()
-                        });
-                    } else {
-                        console.log('[useCandleSubscription] Historical anchor would exceed current time, using default');
-                    }
+                    candles = result.candles;
+                    anchorSequence = result.anchorSequence;
+                } else {
+                    // Fallback to initial candles with sequence
+                    candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
                 }
-            }
-
-            // Fall back to default "current time" behavior
-            if (!isHistoricalAnchor) {
-                const now = new Date();
-                startDate = calculateStartDate(now, timeframe, totalCandlesToRequest);
-                endDate = now;
-
-                console.log('[useCandleSubscription] Using current time anchor:', {
-                    start: startDate.toISOString(),
-                    end: endDate.toISOString()
-                });
-            }
-
-            // Store anchor info for when data arrives
-            if (isHistoricalAnchor && anchorTimestamp) {
-                pendingAnchorRef.current = {
-                    anchorTimestamp,
-                    isHistoricalAnchor: true
-                };
             } else {
-                pendingAnchorRef.current = null;
+                // Normal subscription - use sequence from WebSocket
+                candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
             }
 
-            // Update requested range
-            updateSubscriptionDateRange('requested', startDate.getTime(), endDate.getTime());
+            if (!candles || candles.length === 0) {
+                throw new Error('No candle data available');
+            }
 
-            const subscriptionRequest = {
-                platformName,
-                stockSymbol,
-                timeframe,
-                startDate: startDate.toISOString(),
-                endDate: endDate.toISOString(),
-                subscriptionType: 'CHART'
-            };
+            // Step 5: Initialize chart with fetched data
+            const latestSeq = latestSequence || candles[candles.length - 1]?.sequence;
 
-            await requestSubscription('chart', subscriptionRequest);
+            initializeChart(candles, {
+                symbol: stockSymbol,
+                platform: platformName,
+                timeframe: timeframe,
+                timeframeMs: parseTimeframeToMs(timeframe)
+            }, {
+                latestKnownSequence: latestSeq,
+                anchorToSequence: anchorSequence
+            });
 
+            // Update state
             setCurrentDetails({ platformName, stockSymbol, timeframe });
+            previousSubscriptionRef.current = { platformName, stockSymbol, timeframe };
 
-            // Update previous subscription tracking
-            previousSubscriptionRef.current = {
-                platformName,
-                stockSymbol,
-                timeframe,
-                wasHistorical: isHistoricalAnchor
-            };
+            console.log('[useCandleSubscription] Subscription complete');
+            return "success";
 
-            console.log('[useCandleSubscription] Subscription request sent');
-
-            return "pending";
         } catch (err) {
             console.error('[useCandleSubscription] Subscription error:', err);
-            setError("Failed to subscribe: " + err.message);
+            setError(err.message);
             setIsWaitingForData(false);
-            pendingAnchorRef.current = null;
+
+            toast({
+                title: "Subscription Error",
+                description: err.message,
+                variant: "destructive",
+                duration: 5000
+            });
+
             throw err;
         } finally {
             setIsSubscribing(false);
         }
     }, [
         currentDetails,
-        subscriptionIds.chart,
-        unsubscribe,
-        displayedCandles,
-        indicators,
-        BUFFER_SIZE_MULTIPLIER,
-        calculateStartDate,
-        calculateMaxLookback,
-        updateSubscriptionDateRange,
-        requestSubscription,
-        clearBufferRequestState,
-        clearIndicatorRequestState,
-        isViewingLatestData,
-        getOldestVisibleTimestamp,
-        roundTimestampToTimeframeBoundary,
-        wouldExceedCurrentTime,
-        parseTimeframeToMs
+        activeSubscriptionId,
+        unsubscribeFromCandleUpdates,
+        subscribeToCandleUpdates,
+        waitForLatestSequence,
+        fetchInitialCandles,
+        fetchCandlesForTimeframeSwitch,
+        initializeChart,
+        parseTimeframeToMs,
+        setIsWaitingForData,
+        toast,
+        chartContext
     ]);
 
+    /**
+     * Unsubscribe from candles
+     */
     const unsubscribeFromCandles = useCallback(async () => {
-        console.log('[useCandleSubscription] Unsubscribing from all');
+        console.log('[useCandleSubscription] Unsubscribing');
+
         setCurrentDetails({
             platformName: null,
             stockSymbol: null,
             timeframe: null
         });
 
-        // Reset previous subscription tracking
         previousSubscriptionRef.current = {
             platformName: null,
             stockSymbol: null,
-            timeframe: null,
-            wasHistorical: false
+            timeframe: null
         };
 
-        pendingAnchorRef.current = null;
+        // Reset latest sequence ref
+        latestSequenceFromWSRef.current = null;
 
-        clearBufferRequestState();
-        clearIndicatorRequestState();
+        // Cancel any pending requests
+        pendingRequestsRef.current.past.inFlight = false;
+        pendingRequestsRef.current.future.inFlight = false;
 
-        return unsubscribeAll();
-    }, [unsubscribeAll, clearBufferRequestState, clearIndicatorRequestState]);
+        return unsubscribeFromCandleUpdates();
+    }, [unsubscribeFromCandleUpdates]);
 
-// ==================== EVENT LISTENERS ====================
+    // ==================== EVENT LISTENERS ====================
 
+    // Handle buffer needs from ChartContext
     useEffect(() => {
-        const handleBufferRequest = async (event) => {
-            if (pendingRequestsRef.current.buffer.isRequesting) {
-                console.log('[useCandleSubscription] Buffer request already in flight, ignoring');
-                return;
-            }
+        const handleBufferNeeded = (event) => {
+            const { direction } = event.detail || {};
 
-            const { bufferDirection, referenceTimestamp, referenceOffset } = event.detail || {};
-
-            const { platformName, stockSymbol, timeframe } = currentDetails;
-
-            if (!platformName || !stockSymbol || !timeframe) {
-                console.warn('[useCandleSubscription] Missing subscription details for buffer request');
-                return;
-            }
-
-            // Calculate buffer size using the ACTUAL subscription timeframe (not chartData.metadata)
-            const tfMs = parseTimeframeToMs(timeframe);
-            const bufferSizeInMs = BUFFER_SIZE_MULTIPLIER * tfMs;
-
-            // Get current buffer boundaries from chart context
-            const candles = chartContext.displayCandles || [];
-            if (candles.length === 0) {
-                console.warn('[useCandleSubscription] No candles available for buffer request');
-                return;
-            }
-
-            const firstCandle = candles[0];
-            const lastCandle = candles[candles.length - 1];
-
-            let start, end;
-
-            if (bufferDirection === 'past') {
-                // Extend backwards from first candle (incremental, not cumulative)
-                start = firstCandle.timestamp - bufferSizeInMs;
-                end = firstCandle.timestamp + bufferSizeInMs; // Small overlap for safety
-            } else {
-                // Extend forwards from last candle (incremental, not cumulative)
-                start = lastCandle.timestamp - bufferSizeInMs; // Small overlap for safety
-                end = lastCandle.timestamp + bufferSizeInMs;
-            }
-
-            console.log('[useCandleSubscription] Handling buffer request:', {
-                direction: bufferDirection,
-                timeframe,
-                tfMs: `${tfMs}ms`,
-                bufferSize: `${BUFFER_SIZE_MULTIPLIER} candles = ${bufferSizeInMs}ms`,
-                start: new Date(start).toISOString(),
-                end: new Date(end).toISOString(),
-                expectedCandles: Math.round((end - start) / tfMs)
-            });
-
-            const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-
-            // Set request state
-            pendingRequestsRef.current.buffer = {
-                isRequesting: true,
-                direction: bufferDirection,
-                requestId,
-                timeoutId: null
-            };
-
-            // Setup timeout
-            const timeoutId = setTimeout(() => {
-                if (pendingRequestsRef.current.buffer.requestId === requestId) {
-                    console.warn('[useCandleSubscription] Buffer request timeout - clearing flag');
-                    clearBufferRequestState(requestId);
-
-                    toast({
-                        title: "Request Timeout",
-                        description: "Buffer request took too long and was cancelled",
-                        variant: "destructive",
-                        duration: 3000
-                    });
-                }
-            }, BUFFER_REQUEST_TIMEOUT);
-
-            pendingRequestsRef.current.buffer.timeoutId = timeoutId;
-
-            try {
-                const startDate = new Date(start);
-                const endDate = new Date(end);
-
-                // Update requested range
-                updateSubscriptionDateRange('requested', start, end);
-
-                let success = false;
-
-                if (subscriptionIds.chart) {
-                    const result = await updateSubscription({
-                        subscriptionId: subscriptionIds.chart,
-                        newStartDate: startDate,
-                        newEndDate: endDate,
-                        resetData: true,
-                        subscriptionType: 'CHART',
-                        bufferDirection,
-                        referenceTimestamp,
-                        referenceOffset
-                    });
-                    success = result !== false;
-                } else {
-                    const result = await requestSubscription('chart', {
-                        platformName,
-                        stockSymbol,
-                        timeframe,
-                        startDate: startDate.toISOString(),
-                        endDate: endDate.toISOString(),
-                        resetData: true,
-                        subscriptionType: 'CHART',
-                        isBufferUpdate: true,
-                        bufferDirection
-                    });
-                    success = result !== false;
-                }
-
-                if (!success) {
-                    console.warn('[useCandleSubscription] Buffer request was blocked');
-                    clearTimeout(timeoutId);
-                    clearBufferRequestState(requestId);
-                    return;
-                }
-
-                console.log('[useCandleSubscription] Buffer request sent');
-            } catch (err) {
-                console.error('[useCandleSubscription] Buffer request failed:', err);
-                clearTimeout(timeoutId);
-                clearBufferRequestState(requestId);
-
-                toast({
-                    title: "Request Failed",
-                    description: "Failed to request buffer data",
-                    variant: "destructive",
-                    duration: 3000
-                });
+            if (direction === 'past') {
+                fetchOlderCandles();
+            } else if (direction === 'future') {
+                fetchNewerCandles();
             }
         };
 
-        window.addEventListener('chartBufferUpdateRequested', handleBufferRequest);
-        return () => window.removeEventListener('chartBufferUpdateRequested', handleBufferRequest);
-    }, [
-        currentDetails,
-        subscriptionIds.chart,
-        updateSubscription,
-        requestSubscription,
-        updateSubscriptionDateRange,
-        clearBufferRequestState,
-        toast,
-        parseTimeframeToMs,
-        BUFFER_SIZE_MULTIPLIER,
-        chartContext
-    ]);
+        window.addEventListener('chartBufferNeeded', handleBufferNeeded);
+        return () => window.removeEventListener('chartBufferNeeded', handleBufferNeeded);
+    }, [fetchOlderCandles, fetchNewerCandles]);
 
+    // Handle indicator data needs
     useEffect(() => {
-        const handleIndicatorRequest = async (event) => {
-            if (pendingRequestsRef.current.indicator.isRequesting) {
-                console.log('[useCandleSubscription] Indicator request already in flight');
-                return;
-            }
+        const handleIndicatorDataNeeded = (event) => {
+            const { lookbackNeeded } = event.detail || {};
 
-            if (indicators.length === 0) {
-                console.log('[useCandleSubscription] No indicators, skipping');
-                return;
-            }
-
-            const { range } = event.detail || {};
-
-            if (!range || !range.start || !range.end) {
-                console.warn('[useCandleSubscription] Invalid indicator request range');
-                return;
-            }
-
-            const { platformName, stockSymbol, timeframe } = currentDetails;
-
-            if (!platformName || !stockSymbol || !timeframe) {
-                console.warn('[useCandleSubscription] Missing subscription details for indicator request');
-                return;
-            }
-
-            console.log('[useCandleSubscription] Handling indicator request:', {
-                start: new Date(range.start).toISOString(),
-                end: new Date(range.end).toISOString(),
-                lookback: range.lookback
-            });
-
-            const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-
-            pendingRequestsRef.current.indicator = {
-                isRequesting: true,
-                requestId,
-                timeoutId: null
-            };
-
-            const timeoutId = setTimeout(() => {
-                if (pendingRequestsRef.current.indicator.requestId === requestId) {
-                    console.warn('[useCandleSubscription] Indicator request timeout');
-                    clearIndicatorRequestState(requestId);
-
-                    toast({
-                        title: "Request Timeout",
-                        description: "Indicator data request took too long",
-                        variant: "destructive",
-                        duration: 3000
-                    });
-                }
-            }, INDICATOR_REQUEST_TIMEOUT);
-
-            pendingRequestsRef.current.indicator.timeoutId = timeoutId;
-
-            try {
-                const startDate = new Date(range.start);
-                const endDate = new Date(range.end);
-
-                // Update requested range
-                updateSubscriptionDateRange('requested', range.start, range.end);
-
-                if (subscriptionIds.chart) {
-                    const result = await updateSubscription({
-                        subscriptionId: subscriptionIds.chart,
-                        newStartDate: startDate,
-                        newEndDate: endDate,
-                        resetData: true,
-                        subscriptionType: 'CHART'
-                    });
-
-                    if (result === false) {
-                        console.warn('[useCandleSubscription] Indicator request was blocked');
-                        clearTimeout(timeoutId);
-                        clearIndicatorRequestState(requestId);
-                        return;
-                    }
-                }
-
-                console.log('[useCandleSubscription] Indicator request sent');
-            } catch (err) {
-                console.error('[useCandleSubscription] Indicator request failed:', err);
-                clearTimeout(timeoutId);
-                clearIndicatorRequestState(requestId);
-
-                toast({
-                    title: "Request Failed",
-                    description: "Failed to request indicator data",
-                    variant: "destructive",
-                    duration: 3000
-                });
+            if (lookbackNeeded > 0) {
+                fetchIndicatorData(lookbackNeeded);
             }
         };
 
-        window.addEventListener('indicatorRequirementsChanged', handleIndicatorRequest);
-        return () => window.removeEventListener('indicatorRequirementsChanged', handleIndicatorRequest);
-    }, [
-        currentDetails,
-        indicators,
-        subscriptionIds.chart,
-        updateSubscription,
-        updateSubscriptionDateRange,
-        clearIndicatorRequestState,
-        toast
-    ]);
+        window.addEventListener('indicatorDataNeeded', handleIndicatorDataNeeded);
+        return () => window.removeEventListener('indicatorDataNeeded', handleIndicatorDataNeeded);
+    }, [fetchIndicatorData]);
 
-// Handle buffer trimming: always store the trim and then attempt update
-    useEffect(() => {
-        const handleBufferTrimmed = (event) => {
-            const { start, end, candleCount } = event.detail || {};
-
-            if (!start || !end) {
-                console.warn('[useCandleSubscription] Invalid trim event');
-                return;
-            }
-
-            // Store the latest trim range
-            pendingTrimRef.current = { start, end, candleCount };
-
-            // Try to update subscription immediately (may defer if id not ready)
-            void attemptTrimSubscriptionUpdate();
-        };
-
-        window.addEventListener('chartBufferTrimmed', handleBufferTrimmed);
-        return () => window.removeEventListener('chartBufferTrimmed', handleBufferTrimmed);
-    }, [attemptTrimSubscriptionUpdate]);
-
-// Handle Go to Start reset of chart
+    // Handle restart chart request
     useEffect(() => {
         const handleRestartRequest = async () => {
-            // Capture current subscription details BEFORE any state changes
             const { platformName, stockSymbol, timeframe } = currentDetails;
 
             if (!platformName || !stockSymbol || !timeframe) {
                 console.warn('[useCandleSubscription] Cannot restart - no active subscription');
-                toast({
-                    title: "Cannot Reset",
-                    description: "No active stock selected",
-                    variant: "destructive",
-                    duration: 3000
-                });
                 return;
             }
 
-            console.log('[useCandleSubscription] Restarting subscription for current stock:', {
-                platformName,
-                stockSymbol,
-                timeframe
-            });
+            console.log('[useCandleSubscription] Restarting chart');
 
-            try {
-                // Step 1: Clear all state flags
-                pendingAnchorRef.current = null;
-                pendingTrimRef.current = null;
-                clearBufferRequestState();
-                clearIndicatorRequestState();
+            // Reset previous subscription to force fresh load
+            previousSubscriptionRef.current = {
+                platformName: null,
+                stockSymbol: null,
+                timeframe: null
+            };
 
-                // Step 2: Reset previous subscription tracking FIRST
-                // This ensures the next subscription is treated as a new request
-                previousSubscriptionRef.current = {
-                    platformName: null,
-                    stockSymbol: null,
-                    timeframe: null,
-                    wasHistorical: false
-                };
-
-                // Step 3: Unsubscribe
-                if (subscriptionIds.chart) {
-                    await unsubscribe('chart');
-                    // Wait for unsubscribe to fully complete
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-
-                // Step 4: Prepare fresh subscription request
-                setIsSubscribing(true);
-                setIsWaitingForData(true);
-
-                const maxLookback = calculateMaxLookback(indicators);
-                const totalCandlesToRequest = displayedCandles + (BUFFER_SIZE_MULTIPLIER * 2) + maxLookback;
-
-                const now = new Date();
-                const startDate = calculateStartDate(now, timeframe, totalCandlesToRequest);
-                const endDate = now;
-
-                console.log('[useCandleSubscription] Restart: requesting fresh data', {
-                    start: startDate.toISOString(),
-                    end: endDate.toISOString(),
-                    candles: totalCandlesToRequest
-                });
-
-                // Update requested range
-                updateSubscriptionDateRange('requested', startDate.getTime(), endDate.getTime());
-
-                // Step 5: Make fresh subscription request directly
-                const subscriptionRequest = {
-                    platformName,
-                    stockSymbol,
-                    timeframe,
-                    startDate: startDate.toISOString(),
-                    endDate: endDate.toISOString(),
-                    subscriptionType: 'CHART'
-                };
-
-                await requestSubscription('chart', subscriptionRequest);
-
-                // Update current details
-                setCurrentDetails({ platformName, stockSymbol, timeframe });
-
-                console.log('[useCandleSubscription] Restart completed successfully');
-
-            } catch (err) {
-                console.error('[useCandleSubscription] Restart failed:', err);
-                toast({
-                    title: "Reset Failed",
-                    description: "Failed to reload chart data",
-                    variant: "destructive",
-                    duration: 3000
-                });
-            } finally {
-                setIsSubscribing(false);
-            }
+            // Unsubscribe then resubscribe
+            await unsubscribeFromCandles();
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await subscribeToCandles(platformName, stockSymbol, timeframe);
         };
 
         window.addEventListener('restartChartRequested', handleRestartRequest);
         return () => window.removeEventListener('restartChartRequested', handleRestartRequest);
-    }, [
-        currentDetails,
-        subscriptionIds.chart,
-        unsubscribe,
-        calculateMaxLookback,
-        calculateStartDate,
-        displayedCandles,
-        BUFFER_SIZE_MULTIPLIER,
-        indicators,
-        updateSubscriptionDateRange,
-        requestSubscription,
-        clearBufferRequestState,
-        clearIndicatorRequestState,
-        toast
-    ]);
+    }, [currentDetails, unsubscribeFromCandles, subscribeToCandles]);
 
-// Whenever subscriptionIds.chart changes, try to apply any pending trim
+    // Register WebSocket message handler
     useEffect(() => {
-        if (!pendingTrimRef.current) return;
-        if (!subscriptionIds.chart) return;
-
-        void attemptTrimSubscriptionUpdate();
-    }, [subscriptionIds.chart, attemptTrimSubscriptionUpdate]);
-
-// ==================== REGISTER MESSAGE HANDLER ====================
-
-    useEffect(() => {
-        const unregister = registerHandler('chart', handleCandleMessage);
+        const unregister = registerHandler(handleWebSocketMessage);
         return () => unregister();
-    }, [handleCandleMessage, registerHandler]);
+    }, [registerHandler, handleWebSocketMessage]);
 
-// ==================== CLEANUP ====================
+    // Update latest known sequence when it changes from WebSocket
+    useEffect(() => {
+        if (latestCandleInfo?.sequence) {
+            updateLatestKnownSequence(latestCandleInfo.sequence);
+        }
+    }, [latestCandleInfo, updateLatestKnownSequence]);
 
+    // Cleanup on unmount
     useEffect(() => {
         return () => {
-            console.log('[useCandleSubscription] Cleaning up on unmount');
-
-            clearBufferRequestState();
-            clearIndicatorRequestState();
-
-            if (subscriptionIds.chart) {
-                unsubscribe('chart').catch(err => {
-                    console.error('[useCandleSubscription] Cleanup error:', err);
-                });
-            }
+            console.log('[useCandleSubscription] Cleaning up');
+            pendingRequestsRef.current.past.inFlight = false;
+            pendingRequestsRef.current.future.inFlight = false;
+            latestSequenceFromWSRef.current = null;
         };
-    }, [clearBufferRequestState, clearIndicatorRequestState]);
+    }, []);
 
-// ==================== RETURN ====================
+    // ==================== RETURN ====================
 
     return {
         isConnected,
         isSubscribing,
-        subscriptionIds,
+        activeSubscriptionId,
         error,
         subscribeToCandles,
         unsubscribeFromCandles,
-        currentSubscriptionDetails: currentDetails
+        currentSubscriptionDetails: currentDetails,
+        latestCandleInfo
     };
 }

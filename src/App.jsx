@@ -18,7 +18,7 @@ import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeRuleWeb
 
 function App() {
     return (
-        <BrowserRouter>
+        <BrowserRouter basename="/user">
             <WebSocketProvider>
                 <AlertWebSocketProvider>
                     <WatchlistProvider>

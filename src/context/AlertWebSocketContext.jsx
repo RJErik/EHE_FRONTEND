@@ -8,7 +8,7 @@ const AlertWebSocketContext = createContext();
 
 export function AlertWebSocketProvider({ children }) {
     const [isConnected, setIsConnected] = useState(webSocketService.isConnected());
-    const [subscriptionId, setSubscriptionId] = useState(null);
+    const subscriptionIdRef = useRef(null);
     const alertSubscriptionRef = useRef(null);
     const connectionCheckRef = useRef(null);
     const reconnectTimerRef = useRef(null);
@@ -61,13 +61,6 @@ export function AlertWebSocketProvider({ children }) {
                     alertSubscriptionRef.current = subscription;
 
                     console.log('[AlertWebSocket] Successfully subscribed to alerts');
-
-                    // Display success toast on initial connection
-                    // toast({
-                    //     title: 'Alert System Connected',
-                    //     description: 'You will now receive price alerts in real-time',
-                    //     duration: 3000,
-                    // });
                 }
             } catch (error) {
                 console.error('[AlertWebSocket] Setup error:', error);
@@ -116,16 +109,18 @@ export function AlertWebSocketProvider({ children }) {
         return () => {
             console.log('[AlertWebSocket] Cleaning up...');
 
-            // Cancel subscription on the server if we have an ID
-            if (subscriptionId) {
+            // Cancel subscription on the server if we have an ID (using ref)
+            if (subscriptionIdRef.current) {
+                console.log('[AlertWebSocket] Unsubscribing with ID:', subscriptionIdRef.current);
                 // Send unsubscription request with the new DTO structure
                 webSocketService.safeSend('/app/alerts/unsubscribe', {
-                    subscriptionId: subscriptionId
+                    subscriptionId: subscriptionIdRef.current
                 });
             }
 
             // Clean up local subscription
             if (alertSubscriptionRef.current) {
+                console.log('[AlertWebSocket] Unsubscribing from /user/queue/alerts');
                 webSocketService.unsubscribe('/user/queue/alerts');
                 alertSubscriptionRef.current = null;
             }
@@ -133,13 +128,17 @@ export function AlertWebSocketProvider({ children }) {
             // Clear timers
             if (connectionCheckRef.current) {
                 clearInterval(connectionCheckRef.current);
+                connectionCheckRef.current = null;
             }
 
             if (reconnectTimerRef.current) {
                 clearTimeout(reconnectTimerRef.current);
+                reconnectTimerRef.current = null;
             }
+
+            console.log('[AlertWebSocket] Cleanup complete');
         };
-    }, []);
+    }, []); // Empty dependency array is fine - we use refs for cleanup
 
     // Schedule reconnection attempt
     const scheduleReconnect = () => {
@@ -183,7 +182,8 @@ export function AlertWebSocketProvider({ children }) {
                 // Extract the actual subscription ID from the response object
                 const actualSubscriptionId = message.subscriptionId.subscriptionId;
 
-                setSubscriptionId(actualSubscriptionId);
+                // Store in ref for cleanup
+                subscriptionIdRef.current = actualSubscriptionId;
                 console.log('[AlertWebSocket] Subscription confirmed, ID:', actualSubscriptionId);
             }
             // This is an actual alert notification
@@ -299,9 +299,9 @@ export function AlertWebSocketProvider({ children }) {
     return (
         <AlertWebSocketContext.Provider value={{
             isConnected,
-            subscriptionId,
+            subscriptionId: subscriptionIdRef.current,
             reconnect,
-            registerAlertCallback, // Add this new function
+            registerAlertCallback,
         }}>
             {children}
         </AlertWebSocketContext.Provider>

@@ -13,18 +13,16 @@ export function ChartProvider({ children }) {
             startIndex: 0,
             displayCount: 100
         },
-        subscriptionRange: {
-            actual: {
-                start: null,
-                end: null
-            },
-            requested: {
-                start: null,
-                end: null
-            }
+        // Sequence-based tracking
+        sequenceBounds: {
+            minLoadedSequence: null,  // Lowest sequence in buffer
+            maxLoadedSequence: null,  // Highest sequence in buffer
+            latestKnownSequence: null, // Latest from WebSocket (edge)
+            oldestAvailableSequence: 1 // Server's oldest (usually 1)
         },
         metadata: {
-            timeframe: 24 * 60 * 60 * 1000, // Default 1 day in ms
+            timeframe: null,
+            timeframeMs: 24 * 60 * 60 * 1000,
             symbol: null,
             platform: null
         }
@@ -35,6 +33,7 @@ export function ChartProvider({ children }) {
     const [asyncState, setAsyncState] = useState({
         loadingPast: false,
         loadingFuture: false,
+        isInitializing: true,
         isWaitingForData: true
     });
 
@@ -44,7 +43,7 @@ export function ChartProvider({ children }) {
         currentMouseY: null,
         activeTimestamp: null,
         isLogarithmic: false,
-        isFollowingLatest: false,
+        isFollowingLatest: true,
         isDataGenerationEnabled: false
     });
 
@@ -52,26 +51,24 @@ export function ChartProvider({ children }) {
 
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
-    const BUFFER_SIZE_MULTIPLIER = 20;
-    const BUFFER_THRESHOLD_MULTIPLIER = 10;
-    const PAST_MARGIN = 80;
-    const FUTURE_MARGIN = 80;
+    const BUFFER_SIZE = 100; // Candles to keep on each side of view
+    const FETCH_THRESHOLD = 50; // Fetch when buffer drops below this
+    const FETCH_BATCH_SIZE = 100; // How many candles to fetch at once
 
     // ==================== REFS ====================
 
     const prevIndicatorIdsRef = useRef(new Set());
     const debounceTimerRef = useRef(null);
-    const lastRequestRef = useRef({ direction: null, timestamp: 0 });
 
     // ==================== HELPER FUNCTIONS ====================
 
-    const dedupeAndSort = useCallback((candles) => {
-        const byTs = new Map();
+    const dedupeAndSortBySequence = useCallback((candles) => {
+        const bySeq = new Map();
         for (const c of candles || []) {
-            if (!c || typeof c.timestamp !== 'number') continue;
-            byTs.set(c.timestamp, c);
+            if (!c || typeof c.sequence !== 'number') continue;
+            bySeq.set(c.sequence, c);
         }
-        return Array.from(byTs.values()).sort((a, b) => a.timestamp - b.timestamp);
+        return Array.from(bySeq.values()).sort((a, b) => a.sequence - b.sequence);
     }, []);
 
     const calculateMaxLookback = useCallback((currentIndicators = []) => {
@@ -145,27 +142,61 @@ export function ChartProvider({ children }) {
     /**
      * Initialize chart with new data (stock/timeframe change)
      */
-    const initializeChart = useCallback((newCandles = [], metadata = {}) => {
+    const initializeChart = useCallback((newCandles = [], metadata = {}, options = {}) => {
+        const {
+            latestKnownSequence = null,
+            anchorToSequence = null // If provided, position view to show this sequence at left
+        } = options;
+
         console.log('[ChartContext] initializeChart', {
             candleCount: newCandles?.length || 0,
-            metadata
+            metadata,
+            latestKnownSequence,
+            anchorToSequence
         });
 
-        const cleaned = dedupeAndSort(newCandles);
+        const cleaned = dedupeAndSortBySequence(newCandles);
         const withIndicators = applyIndicatorsToCandles(cleaned, indicators);
 
-        const initialDisplayCount = 100;
-        const startIndex = Math.max(0, withIndicators.length - initialDisplayCount);
+        // Calculate sequence bounds
+        let minSeq = null, maxSeq = null;
+        if (withIndicators.length > 0) {
+            minSeq = withIndicators[0].sequence;
+            maxSeq = withIndicators[withIndicators.length - 1].sequence;
+        }
+
+        // Determine view start index
+        let startIndex;
+        const displayCount = 100;
+
+        if (anchorToSequence !== null && withIndicators.length > 0) {
+            // Find index of anchor sequence
+            const anchorIdx = withIndicators.findIndex(c => c.sequence >= anchorToSequence);
+            if (anchorIdx >= 0) {
+                startIndex = anchorIdx;
+            } else {
+                startIndex = Math.max(0, withIndicators.length - displayCount);
+            }
+        } else {
+            // Default: show latest candles
+            startIndex = Math.max(0, withIndicators.length - displayCount);
+        }
 
         setChartData(prev => ({
             candles: withIndicators,
             viewWindow: {
                 startIndex,
-                displayCount: initialDisplayCount
+                displayCount
             },
-            subscriptionRange: prev.subscriptionRange, // Keep existing subscription ranges
+            sequenceBounds: {
+                minLoadedSequence: minSeq,
+                maxLoadedSequence: maxSeq,
+                latestKnownSequence: latestKnownSequence ?? maxSeq,
+                oldestAvailableSequence: 1
+            },
             metadata: {
                 timeframe: metadata.timeframe || prev.metadata.timeframe,
+                timeframeMs: metadata.timeframeMs || prev.metadata.timeframeMs,
                 symbol: metadata.symbol || prev.metadata.symbol,
                 platform: metadata.platform || prev.metadata.platform
             }
@@ -173,173 +204,139 @@ export function ChartProvider({ children }) {
 
         setAsyncState(prev => ({
             ...prev,
+            isInitializing: false,
             isWaitingForData: false
         }));
-    }, [dedupeAndSort, applyIndicatorsToCandles, indicators]);
+    }, [dedupeAndSortBySequence, applyIndicatorsToCandles, indicators]);
 
     /**
      * Merge incoming candles into the buffer
      */
-    const handleIncomingCandles = useCallback((newCandles = [], options = {}) => {
+    const mergeCandles = useCallback((newCandles = [], options = {}) => {
         const {
-            direction = 'unknown',
-            referenceTimestamp = null,
-            referenceOffset = 0,
-            isUpdate = false
+            direction = 'unknown', // 'past', 'future', 'update'
+            updateLatestSequence = null
         } = options;
 
-        console.log('[ChartContext] handleIncomingCandles', {
+        console.log('[ChartContext] mergeCandles', {
             count: newCandles?.length || 0,
             direction,
-            isUpdate
+            updateLatestSequence
         });
+
+        if (!newCandles || newCandles.length === 0) {
+            // Just update async state if this was a fetch that returned empty
+            setAsyncState(prev => ({
+                ...prev,
+                loadingPast: direction === 'past' ? false : prev.loadingPast,
+                loadingFuture: direction === 'future' ? false : prev.loadingFuture
+            }));
+            return;
+        }
 
         setChartData(prev => {
             const prevCandles = prev.candles;
 
-            // Merge logic
-            const byTimestamp = new Map();
+            // Merge by sequence number
+            const bySequence = new Map();
 
-            // Seed with existing candles
+            // Add existing candles
             for (const c of prevCandles) {
-                if (!c || typeof c.timestamp !== 'number') continue;
-                byTimestamp.set(c.timestamp, c);
+                if (c && typeof c.sequence === 'number') {
+                    bySequence.set(c.sequence, c);
+                }
             }
 
-            const EPS = 1e-8;
-            const nearlyEqual = (a, b) => {
-                const an = Number(a), bn = Number(b);
-                if (!Number.isFinite(an) || !Number.isFinite(bn)) return a === b;
-                return Math.abs(an - bn) <= EPS;
-            };
-
-            const isOHLCVSame = (a, b) => (
-                nearlyEqual(a?.open, b?.open) &&
-                nearlyEqual(a?.high, b?.high) &&
-                nearlyEqual(a?.low, b?.low) &&
-                nearlyEqual(a?.close, b?.close) &&
-                nearlyEqual(a?.volume, b?.volume)
-            );
-
-            // Merge new candles
+            // Merge new candles (overwrite if newer data)
             for (const n of newCandles) {
-                if (!n || typeof n.timestamp !== 'number') continue;
-                const existing = byTimestamp.get(n.timestamp);
+                if (!n || typeof n.sequence !== 'number') continue;
 
+                const existing = bySequence.get(n.sequence);
                 if (!existing) {
-                    byTimestamp.set(n.timestamp, { ...n });
-                    continue;
+                    bySequence.set(n.sequence, { ...n, indicatorValues: {} });
+                } else {
+                    // Update OHLCV but preserve indicator values if they exist
+                    bySequence.set(n.sequence, {
+                        ...existing,
+                        ...n,
+                        indicatorValues: existing.indicatorValues || {}
+                    });
                 }
-
-                // If OHLCV identical, keep existing (preserves indicators)
-                if (isOHLCVSame(existing, n)) {
-                    continue;
-                }
-
-                // Update OHLCV but preserve indicators if they exist
-                const preservedIndicators = (existing.indicatorValues && Object.keys(existing.indicatorValues).length > 0)
-                    ? existing.indicatorValues
-                    : n.indicatorValues;
-
-                byTimestamp.set(n.timestamp, {
-                    ...existing,
-                    ...n,
-                    indicatorValues: preservedIndicators || existing.indicatorValues || {}
-                });
             }
 
-            let merged = Array.from(byTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
+            let merged = Array.from(bySequence.values()).sort((a, b) => a.sequence - b.sequence);
 
             // Apply indicators
             merged = applyIndicatorsToCandles(merged, indicators);
 
-            // Calculate prepended count for view adjustment
-            const prevFirst = prevCandles[0]?.timestamp;
-            let prepended = 0;
-            if (Number.isFinite(prevFirst)) {
-                const threshold = prevFirst - Math.floor(prev.metadata.timeframe / 2);
-                for (let i = 0; i < merged.length; i++) {
-                    if (merged[i].timestamp < threshold) prepended++;
-                    else break;
-                }
-            }
+            // Calculate how many candles were prepended (for view adjustment)
+            const prevMinSeq = prev.sequenceBounds.minLoadedSequence;
+            const newMinSeq = merged.length > 0 ? merged[0].sequence : prevMinSeq;
+            const prependedCount = prevMinSeq !== null && newMinSeq !== null
+                ? Math.max(0, prevMinSeq - newMinSeq)
+                : 0;
 
-            // Reanchor view
+            // Adjust view start index
             let newViewStart = prev.viewWindow.startIndex;
 
-            if (prepended > 0) {
-                // Shift right to maintain visual position
-                newViewStart = Math.min(
-                    prev.viewWindow.startIndex + prepended,
-                    Math.max(0, merged.length - prev.viewWindow.displayCount)
-                );
-            } else if (referenceTimestamp) {
-                // Use explicit reference
-                const refIdx = merged.findIndex(c => c.timestamp === referenceTimestamp);
-                if (refIdx >= 0) {
-                    const desiredStart = refIdx - referenceOffset;
-                    newViewStart = Math.max(
-                        0,
-                        Math.min(desiredStart, merged.length - prev.viewWindow.displayCount)
-                    );
+            if (direction === 'past' && prependedCount > 0) {
+                // Keep visual position when loading older data
+                newViewStart = prev.viewWindow.startIndex + prependedCount;
+            } else if (direction === 'future' || direction === 'update') {
+                // Keep position unless following latest
+                if (uiState.isFollowingLatest) {
+                    newViewStart = Math.max(0, merged.length - prev.viewWindow.displayCount);
                 }
-            } else if (isUpdate && uiState.isFollowingLatest) {
-                // Snap to latest for real-time updates
-                newViewStart = Math.max(0, merged.length - prev.viewWindow.displayCount);
             }
 
-            // Trim if buffer too large
-            const displayCount = prev.viewWindow.displayCount;
-            const targetTotal = Math.max(
-                displayCount * 3,
-                400,
-            );
+            // Clamp view index
+            newViewStart = Math.max(0, Math.min(newViewStart, merged.length - prev.viewWindow.displayCount));
 
-            let didTrim = false;
-            if (merged.length > targetTotal) {
+            // Calculate new sequence bounds
+            const newBounds = {
+                minLoadedSequence: merged.length > 0 ? merged[0].sequence : null,
+                maxLoadedSequence: merged.length > 0 ? merged[merged.length - 1].sequence : null,
+                latestKnownSequence: updateLatestSequence ?? prev.sequenceBounds.latestKnownSequence,
+                oldestAvailableSequence: prev.sequenceBounds.oldestAvailableSequence
+            };
+
+            // Buffer trimming
+            const targetBufferSize = prev.viewWindow.displayCount + (BUFFER_SIZE * 2);
+
+            if (merged.length > targetBufferSize * 1.5) {
                 const maxLookback = calculateMaxLookback(indicators);
-                const leftMargin = Math.max(PAST_MARGIN + maxLookback, Math.floor((targetTotal - displayCount) / 2));
-                const rightMargin = Math.max(FUTURE_MARGIN, targetTotal - displayCount - leftMargin);
+                const viewStart = newViewStart;
+                const viewEnd = viewStart + prev.viewWindow.displayCount;
 
-                const startIdx = Math.max(0, newViewStart - leftMargin);
-                const endIdx = Math.min(merged.length, newViewStart + displayCount + rightMargin);
+                // Calculate trim boundaries
+                const leftKeep = Math.max(0, viewStart - BUFFER_SIZE - maxLookback);
+                const rightKeep = Math.min(merged.length, viewEnd + BUFFER_SIZE);
 
-                merged = merged.slice(startIdx, endIdx);
-                newViewStart = Math.max(0, newViewStart - startIdx);
-                didTrim = true;
-
-                // Notify subscription layer about trimmed boundaries
-                if (merged.length > 0) {
-                    console.log('[ChartContext] Buffer trimmed, notifying subscription layer', {
-                        newStart: new Date(merged[0].timestamp).toISOString(),
-                        newEnd: new Date(merged[merged.length - 1].timestamp).toISOString(),
-                        candleCount: merged.length
+                if (rightKeep - leftKeep < merged.length) {
+                    console.log('[ChartContext] Trimming buffer:', {
+                        before: merged.length,
+                        after: rightKeep - leftKeep,
+                        trimLeft: leftKeep,
+                        trimRight: merged.length - rightKeep
                     });
 
-                    setTimeout(() => {
-                        const evt = new CustomEvent('chartBufferTrimmed', {
-                            detail: {
-                                start: merged[0].timestamp,
-                                end: merged[merged.length - 1].timestamp,
-                                candleCount: merged.length
-                            }
-                        });
-                        window.dispatchEvent(evt);
-                    }, 0);
+                    merged = merged.slice(leftKeep, rightKeep);
+                    newViewStart = viewStart - leftKeep;
+
+                    // Update bounds after trimming
+                    newBounds.minLoadedSequence = merged[0]?.sequence ?? null;
+                    newBounds.maxLoadedSequence = merged[merged.length - 1]?.sequence ?? null;
                 }
             }
 
             return {
+                ...prev,
                 candles: merged,
                 viewWindow: {
                     ...prev.viewWindow,
                     startIndex: newViewStart
                 },
-                subscriptionRange: {
-                    actual: prev.subscriptionRange.actual,
-                    requested: prev.subscriptionRange.requested
-                },
-                metadata: prev.metadata
+                sequenceBounds: newBounds
             };
         });
 
@@ -353,6 +350,36 @@ export function ChartProvider({ children }) {
     }, [applyIndicatorsToCandles, indicators, uiState.isFollowingLatest, calculateMaxLookback]);
 
     /**
+     * Update latest known sequence from WebSocket
+     */
+    const updateLatestKnownSequence = useCallback((sequence) => {
+        setChartData(prev => ({
+            ...prev,
+            sequenceBounds: {
+                ...prev.sequenceBounds,
+                latestKnownSequence: sequence
+            }
+        }));
+    }, []);
+
+    /**
+     * Handle live candle update from WebSocket
+     */
+    const handleLiveCandleUpdate = useCallback((candles, latestSequence) => {
+        console.log('[ChartContext] handleLiveCandleUpdate:', {
+            candleCount: candles?.length,
+            latestSequence
+        });
+
+        if (!candles || candles.length === 0) return;
+
+        mergeCandles(candles, {
+            direction: 'update',
+            updateLatestSequence: latestSequence
+        });
+    }, [mergeCandles]);
+
+    /**
      * Handle view scroll
      */
     const handleViewScroll = useCallback((newStartIndex) => {
@@ -362,158 +389,171 @@ export function ChartProvider({ children }) {
                 ...prev.viewWindow,
                 startIndex: Math.max(0, Math.min(
                     newStartIndex,
-                    prev.candles.length - prev.viewWindow.displayCount
+                    Math.max(0, prev.candles.length - prev.viewWindow.displayCount)
                 ))
             }
         }));
     }, []);
 
     /**
-     * Handle indicator changes
+     * Set loading state for buffer requests
      */
-    const handleIndicatorChange = useCallback((newIndicators) => {
-        setIndicators(newIndicators);
-
-        // Recalculate indicators on current data
-        setChartData(prev => {
-            const withIndicators = applyIndicatorsToCandles(prev.candles, newIndicators);
-            return {
-                ...prev,
-                candles: withIndicators
-            };
-        });
-    }, [applyIndicatorsToCandles]);
-
-    /**
-     * Request buffer extension
-     */
-    const requestBufferExtension = useCallback((direction, referenceInfo = null) => {
-        const { candles, viewWindow, metadata, subscriptionRange } = chartData;
-
-        if (!candles.length || !subscriptionRange.actual.start || !subscriptionRange.actual.end) {
-            console.warn('[ChartContext] Cannot request buffer - no data');
-            return;
-        }
-
-        // Check if we're making the same request too quickly
-        const now = Date.now();
-        if (lastRequestRef.current.direction === direction &&
-            now - lastRequestRef.current.timestamp < 1000) {
-            console.log('[ChartContext] Skipping duplicate request (too soon)');
-            return;
-        }
-
-        const bufferSizeInMs = BUFFER_SIZE_MULTIPLIER * metadata.timeframe;
-        const visibleStartIndex = viewWindow.startIndex;
-        const visibleEndIndex = Math.min(
-            viewWindow.startIndex + viewWindow.displayCount - 1,
-            candles.length - 1
-        );
-
-        const firstVisibleCandle = candles[visibleStartIndex];
-        const lastVisibleCandle = candles[visibleEndIndex];
-
-        let newStartDate, newEndDate;
-
-        if (direction === 'past') {
-            newEndDate = firstVisibleCandle.timestamp + bufferSizeInMs;
-            newStartDate = subscriptionRange.requested.start
-                ? subscriptionRange.requested.start - bufferSizeInMs
-                : subscriptionRange.actual.start - bufferSizeInMs;
-
-            // Check if already requested this range
-            if (subscriptionRange.requested.start &&
-                newStartDate >= subscriptionRange.requested.start - (metadata.timeframe * 2)) {
-                console.log('[ChartContext] Skipping redundant past request');
-                return;
-            }
-        } else {
-            newStartDate = lastVisibleCandle.timestamp - bufferSizeInMs;
-            newEndDate = subscriptionRange.requested.end
-                ? subscriptionRange.requested.end + bufferSizeInMs
-                : subscriptionRange.actual.end + bufferSizeInMs;
-
-            // Check if already requested this range
-            if (subscriptionRange.requested.end &&
-                newEndDate <= subscriptionRange.requested.end + (metadata.timeframe * 2)) {
-                console.log('[ChartContext] Skipping redundant future request');
-                return;
-            }
-        }
-
-        // Guard against invalid range
-        if (newStartDate >= newEndDate) {
-            if (direction === 'past') {
-                newStartDate = firstVisibleCandle.timestamp - bufferSizeInMs;
-                newEndDate = firstVisibleCandle.timestamp + bufferSizeInMs;
-            } else {
-                newStartDate = lastVisibleCandle.timestamp - bufferSizeInMs;
-                newEndDate = lastVisibleCandle.timestamp + bufferSizeInMs;
-            }
-        }
-
-        console.log('[ChartContext] Requesting buffer extension:', {
-            direction,
-            start: new Date(newStartDate).toISOString(),
-            end: new Date(newEndDate).toISOString()
-        });
-
-        // Update last request tracking
-        lastRequestRef.current = {
-            direction,
-            timestamp: now
-        };
-
+    const setBufferLoading = useCallback((direction, isLoading) => {
         setAsyncState(prev => ({
             ...prev,
-            [direction === 'past' ? 'loadingPast' : 'loadingFuture']: true
+            [direction === 'past' ? 'loadingPast' : 'loadingFuture']: isLoading
         }));
+    }, []);
 
-        // Emit event
-        const evt = new CustomEvent('chartBufferUpdateRequested', {
-            detail: {
-                start: newStartDate,
-                end: newEndDate,
-                bufferDirection: direction,
-                referenceTimestamp: referenceInfo?.timestamp || firstVisibleCandle?.timestamp,
-                referenceOffset: referenceInfo?.offset || 0
-            }
-        });
-        window.dispatchEvent(evt);
-
-    }, [chartData]);
+    // ==================== BUFFER CHECK ====================
 
     /**
-     * Request indicator data extension
+     * Check if we need more data based on view position
+     * Returns { needsPast, needsFuture, requestInfo }
      */
-    const requestIndicatorData = useCallback(() => {
-        const { candles, metadata } = chartData;
+    const checkBufferNeeds = useCallback(() => {
+        const { candles, viewWindow, sequenceBounds } = chartData;
 
-        if (!candles.length || indicators.length === 0) return;
+        if (candles.length === 0) {
+            return { needsPast: false, needsFuture: false };
+        }
 
-        const maxLookback = calculateMaxLookback(indicators);
-        const firstCandle = candles[0];
-        const lastCandle = candles[candles.length - 1];
+        const viewStart = viewWindow.startIndex;
+        const viewEnd = Math.min(viewStart + viewWindow.displayCount - 1, candles.length - 1);
 
-        const start = firstCandle.timestamp - (maxLookback * metadata.timeframe);
-        const end = lastCandle.timestamp;
+        // Check past buffer
+        const leftBuffer = viewStart; // Candles available before view start
+        const needsPast = leftBuffer < FETCH_THRESHOLD &&
+            sequenceBounds.minLoadedSequence > sequenceBounds.oldestAvailableSequence &&
+            !asyncState.loadingPast;
 
-        console.log('[ChartContext] Requesting indicator data:', {
-            start: new Date(start).toISOString(),
-            end: new Date(end).toISOString(),
-            lookback: maxLookback
-        });
+        // Check future buffer
+        const rightBuffer = candles.length - 1 - viewEnd; // Candles available after view end
+        const isAtEdge = sequenceBounds.maxLoadedSequence >= sequenceBounds.latestKnownSequence;
+        const needsFuture = rightBuffer < FETCH_THRESHOLD &&
+            !isAtEdge &&
+            !asyncState.loadingFuture;
 
-        // Emit event
-        const evt = new CustomEvent('indicatorRequirementsChanged', {
-            detail: {
-                range: { start, end, lookback: maxLookback },
-                indicatorCount: indicators.length
+        return {
+            needsPast,
+            needsFuture,
+            requestInfo: {
+                minLoadedSequence: sequenceBounds.minLoadedSequence,
+                maxLoadedSequence: sequenceBounds.maxLoadedSequence,
+                latestKnownSequence: sequenceBounds.latestKnownSequence,
+                leftBuffer,
+                rightBuffer
             }
-        });
-        window.dispatchEvent(evt);
+        };
+    }, [chartData, asyncState.loadingPast, asyncState.loadingFuture]);
 
-    }, [chartData, indicators, calculateMaxLookback]);
+    // ==================== EFFECTS ====================
+
+    /**
+     * Check buffer needs when view changes (debounced)
+     */
+    useEffect(() => {
+        if (uiState.isDragging) {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+            return;
+        }
+
+        if (chartData.candles.length === 0) return;
+        if (asyncState.isInitializing) return;
+
+        // Clear existing timer
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+
+        // Debounce the check
+        debounceTimerRef.current = setTimeout(() => {
+            const { needsPast, needsFuture, requestInfo } = checkBufferNeeds();
+
+            if (needsPast || needsFuture) {
+                console.log('[ChartContext] Buffer needs detected:', {
+                    needsPast,
+                    needsFuture,
+                    ...requestInfo
+                });
+
+                // Emit event for useCandleSubscription to handle
+                const evt = new CustomEvent('chartBufferNeeded', {
+                    detail: {
+                        direction: needsPast ? 'past' : 'future',
+                        ...requestInfo
+                    }
+                });
+                window.dispatchEvent(evt);
+            }
+        }, 150);
+
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+            }
+        };
+    }, [
+        chartData.viewWindow.startIndex,
+        chartData.candles.length,
+        uiState.isDragging,
+        asyncState.isInitializing,
+        checkBufferNeeds
+    ]);
+
+    /**
+     * Handle indicator changes - recalculate on current data
+     */
+    useEffect(() => {
+        if (indicators.length === 0) {
+            prevIndicatorIdsRef.current = new Set();
+            return;
+        }
+
+        const currentIds = new Set(indicators.map(ind => ind.id));
+        const prevIds = prevIndicatorIdsRef.current;
+
+        const idsChanged =
+            currentIds.size !== prevIds.size ||
+            [...currentIds].some(id => !prevIds.has(id));
+
+        if (!idsChanged) return;
+
+        prevIndicatorIdsRef.current = currentIds;
+
+        // Recalculate indicators
+        setChartData(prev => {
+            const withIndicators = applyIndicatorsToCandles(prev.candles, indicators);
+            return { ...prev, candles: withIndicators };
+        });
+
+        // Check if we need more data for indicator lookback
+        const maxLookback = calculateMaxLookback(indicators);
+        const { candles, viewWindow, sequenceBounds } = chartData;
+
+        if (candles.length > 0 && maxLookback > 0) {
+            const viewStartCandle = candles[viewWindow.startIndex];
+            const candlesBefore = viewWindow.startIndex;
+
+            if (candlesBefore < maxLookback) {
+                console.log('[ChartContext] Need more data for indicator lookback:', {
+                    need: maxLookback,
+                    have: candlesBefore
+                });
+
+                const evt = new CustomEvent('indicatorDataNeeded', {
+                    detail: {
+                        minLoadedSequence: sequenceBounds.minLoadedSequence,
+                        lookbackNeeded: maxLookback - candlesBefore
+                    }
+                });
+                window.dispatchEvent(evt);
+            }
+        }
+    }, [indicators, applyIndicatorsToCandles, calculateMaxLookback, chartData]);
 
     // ==================== COMPUTED VALUES ====================
 
@@ -529,140 +569,16 @@ export function ChartProvider({ children }) {
         return visibleCandles[uiState.hoveredIndex] || null;
     }, [visibleCandles, uiState.hoveredIndex]);
 
-    // ==================== EFFECTS ====================
+    const isAtLatestEdge = useMemo(() => {
+        const { sequenceBounds, candles, viewWindow } = chartData;
+        if (!sequenceBounds.latestKnownSequence || candles.length === 0) return true;
 
-    /**
-     * Check if we need more data when view changes (with debouncing)
-     */
-    useEffect(() => {
-        if (uiState.isDragging) {
-            if (debounceTimerRef.current) {
-                clearTimeout(debounceTimerRef.current);
-                debounceTimerRef.current = null;
-            }
-            return;
-        }
+        const viewEndIndex = Math.min(viewWindow.startIndex + viewWindow.displayCount - 1, candles.length - 1);
+        const viewEndCandle = candles[viewEndIndex];
 
-        if (!chartData.candles.length) return;
-        if (asyncState.loadingPast || asyncState.loadingFuture) {
-            console.log('[ChartContext] Skipping edge check - request in flight:', {
-                loadingPast: asyncState.loadingPast,
-                loadingFuture: asyncState.loadingFuture
-            });
-            return;
-        }
-
-        const { candles, viewWindow, subscriptionRange, metadata } = chartData;
-
-        if (!subscriptionRange.actual.start || !subscriptionRange.actual.end) return;
-
-        // Clear existing timer
-        if (debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-        }
-
-        // Debounce the check
-        debounceTimerRef.current = setTimeout(() => {
-            const visibleStartIndex = viewWindow.startIndex;
-            const visibleEndIndex = Math.min(
-                viewWindow.startIndex + viewWindow.displayCount - 1,
-                candles.length - 1
-            );
-
-            const firstVisibleCandle = candles[visibleStartIndex];
-            const lastVisibleCandle = candles[visibleEndIndex];
-
-            if (!firstVisibleCandle || !lastVisibleCandle) return;
-
-            const thresholdTimeInMs = BUFFER_THRESHOLD_MULTIPLIER * metadata.timeframe;
-
-            const timeFromStart = firstVisibleCandle.timestamp - subscriptionRange.actual.start;
-            const timeToEnd = subscriptionRange.actual.end - lastVisibleCandle.timestamp;
-
-            console.log('[ChartContext] Edge check:', {
-                timeFromStart: `${Math.floor(timeFromStart / (24 * 60 * 60 * 1000))} days`,
-                timeToEnd: `${Math.floor(timeToEnd / (24 * 60 * 60 * 1000))} days`,
-                threshold: `${Math.floor(thresholdTimeInMs / (24 * 60 * 60 * 1000))} days`,
-                needsPast: timeFromStart < thresholdTimeInMs,
-                needsFuture: timeToEnd < thresholdTimeInMs
-            });
-
-            const needsPastData = timeFromStart < thresholdTimeInMs;
-            const needsFutureData = timeToEnd < thresholdTimeInMs;
-
-            if (needsPastData) {
-                requestBufferExtension('past', {
-                    timestamp: firstVisibleCandle.timestamp,
-                    offset: 0
-                });
-            } else if (needsFutureData) {
-                const refOffset = Math.max(0, Math.min(
-                    viewWindow.displayCount - 1,
-                    visibleEndIndex - visibleStartIndex
-                ));
-                requestBufferExtension('future', {
-                    timestamp: lastVisibleCandle.timestamp,
-                    offset: refOffset
-                });
-            }
-        }, 200); // 200ms debounce
-
-        return () => {
-            if (debounceTimerRef.current) {
-                clearTimeout(debounceTimerRef.current);
-            }
-        };
-
-    }, [
-        chartData.viewWindow.startIndex,
-        chartData.candles.length,
-        uiState.isDragging,
-        asyncState.loadingPast,
-        asyncState.loadingFuture,
-        requestBufferExtension,
-        chartData
-    ]);
-
-    /**
-     * Request indicator data when indicators change
-     */
-    useEffect(() => {
-        if (indicators.length === 0) {
-            prevIndicatorIdsRef.current = new Set();
-            return;
-        }
-
-        if (!chartData.candles.length) return;
-
-        const currentIds = new Set(indicators.map(ind => ind.id));
-        const prevIds = prevIndicatorIdsRef.current;
-
-        const idsChanged =
-            currentIds.size !== prevIds.size ||
-            [...currentIds].some(id => !prevIds.has(id));
-
-        if (!idsChanged) return;
-
-        prevIndicatorIdsRef.current = currentIds;
-
-        const timer = setTimeout(() => {
-            requestIndicatorData();
-        }, 100);
-
-        return () => clearTimeout(timer);
-    }, [indicators, chartData.candles.length, requestIndicatorData]);
-
-    /**
-     * Set default active timestamp
-     */
-    useEffect(() => {
-        if (uiState.activeTimestamp == null && visibleCandles.length > 0) {
-            setUiState(prev => ({
-                ...prev,
-                activeTimestamp: visibleCandles[0].timestamp
-            }));
-        }
-    }, [visibleCandles, uiState.activeTimestamp]);
+        // Consider at edge if we can see the latest known candle
+        return viewEndCandle && viewEndCandle.sequence >= sequenceBounds.latestKnownSequence;
+    }, [chartData]);
 
     // ==================== PUBLIC API ====================
 
@@ -671,59 +587,26 @@ export function ChartProvider({ children }) {
             ...indicator,
             id: crypto.randomUUID?.() || `id-${Date.now()}`
         };
-        handleIndicatorChange([...indicators, newIndicator]);
-    }, [indicators, handleIndicatorChange]);
+        setIndicators(prev => [...prev, newIndicator]);
+    }, []);
 
     const removeIndicator = useCallback((id) => {
-        handleIndicatorChange(indicators.filter(ind => ind.id !== id));
-    }, [indicators, handleIndicatorChange]);
+        setIndicators(prev => prev.filter(ind => ind.id !== id));
+    }, []);
 
     const updateIndicator = useCallback((id, updates) => {
-        handleIndicatorChange(
-            indicators.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
+        setIndicators(prev =>
+            prev.map(ind => ind.id === id ? { ...ind, ...updates } : ind)
         );
-    }, [indicators, handleIndicatorChange]);
-
-    const computeRequiredIndicatorRange = useCallback(() => {
-        const { candles, metadata } = chartData;
-
-        if (!candles.length) {
-            return { start: null, end: null, lookback: 0 };
-        }
-
-        const maxLookback = calculateMaxLookback(indicators);
-        const firstCandle = candles[0];
-        const lastCandle = candles[candles.length - 1];
-
-        const start = firstCandle.timestamp - (maxLookback * metadata.timeframe);
-        const end = lastCandle.timestamp;
-
-        return { start, end, lookback: maxLookback };
-    }, [chartData, indicators, calculateMaxLookback]);
-
-    const updateSubscriptionDateRange = useCallback((type, startDate, endDate) => {
-        console.log('[ChartContext] Updating subscription range:', {
-            type,
-            start: new Date(startDate).toISOString(),
-            end: new Date(endDate).toISOString()
-        });
-
-        setChartData(prev => ({
-            ...prev,
-            subscriptionRange: {
-                ...prev.subscriptionRange,
-                [type]: {
-                    start: startDate,
-                    end: endDate
-                }
-            }
-        }));
     }, []);
 
     const contextValue = {
         // Core data
         displayCandles: chartData.candles,
         candleData: visibleCandles,
+
+        // Sequence bounds (for external use)
+        sequenceBounds: chartData.sequenceBounds,
 
         // View state
         viewStartIndex: chartData.viewWindow.startIndex,
@@ -769,17 +652,22 @@ export function ChartProvider({ children }) {
         setIsDataGenerationEnabled: useCallback((value) => {
             setUiState(prev => ({ ...prev, isDataGenerationEnabled: value }));
         }, []),
+
+        // Async state
         isWaitingForData: asyncState.isWaitingForData,
         setIsWaitingForData: useCallback((value) => {
             setAsyncState(prev => ({ ...prev, isWaitingForData: value }));
         }, []),
+        isInitializing: asyncState.isInitializing,
+        loadingPast: asyncState.loadingPast,
+        loadingFuture: asyncState.loadingFuture,
 
         // Metadata
-        timeframeInMs: chartData.metadata.timeframe,
+        timeframeInMs: chartData.metadata.timeframeMs,
         setTimeframeInMs: useCallback((value) => {
             setChartData(prev => ({
                 ...prev,
-                metadata: { ...prev.metadata, timeframe: value }
+                metadata: { ...prev.metadata, timeframeMs: value }
             }));
         }, []),
 
@@ -790,23 +678,25 @@ export function ChartProvider({ children }) {
         updateIndicator,
 
         // Core actions
-        initializeOnSelection: initializeChart,
-        mergeBaseCandles: handleIncomingCandles,
+        initializeChart,
+        mergeCandles,
+        handleLiveCandleUpdate,
+        updateLatestKnownSequence,
+        setBufferLoading,
+        checkBufferNeeds,
 
-        // Helper functions
-        computeRequiredIndicatorRange,
-        updateSubscriptionDateRange,
+        // Computed
+        isAtLatestEdge,
 
-        // Status checks
-        isBaseBufferReadyForTimeframe: useCallback(() => chartData.candles.length > 0, [chartData.candles]),
-        isFutureRequestInFlight: useCallback(() => asyncState.loadingFuture, [asyncState.loadingFuture]),
-        isPastRequestInFlight: useCallback(() => asyncState.loadingPast, [asyncState.loadingPast]),
+        // Helper for indicator lookback
+        calculateMaxLookback,
 
         // Constants
         MIN_DISPLAY_CANDLES,
         MAX_DISPLAY_CANDLES,
-        BUFFER_SIZE_MULTIPLIER,
-        BUFFER_THRESHOLD_MULTIPLIER
+        BUFFER_SIZE,
+        FETCH_THRESHOLD,
+        FETCH_BATCH_SIZE
     };
 
     // Expose globally for debugging

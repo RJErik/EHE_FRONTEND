@@ -18,7 +18,7 @@ export function useWatchlistItems() {
 
         try {
             console.log("Fetching watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlists", {
+            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -35,7 +35,7 @@ export function useWatchlistItems() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlists", {
+                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -92,7 +92,7 @@ export function useWatchlistItems() {
 
         try {
             console.log("Fetching candles for watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlists/candles", {
+            let response = await fetch("http://localhost:8080/api/user/watchlistItems/candles", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -160,7 +160,7 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Adding ${symbol} from ${platform} to watchlist...`);
-            let response = await fetch("http://localhost:8080/api/user/watchlists", {
+            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -178,7 +178,7 @@ export function useWatchlistItems() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlists", {
+                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -242,7 +242,7 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Removing item ${id} from watchlist...`);
-            let response = await fetch("http://localhost:8080/api/user/watchlists", {
+            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -260,7 +260,7 @@ export function useWatchlistItems() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlists", {
+                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -331,7 +331,7 @@ export function useWatchlistItems() {
             const apiSymbol = symbol === "_any_" ? "" : symbol;
 
             console.log(`Searching watchlist: platform=${apiPlatform}, symbol=${apiSymbol}`);
-            let response = await fetch("http://localhost:8080/api/user/watchlists/search", {
+            let response = await fetch("http://localhost:8080/api/user/watchlistItems/search", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -352,7 +352,7 @@ export function useWatchlistItems() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlists/search", {
+                response = await fetch("http://localhost:8080/api/user/watchlistItems/search", {
                     method: "POST",
                     credentials: "include",
                     headers: {

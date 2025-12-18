@@ -9,7 +9,7 @@ const AutomatedTradeRuleWebSocketContext = createContext(null);
 export function AutomatedTradeWebSocketProvider({ children }) {
     const [isConnected, setIsConnected] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
-    const [subscriptionId, setSubscriptionId] = useState(null);
+    const subscriptionIdRef = useRef(null);
     const subscribedCallbacks = useRef([]);
     const { toast } = useToast();
 
@@ -35,16 +35,29 @@ export function AutomatedTradeWebSocketProvider({ children }) {
 
         // Cleanup function
         return () => {
-            // Don't disconnect as other components might be using the WebSocket
-            if (subscriptionId) {
-                unsubscribeFromAutomatedTrades();
+            console.log('[AutomatedTradeWebSocket] Cleaning up...');
+
+            // Unsubscribe using the ref value (not stale state)
+            if (subscriptionIdRef.current) {
+                console.log('[AutomatedTradeWebSocket] Unsubscribing with ID:', subscriptionIdRef.current);
+
+                // Send unsubscription request
+                webSocketService.safeSend(
+                    '/app/automated-trades/unsubscribe',
+                    { subscriptionId: subscriptionIdRef.current }
+                );
             }
+
+            // Unsubscribe from the destination
+            webSocketService.unsubscribe('/user/queue/automated-trades');
+
+            console.log('[AutomatedTradeWebSocket] Cleanup complete');
         };
-    }, []);
+    }, []); // Empty dependency array is fine - we use refs for cleanup
 
     // Function to subscribe to automated trades
     const subscribeToAutomatedTrades = async () => {
-        if (isSubscribed) {
+        if (subscriptionIdRef.current) {
             console.log('[AutomatedTradeWebSocket] Already subscribed');
             return;
         }
@@ -57,9 +70,6 @@ export function AutomatedTradeWebSocketProvider({ children }) {
                 '/app/automated-trades/subscribe',
                 {}
             );
-
-            // After sending the request, we expect a message to be sent to our user destination
-            // This is handled in the WebSocketService message handling
 
             // Set up a destination subscription for receiving messages
             webSocketService.subscribe('/user/queue/automated-trades', (data) => {
@@ -81,16 +91,17 @@ export function AutomatedTradeWebSocketProvider({ children }) {
                 }
 
                 // If this is the subscription confirmation - handle both string and object format
-                if (data.subscriptionId && !subscriptionId) {
+                if (data.subscriptionId && !subscriptionIdRef.current) {
                     // Extract the actual subscription ID from the response object
                     const actualSubscriptionId = data.subscriptionId.subscriptionId;
 
                     console.log('[AutomatedTradeWebSocket] Subscription confirmed:', actualSubscriptionId);
-                    setSubscriptionId(actualSubscriptionId);
+
+                    // Store in ref for cleanup
+                    subscriptionIdRef.current = actualSubscriptionId;
                     setIsSubscribed(true);
                     return;
                 }
-
             });
 
             console.log('[AutomatedTradeWebSocket] Subscription request sent');
@@ -106,24 +117,24 @@ export function AutomatedTradeWebSocketProvider({ children }) {
 
     // Function to unsubscribe from automated trades
     const unsubscribeFromAutomatedTrades = async () => {
-        if (!isSubscribed || !subscriptionId) {
+        if (!subscriptionIdRef.current) {
             console.log('[AutomatedTradeWebSocket] Not currently subscribed');
             return;
         }
 
         try {
-            console.log('[AutomatedTradeWebSocket] Unsubscribing from automated trades');
+            console.log('[AutomatedTradeWebSocket] Manually unsubscribing from automated trades');
 
             // Send unsubscription request with the new DTO structure
             await webSocketService.send(
                 '/app/automated-trades/unsubscribe',
-                { subscriptionId: subscriptionId }
+                { subscriptionId: subscriptionIdRef.current }
             );
 
             // Unsubscribe from the destination
             webSocketService.unsubscribe('/user/queue/automated-trades');
 
-            setSubscriptionId(null);
+            subscriptionIdRef.current = null;
             setIsSubscribed(false);
             console.log('[AutomatedTradeWebSocket] Unsubscribed successfully');
         } catch (err) {
@@ -164,7 +175,7 @@ export function AutomatedTradeWebSocketProvider({ children }) {
     const contextValue = {
         isConnected,
         isSubscribed,
-        subscriptionId,
+        subscriptionId: subscriptionIdRef.current,
         registerAutomatedTradeCallback
     };
 

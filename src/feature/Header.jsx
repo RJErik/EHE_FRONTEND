@@ -24,7 +24,7 @@ const Header = () => {
             case '/stock-market': return 'stockMarket';
             case '/alerts': return 'alerts';
             case '/automatic-trade-rules': return 'automaticTradeRules';
-            case '/watchlistItems': return 'watchlist-items';
+            case '/watchlist-items': return 'watchlistItems';
             default: return 'home';
         }
     };

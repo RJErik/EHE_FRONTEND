@@ -72,12 +72,12 @@ const StockSelectors = () => {
     // Do NOT coerce 60000 to 1D; 60000 is 1M.
     const millisecondsToTimeframe = (ms) => {
         switch (ms) {
-            case 1 * 60 * 1000: return "1M";
-            case 5 * 60 * 1000: return "5M";
-            case 15 * 60 * 1000: return "15M";
-            case 60 * 60 * 1000: return "1H";
-            case 4 * 60 * 60 * 1000: return "4H";
-            case 24 * 60 * 60 * 1000: return "1D";
+            case 1 * 60 * 1000: return "1m";
+            case 5 * 60 * 1000: return "5m";
+            case 15 * 60 * 1000: return "15m";
+            case 60 * 60 * 1000: return "1h";
+            case 4 * 60 * 60 * 1000: return "4h";
+            case 24 * 60 * 60 * 1000: return "1d";
             default: return selectedTimeframe; // Keep current selection if unknown
         }
     };

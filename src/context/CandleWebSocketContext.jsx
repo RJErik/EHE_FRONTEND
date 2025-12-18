@@ -1,124 +1,107 @@
 // src/context/CandleWebSocketContext.jsx
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
 
 // Create WebSocket Context
 const CandleWebSocketContext = createContext(null);
 
-// Global persistent subscription manager for tracking active subscription
+/**
+ * Subscription Manager - Simplified for live updates only
+ * No longer manages time ranges, just tracks active subscriptions for live streaming
+ */
 const SubscriptionManager = {
-    // Single active subscription (chart only)
+    // Active subscription ID
     activeSubscription: null,
 
+    // Current subscription details
     currentSubscription: {
         platformName: null,
         stockSymbol: null,
         timeframe: null
     },
 
-    // Heartbeat tracking
-    lastHeartbeatTime: null,
-    heartbeatCount: 0,
+    // Latest candle info from WebSocket
+    latestCandleInfo: {
+        sequence: null,
+        timestamp: null,
+        candle: null
+    },
 
     // WebSocket connection state
     isConnected: false,
     userQueueSubscription: null,
 
-    // Track message handlers (single subscription - chart only)
+    // Message handlers
     messageHandlers: new Set(),
 
     // Pending subscription requests for deduplication
-    pendingSubscriptionRequests: {},
+    pendingRequests: {},
 
-    // Track if we're awaiting activation
+    // Awaiting activation flag
     awaitingActivation: false,
 
-    // Track pending unsubscribe request ID
-    pendingUnsubscribeId: null,
-
-    // React state updaters (will be set by the provider)
+    // React state updaters
     reactStateUpdaters: {
         setActiveSubscriptionId: null,
-        setCurrentSubscriptionDetails: null
+        setCurrentSubscriptionDetails: null,
+        setLatestCandleInfo: null
     },
 
-    // Store subscription for reuse
     setActiveSubscription(id) {
         if (!id) return;
-
-        console.log(`[SubscriptionManager] Setting active subscription to: ${id}`);
+        console.log(`[SubscriptionManager] Setting active subscription: ${id}`);
         this.activeSubscription = id;
 
-        // Update React state if updater is available
         if (this.reactStateUpdaters.setActiveSubscriptionId) {
             this.reactStateUpdaters.setActiveSubscriptionId(id);
         }
     },
 
-    // Clear active subscription
     clearActiveSubscription() {
-        console.log(`[SubscriptionManager] Clearing active subscription: ${this.activeSubscription}`);
+        console.log(`[SubscriptionManager] Clearing active subscription`);
         this.activeSubscription = null;
+        this.latestCandleInfo = { sequence: null, timestamp: null, candle: null };
 
-        // Update React state if updater is available
         if (this.reactStateUpdaters.setActiveSubscriptionId) {
             this.reactStateUpdaters.setActiveSubscriptionId(null);
         }
+        if (this.reactStateUpdaters.setLatestCandleInfo) {
+            this.reactStateUpdaters.setLatestCandleInfo({ sequence: null, timestamp: null, candle: null });
+        }
     },
 
-    // Update current symbol/platform/timeframe info
     updateCurrentSubscriptionInfo(details) {
         if (details) {
             this.currentSubscription = { ...details };
             console.log(`[SubscriptionManager] Updated subscription details:`, this.currentSubscription);
 
-            // Update React state if updater is available
             if (this.reactStateUpdaters.setCurrentSubscriptionDetails) {
                 this.reactStateUpdaters.setCurrentSubscriptionDetails({ ...details });
             }
         }
     },
 
-    // Register a message handler
+    updateLatestCandleInfo(info) {
+        this.latestCandleInfo = { ...info };
+
+        if (this.reactStateUpdaters.setLatestCandleInfo) {
+            this.reactStateUpdaters.setLatestCandleInfo({ ...info });
+        }
+    },
+
     registerHandler(handler) {
         if (!handler) return () => {};
-
         this.messageHandlers.add(handler);
         return () => this.unregisterHandler(handler);
     },
 
-    // Unregister a message handler
     unregisterHandler(handler) {
-        if (!handler) return;
-
-        this.messageHandlers.delete(handler);
-    },
-
-    // Record heartbeat information
-    recordHeartbeat(subscriptionId) {
-        this.lastHeartbeatTime = new Date();
-        this.heartbeatCount++;
-
-        const isActive = subscriptionId === this.activeSubscription;
-        const timestamp = new Date().toISOString().substr(11, 12);
-
-        const subscriptionType = isActive ? "chart" : "stale";
-
-        console.log(`[${timestamp}] Heartbeat #${this.heartbeatCount} for ${subscriptionType} subscription: ${subscriptionId}`);
-
-        // Clean up stale subscriptions that are still sending heartbeats
-        if (!isActive && subscriptionId) {
-            console.log("[SubscriptionManager] Cleaning up stale subscription with ID:", subscriptionId);
-            webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: subscriptionId
-            }).catch(() => {});
+        if (handler) {
+            this.messageHandlers.delete(handler);
         }
-
-        return isActive;
     },
 
-    // Broadcast message to all handlers
     broadcastMessage(data) {
         this.messageHandlers.forEach(handler => {
             try {
@@ -135,23 +118,29 @@ export function WebSocketProvider({ children, currentPage }) {
     const [connectionError, setConnectionError] = useState(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    // ✅ React state for subscription tracking
+    // React state for subscription tracking
     const [activeSubscriptionId, setActiveSubscriptionId] = useState(null);
     const [currentSubscriptionDetails, setCurrentSubscriptionDetails] = useState({
         platformName: null,
         stockSymbol: null,
         timeframe: null
     });
+    const [latestCandleInfo, setLatestCandleInfo] = useState({
+        sequence: null,
+        timestamp: null,
+        candle: null
+    });
 
     const { toast } = useToast();
     const initialized = useRef(false);
 
-    // ✅ Sync SubscriptionManager with React state
+    // Sync SubscriptionManager with React state
     useEffect(() => {
         SubscriptionManager.reactStateUpdaters.setActiveSubscriptionId = setActiveSubscriptionId;
         SubscriptionManager.reactStateUpdaters.setCurrentSubscriptionDetails = setCurrentSubscriptionDetails;
+        SubscriptionManager.reactStateUpdaters.setLatestCandleInfo = setLatestCandleInfo;
 
-        // Sync initial state if SubscriptionManager already has values
+        // Sync initial state
         if (SubscriptionManager.activeSubscription) {
             setActiveSubscriptionId(SubscriptionManager.activeSubscription);
         }
@@ -162,106 +151,129 @@ export function WebSocketProvider({ children, currentPage }) {
         return () => {
             SubscriptionManager.reactStateUpdaters.setActiveSubscriptionId = null;
             SubscriptionManager.reactStateUpdaters.setCurrentSubscriptionDetails = null;
+            SubscriptionManager.reactStateUpdaters.setLatestCandleInfo = null;
         };
     }, []);
 
     // Handle incoming WebSocket messages
-    const handleGlobalMessage = (message) => {
-        // Parse the message if it's a string
+    const handleGlobalMessage = useCallback((message) => {
         const data = typeof message === 'string' ? JSON.parse(message) : message;
 
-        // Handle subscription/unsubscription/update responses (wrapped in success/message structure)
-        if (data.success !== undefined) {
-            // Handle subscription response
-            if (data.subscription && data.subscription.subscriptionId) {
-                const subscriptionResponse = data.subscription;
+        // Handle subscription confirmation response
+        if (data.success !== undefined && data.subscription?.subscriptionId) {
+            const subscriptionResponse = data.subscription;
 
-                // Only activate if we actually requested this subscription
-                if (SubscriptionManager.awaitingActivation) {
-                    SubscriptionManager.setActiveSubscription(subscriptionResponse.subscriptionId);
-                    SubscriptionManager.awaitingActivation = false;
+            if (SubscriptionManager.awaitingActivation) {
+                SubscriptionManager.setActiveSubscription(subscriptionResponse.subscriptionId);
+                SubscriptionManager.awaitingActivation = false;
 
-                    console.log('[SubscriptionManager] Subscription activated:', subscriptionResponse.subscriptionId);
-
-                    // Broadcast to handlers with the full response
-                    const responseData = {
-                        ...data,
-                        subscriptionId: subscriptionResponse.subscriptionId,
-                        subscriptionType: subscriptionResponse.subscriptionType
-                    };
-
-                    SubscriptionManager.broadcastMessage(responseData);
-                } else {
-                    console.log('[SubscriptionManager] Ignoring unsolicited subscription activation:', subscriptionResponse.subscriptionId);
-                }
-                return;
+                console.log('[WebSocketContext] Subscription activated:', subscriptionResponse.subscriptionId);
+                SubscriptionManager.broadcastMessage({
+                    type: 'SUBSCRIPTION_CONFIRMED',
+                    subscriptionId: subscriptionResponse.subscriptionId,
+                    ...data
+                });
             }
-
-            // Handle unsubscription response
-            if (data.subscriptionId && data.subscriptionId.subscriptionId) {
-                const unsubResponse = data.subscriptionId;
-
-                // Clear if this matches our pending unsubscribe
-                if (SubscriptionManager.pendingUnsubscribeId === unsubResponse.subscriptionId) {
-                    if (SubscriptionManager.activeSubscription === unsubResponse.subscriptionId) {
-                        SubscriptionManager.clearActiveSubscription();
-                    }
-                    SubscriptionManager.pendingUnsubscribeId = null;
-                }
-                // Fallback: clear if it matches our active subscription
-                else if (SubscriptionManager.activeSubscription === unsubResponse.subscriptionId) {
-                    SubscriptionManager.clearActiveSubscription();
-                }
-
-                console.log('[SubscriptionManager] Unsubscription confirmed:', unsubResponse.subscriptionId);
-                return;
-            }
-
-            // Handle general responses - broadcast to all handlers
-            SubscriptionManager.broadcastMessage(data);
             return;
         }
 
-        // Handle heartbeats
+        // Handle unsubscription response
+        if (data.success !== undefined && data.subscriptionId?.subscriptionId) {
+            const unsubResponse = data.subscriptionId;
+            if (SubscriptionManager.activeSubscription === unsubResponse.subscriptionId) {
+                SubscriptionManager.clearActiveSubscription();
+            }
+            console.log('[WebSocketContext] Unsubscription confirmed:', unsubResponse.subscriptionId);
+            return;
+        }
+
+        // Handle heartbeats - just log, don't process
         if (data.updateType === "HEARTBEAT") {
-            SubscriptionManager.recordHeartbeat(data.subscriptionId);
+            const timestamp = new Date().toISOString().substr(11, 12);
+            console.log(`[${timestamp}] Heartbeat received for subscription: ${data.subscriptionId}`);
             return;
         }
 
-        // Determine if this message belongs to our active subscription
-        const isActiveSubscription = data.subscriptionId === SubscriptionManager.activeSubscription;
+        // Handle INITIAL candle (sent immediately after subscription)
+        if (data.updateType === "INITIAL" && data.updatedCandles?.length > 0) {
+            const latestCandle = data.updatedCandles[data.updatedCandles.length - 1];
 
-        // Route message to handlers
-        if (isActiveSubscription) {
-            console.log(`[WebSocketContext] Routing message to handlers for subscription ${data.subscriptionId}`);
+            console.log('[WebSocketContext] Received INITIAL candle:', {
+                sequence: latestCandle.sequence,
+                timestamp: latestCandle.timestamp
+            });
+
+            // Update latest candle info
+            SubscriptionManager.updateLatestCandleInfo({
+                sequence: latestCandle.sequence,
+                timestamp: new Date(latestCandle.timestamp + 'Z').getTime(),
+                candle: latestCandle
+            });
+
+            // Broadcast to handlers
+            SubscriptionManager.broadcastMessage({
+                type: 'INITIAL_CANDLE',
+                subscriptionId: data.subscriptionId,
+                candle: latestCandle,
+                sequence: latestCandle.sequence
+            });
+            return;
+        }
+
+        // Handle UPDATE candles (live updates)
+        if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
+            const candles = data.updatedCandles;
+            const latestCandle = candles[candles.length - 1];
+
+            console.log('[WebSocketContext] Received UPDATE:', {
+                candleCount: candles.length,
+                latestSequence: latestCandle.sequence,
+                latestTimestamp: latestCandle.timestamp
+            });
+
+            // Update latest candle info
+            SubscriptionManager.updateLatestCandleInfo({
+                sequence: latestCandle.sequence,
+                timestamp: new Date(latestCandle.timestamp + 'Z').getTime(),
+                candle: latestCandle
+            });
+
+            // Determine if this is a new candle or update to existing
+            const previousLatest = SubscriptionManager.latestCandleInfo;
+            const isNewCandle = !previousLatest.sequence || latestCandle.sequence > previousLatest.sequence;
+
+            // Broadcast to handlers
+            SubscriptionManager.broadcastMessage({
+                type: isNewCandle ? 'NEW_CANDLE' : 'CANDLE_UPDATE',
+                subscriptionId: data.subscriptionId,
+                candles: candles,
+                latestSequence: latestCandle.sequence,
+                isNewCandle
+            });
+            return;
+        }
+
+        // Broadcast any other messages to handlers
+        if (data.subscriptionId === SubscriptionManager.activeSubscription) {
             SubscriptionManager.broadcastMessage(data);
         }
-        // Handle initial data responses or messages without known subscription ID
-        else if (!data.subscriptionId || data.updateType === undefined) {
-            console.log("[WebSocketContext] Received message without subscription ID - broadcasting");
-            SubscriptionManager.broadcastMessage(data);
-        }
-        else {
-            console.log(`[WebSocketContext] Message with unknown subscription ID: ${data.subscriptionId}`);
-        }
-    };
+    }, []);
 
     // Initialize WebSocket connection
     const initializeWebSocket = async () => {
         if (initialized.current) {
-            console.log("[CandleWebSocketContext] Already initialized");
+            console.log("[WebSocketContext] Already initialized");
             return;
         }
 
         try {
-            // Connect to WebSocket
             await webSocketService.connect();
-            console.log("[CandleWebSocketContext] WebSocket connected globally");
+            console.log("[WebSocketContext] WebSocket connected");
             SubscriptionManager.isConnected = true;
             setIsConnected(true);
             setConnectionError(null);
 
-            // Subscribe to the user queue for candle data
+            // Subscribe to user queue for candle updates
             SubscriptionManager.userQueueSubscription = await webSocketService.subscribe(
                 '/user/queue/candles',
                 handleGlobalMessage
@@ -269,9 +281,9 @@ export function WebSocketProvider({ children, currentPage }) {
 
             initialized.current = true;
             setIsInitialized(true);
-            console.log("[CandleWebSocketContext] Global WebSocket initialization complete");
+            console.log("[WebSocketContext] WebSocket initialization complete");
         } catch (err) {
-            console.error("[CandleWebSocketContext] Failed to initialize global WebSocket:", err);
+            console.error("[WebSocketContext] Failed to initialize WebSocket:", err);
             setConnectionError(err.message);
             setIsConnected(false);
 
@@ -286,203 +298,167 @@ export function WebSocketProvider({ children, currentPage }) {
         }
     };
 
-    // Request a subscription with deduplication
-    const requestSubscription = async (type, details) => {
-        if (!details) {
-            console.warn(`[WebSocketContext] Missing parameters for subscription request`);
+    /**
+     * Subscribe to live candle updates for a symbol/timeframe
+     * This only sets up live streaming - historical data is fetched via REST
+     */
+    const subscribeToCandleUpdates = useCallback(async (platformName, stockSymbol, timeframe) => {
+        if (!platformName || !stockSymbol || !timeframe) {
+            console.warn('[WebSocketContext] Missing parameters for subscription');
             return Promise.reject(new Error("Missing subscription parameters"));
         }
 
-        // Create a unique key for this request
-        const requestKey = `${type}:${details.platformName}:${details.stockSymbol}:${details.timeframe}:${details.startDate}:${details.endDate}`;
-
-        // If this exact request is already pending, return the existing promise
-        if (SubscriptionManager.pendingSubscriptionRequests[requestKey]) {
-            console.log(`[WebSocketContext] Duplicate request detected - reusing existing promise`);
-            return SubscriptionManager.pendingSubscriptionRequests[requestKey];
+        // Check if already subscribed to the same
+        if (
+            SubscriptionManager.activeSubscription &&
+            SubscriptionManager.currentSubscription.platformName === platformName &&
+            SubscriptionManager.currentSubscription.stockSymbol === stockSymbol &&
+            SubscriptionManager.currentSubscription.timeframe === timeframe
+        ) {
+            console.log('[WebSocketContext] Already subscribed to this symbol/timeframe');
+            return SubscriptionManager.activeSubscription;
         }
 
-        console.log(`[WebSocketContext] Creating new subscription request: ${requestKey}`);
+        // Create deduplication key
+        const requestKey = `subscribe:${platformName}:${stockSymbol}:${timeframe}`;
 
-        // Create and store the promise
-        SubscriptionManager.pendingSubscriptionRequests[requestKey] = (async () => {
+        if (SubscriptionManager.pendingRequests[requestKey]) {
+            console.log('[WebSocketContext] Duplicate request detected, reusing existing promise');
+            return SubscriptionManager.pendingRequests[requestKey];
+        }
+
+        console.log('[WebSocketContext] Creating subscription request:', { platformName, stockSymbol, timeframe });
+
+        SubscriptionManager.pendingRequests[requestKey] = (async () => {
             try {
-                // Mark that we're awaiting activation
+                // Unsubscribe from existing if different
+                if (SubscriptionManager.activeSubscription) {
+                    await unsubscribeFromCandleUpdates();
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+
                 SubscriptionManager.awaitingActivation = true;
+                SubscriptionManager.updateCurrentSubscriptionInfo({ platformName, stockSymbol, timeframe });
 
                 await webSocketService.send('/app/candles/subscribe', {
-                    ...details,
-                    subscriptionType: 'CHART'
+                    platformName,
+                    stockSymbol,
+                    timeframe
                 });
 
-                console.log(`[WebSocketContext] Subscription request sent successfully`);
+                console.log('[WebSocketContext] Subscription request sent');
                 return "pending";
             } catch (err) {
-                console.error(`[WebSocketContext] Error making subscription request:`, err);
+                console.error('[WebSocketContext] Error subscribing:', err);
                 SubscriptionManager.awaitingActivation = false;
                 throw err;
             } finally {
-                // Clean up after a short delay (to prevent race conditions if the same request comes in)
                 setTimeout(() => {
-                    delete SubscriptionManager.pendingSubscriptionRequests[requestKey];
+                    delete SubscriptionManager.pendingRequests[requestKey];
                 }, 1000);
             }
         })();
 
-        return SubscriptionManager.pendingSubscriptionRequests[requestKey];
-    };
+        return SubscriptionManager.pendingRequests[requestKey];
+    }, []);
 
-    // Update an existing subscription
-    const updateSubscription = async ({
-                                          subscriptionId,
-                                          newStartDate,
-                                          newEndDate,
-                                          resetData = false,
-                                          subscriptionType = 'CHART',
-                                          bufferDirection = null,
-                                          referenceTimestamp = null,
-                                          referenceOffset = null,
-                                          isBufferUpdate = false,
-                                          isIndicatorUpdate = false
-                                      }) => {
-        if (!subscriptionId) {
-            console.warn('[WebSocketContext] Missing subscriptionId for update-subscription');
-            return Promise.reject(new Error('Missing subscriptionId'));
-        }
-
-        // Compose a dedupe key for in-flight updates
-        const key = `update:${subscriptionId}:${newStartDate || ''}:${newEndDate || ''}:${resetData}:${bufferDirection}`;
-        if (SubscriptionManager.pendingSubscriptionRequests[key]) {
-            console.log('[WebSocketContext] Duplicate update request - reusing existing promise');
-            return SubscriptionManager.pendingSubscriptionRequests[key];
-        }
-
-        console.log('[WebSocketContext] Creating new update-subscription request');
-
-        SubscriptionManager.pendingSubscriptionRequests[key] = (async () => {
-            try {
-                const payload = {
-                    subscriptionId,
-                    newStartDate: newStartDate ? new Date(newStartDate).toISOString() : null,
-                    newEndDate: newEndDate ? new Date(newEndDate).toISOString() : null,
-                    resetData,
-                    subscriptionType
-                };
-
-                // Add optional fields if provided
-                if (bufferDirection !== null) {
-                    payload.bufferDirection = bufferDirection;
-                }
-                if (referenceTimestamp !== null) {
-                    payload.referenceTimestamp = referenceTimestamp;
-                }
-                if (referenceOffset !== null) {
-                    payload.referenceOffset = referenceOffset;
-                }
-                if (isBufferUpdate !== false) {
-                    payload.isBufferUpdate = isBufferUpdate;
-                }
-                if (isIndicatorUpdate !== false) {
-                    payload.isIndicatorUpdate = isIndicatorUpdate;
-                }
-
-                await webSocketService.safeSend('/app/candles/update-subscription', payload);
-                console.log('[WebSocketContext] Update-subscription request sent successfully');
-                return 'pending';
-            } catch (err) {
-                console.error('[WebSocketContext] Error sending update-subscription:', err);
-                throw err;
-            } finally {
-                setTimeout(() => {
-                    delete SubscriptionManager.pendingSubscriptionRequests[key];
-                }, 750);
-            }
-        })();
-
-        return SubscriptionManager.pendingSubscriptionRequests[key];
-    };
-
-    // Unsubscribe from the active subscription
-    const unsubscribe = async (type = 'chart') => {
+    /**
+     * Unsubscribe from live candle updates
+     */
+    const unsubscribeFromCandleUpdates = useCallback(async () => {
         if (!SubscriptionManager.activeSubscription) {
             console.log('[WebSocketContext] No active subscription to unsubscribe from');
-            return Promise.resolve(true);
+            return true;
         }
 
         try {
             const id = SubscriptionManager.activeSubscription;
-            console.log(`[WebSocketContext] Unsubscribing from subscription with ID:`, id);
-
-            // Record the pending unsubscribe ID
-            SubscriptionManager.pendingUnsubscribeId = id;
+            console.log('[WebSocketContext] Unsubscribing from:', id);
 
             await webSocketService.safeSend('/app/candles/unsubscribe', {
-                subscriptionId: id,
-                subscriptionType: 'CHART'
+                subscriptionId: id
             });
 
+            SubscriptionManager.clearActiveSubscription();
             return true;
         } catch (err) {
-            console.error(`[WebSocketContext] Error unsubscribing:`, err);
-            SubscriptionManager.pendingUnsubscribeId = null;
+            console.error('[WebSocketContext] Error unsubscribing:', err);
             return false;
         }
-    };
+    }, []);
 
-    // Unsubscribe from all active subscriptions (same as unsubscribe since we only have one)
-    const unsubscribeAll = async () => {
-        return await unsubscribe();
-    };
-
-    // Connect WebSocket on component mount
+    // Connect WebSocket on mount
     useEffect(() => {
-        console.log("[CandleWebSocketContext] Setting up global WebSocket connection");
+        console.log("[WebSocketContext] Setting up WebSocket connection");
 
         if (!initialized.current) {
             initializeWebSocket().catch(err => {
-                console.error("[CandleWebSocketContext] Initialization error:", err);
+                console.error("[WebSocketContext] Initialization error:", err);
             });
         }
 
-        // Cleanup function
         return () => {
-            // Note: We intentionally don't disconnect from WebSocket on unmount
-            // as we want the connection to persist throughout the app
-            console.log("[CandleWebSocketContext] Provider unmounting - keeping connection alive");
+            console.log("[WebSocketContext] Provider unmounting - cleaning up");
+
+            // Unsubscribe from active candle subscription
+            if (SubscriptionManager.activeSubscription) {
+                console.log('[WebSocketContext] Unsubscribing from active subscription:',
+                    SubscriptionManager.activeSubscription);
+                webSocketService.safeSend('/app/candles/unsubscribe', {
+                    subscriptionId: SubscriptionManager.activeSubscription
+                });
+            }
+
+            // Unsubscribe from user queue
+            if (SubscriptionManager.userQueueSubscription) {
+                console.log('[WebSocketContext] Unsubscribing from user queue');
+                webSocketService.unsubscribe('/user/queue/candles');
+                SubscriptionManager.userQueueSubscription = null;  // ✅ Reset ref
+            }
+
+            // Clear all message handlers (prevent memory leaks)
+            SubscriptionManager.messageHandlers.clear();
+
+            // Clear pending requests
+            SubscriptionManager.pendingRequests = {};
+
+            // Reset SubscriptionManager state
+            SubscriptionManager.clearActiveSubscription();
+            SubscriptionManager.currentSubscription = {
+                platformName: null,
+                stockSymbol: null,
+                timeframe: null
+            };
+            SubscriptionManager.awaitingActivation = false;
+            SubscriptionManager.isConnected = false;
+
+            // Reset initialization flag (allow re-init if remounted)
+            initialized.current = false;
+
+            console.log("[WebSocketContext] Cleanup complete");
         };
     }, []);
 
-    // Context value containing the WebSocket state and operations
     const contextValue = {
+        // Connection state
         isConnected,
         connectionError,
         isInitialized,
 
-        // Methods to manage subscription
-        registerHandler: (type, handler) => {
-            // Type parameter kept for API compatibility but ignored since we only have one subscription
-            return SubscriptionManager.registerHandler(handler);
-        },
-        unregisterHandler: (type, handler) => {
-            // Type parameter kept for API compatibility but ignored
-            return SubscriptionManager.unregisterHandler(handler);
-        },
-        requestSubscription,
-        updateSubscription,
-        unsubscribe,
-        unsubscribeAll,
-        setActiveSubscription: SubscriptionManager.setActiveSubscription.bind(SubscriptionManager),
-        clearActiveSubscription: SubscriptionManager.clearActiveSubscription.bind(SubscriptionManager),
-        updateCurrentSubscriptionInfo: SubscriptionManager.updateCurrentSubscriptionInfo.bind(SubscriptionManager),
+        // Subscription management
+        subscribeToCandleUpdates,
+        unsubscribeFromCandleUpdates,
 
-        // ✅ Use React state instead of direct SubscriptionManager access
-        subscriptionIds: {
-            chart: activeSubscriptionId,
-            indicator: null // Kept for API compatibility but always null
-        },
+        // Handler registration
+        registerHandler: (handler) => SubscriptionManager.registerHandler(handler),
+        unregisterHandler: (handler) => SubscriptionManager.unregisterHandler(handler),
+
+        // Current state
+        activeSubscriptionId,
         currentSubscription: currentSubscriptionDetails,
+        latestCandleInfo,
 
-        // Direct access to WebSocket service
+        // Direct access
         webSocketService,
         currentPage
     };
@@ -494,7 +470,7 @@ export function WebSocketProvider({ children, currentPage }) {
     );
 }
 
-// Custom hook to use the WebSocket context
+// Custom hook
 export function useWebSocket() {
     const context = useContext(CandleWebSocketContext);
     if (!context) {
