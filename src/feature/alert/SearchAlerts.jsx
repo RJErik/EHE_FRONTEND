@@ -1,4 +1,3 @@
-// src/components/alert/SearchAlerts.jsx
 import { useState } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
@@ -17,7 +16,6 @@ const SearchAlerts = () => {
     const {
         platforms,
         stocks,
-        selectedPlatform,
         setSelectedPlatform,
         isLoadingPlatforms,
         isLoadingStocks
@@ -30,11 +28,9 @@ const SearchAlerts = () => {
         setHasSearched(true);
 
         try {
-            // If all fields are "any", fetch all items
             if (searchPlatform === "_any_" && searchSymbol === "_any_" && searchConditionType === "_any_") {
                 await fetchAlerts();
             } else {
-                // Convert special values for API
                 const apiPlatform = searchPlatform === "_any_" ? "" : searchPlatform;
                 const apiSymbol = searchSymbol === "_any_" ? "" : searchSymbol;
                 const apiConditionType = searchConditionType === "_any_" ? "" : searchConditionType;
@@ -55,15 +51,12 @@ const SearchAlerts = () => {
 
     const handleRefresh = () => {
         if (hasSearched) {
-            // Repeat the last search
             handleSearch();
         } else {
-            // Just refresh all items
             fetchAlerts();
         }
     };
 
-    // Update the platform in stock data hook when search platform changes
     const handlePlatformChange = (value) => {
         setSearchPlatform(value);
         if (value !== "_any_") {

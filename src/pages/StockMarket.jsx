@@ -1,4 +1,4 @@
-import { useState } from "react";
+import {useState} from "react";
 import StockSelectors from "@/feature/stockMarket/StockSelectors.jsx";
 import CandleChart from "@/feature/stockMarket/CandleChart/CandleChart.jsx";
 import IndicatorCharts from "@/feature/stockMarket/IndicatorCharts.jsx";
@@ -6,10 +6,12 @@ import PortfolioList from "@/feature/stockMarket/PortfolioList.jsx";
 import PortfolioGraph from "@/feature/stockMarket/PortfolioGraph.jsx";
 import TradePanel from "@/feature/stockMarket/TradePanel.jsx";
 import PortfolioSelector from "@/feature/stockMarket/PortfolioSelector.jsx";
-import { ChartProvider } from "@/feature/stockMarket/ChartContext.jsx";
+import {ChartProvider} from "@/feature/stockMarket/ChartContext.jsx";
+import {PortfolioProvider} from "@/context/PortfoliosContext.jsx";
 
 const StockMarket = () => {
     const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
+    const [selectedPlatform, setSelectedPlatform] = useState(null);
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -17,33 +19,39 @@ const StockMarket = () => {
                 <h1 className="text-4xl font-semibold text-center mb-8">Stock Market</h1>
 
                 <div className="container mx-auto">
-                    <ChartProvider>
-                        <div className="flex flex-col md:flex-row gap-6">
-                            {/* Left section - Charts and controls */}
-                            <div className="w-full md:w-2/3 space-y-4">
-                                <StockSelectors />
+                    <PortfolioProvider>
+                        <ChartProvider>
+                            <div className="flex flex-col md:flex-row gap-6">
+                                {/* Left section - Charts and controls */}
+                                <div className="w-full md:w-2/3 space-y-4">
+                                    <StockSelectors
+                                        selectedPlatform={selectedPlatform}
+                                        onPlatformChange={setSelectedPlatform}
+                                    />
 
-                                <div className="mt-6 space-y-4">
-                                    <CandleChart />
-                                    <IndicatorCharts />
+                                    <div className="mt-6 space-y-4">
+                                        <CandleChart/>
+                                        <IndicatorCharts/>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Right section - Portfolios and Trading */}
-                            <div className="w-full md:w-1/3 space-y-4">
-                                <PortfolioSelector
-                                    selectedPortfolioId={selectedPortfolioId}
-                                    onPortfolioChange={setSelectedPortfolioId}
-                                />
+                                {/* Right section - Portfolios and Trading */}
+                                <div className="w-full md:w-1/3 space-y-4">
+                                    <PortfolioSelector
+                                        platform={selectedPlatform}
+                                        selectedPortfolioId={selectedPortfolioId}
+                                        onPortfolioChange={setSelectedPortfolioId}
+                                    />
 
                                     <PortfolioList selectedPortfolioId={selectedPortfolioId}/>
 
                                     <PortfolioGraph selectedPortfolioId={selectedPortfolioId}/>
 
-                                <TradePanel selectedPortfolioId={selectedPortfolioId}/>
+                                    <TradePanel selectedPortfolioId={selectedPortfolioId}/>
+                                </div>
                             </div>
-                        </div>
-                    </ChartProvider>
+                        </ChartProvider>
+                    </PortfolioProvider>
                 </div>
             </main>
         </div>

@@ -1,4 +1,3 @@
-// src/context/CandleWebSocketContext.jsx
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
@@ -6,12 +5,7 @@ import webSocketService from '../services/websocketService';
 // Create WebSocket Context
 const CandleWebSocketContext = createContext(null);
 
-/**
- * Subscription Manager - Simplified for live updates only
- * No longer manages time ranges, just tracks active subscriptions for live streaming
- */
 const SubscriptionManager = {
-    // Active subscription ID
     activeSubscription: null,
 
     // Current subscription details
@@ -32,16 +26,12 @@ const SubscriptionManager = {
     isConnected: false,
     userQueueSubscription: null,
 
-    // Message handlers
     messageHandlers: new Set(),
 
-    // Pending subscription requests for deduplication
     pendingRequests: {},
 
-    // Awaiting activation flag
     awaitingActivation: false,
 
-    // React state updaters
     reactStateUpdaters: {
         setActiveSubscriptionId: null,
         setCurrentSubscriptionDetails: null,
@@ -118,7 +108,6 @@ export function WebSocketProvider({ children, currentPage }) {
     const [connectionError, setConnectionError] = useState(null);
     const [isInitialized, setIsInitialized] = useState(false);
 
-    // React state for subscription tracking
     const [activeSubscriptionId, setActiveSubscriptionId] = useState(null);
     const [currentSubscriptionDetails, setCurrentSubscriptionDetails] = useState({
         platformName: null,
@@ -140,7 +129,6 @@ export function WebSocketProvider({ children, currentPage }) {
         SubscriptionManager.reactStateUpdaters.setCurrentSubscriptionDetails = setCurrentSubscriptionDetails;
         SubscriptionManager.reactStateUpdaters.setLatestCandleInfo = setLatestCandleInfo;
 
-        // Sync initial state
         if (SubscriptionManager.activeSubscription) {
             setActiveSubscriptionId(SubscriptionManager.activeSubscription);
         }
@@ -187,14 +175,14 @@ export function WebSocketProvider({ children, currentPage }) {
             return;
         }
 
-        // Handle heartbeats - just log, don't process
+        // Handle heartbeats
         if (data.updateType === "HEARTBEAT") {
             const timestamp = new Date().toISOString().substr(11, 12);
             console.log(`[${timestamp}] Heartbeat received for subscription: ${data.subscriptionId}`);
             return;
         }
 
-        // Handle INITIAL candle (sent immediately after subscription)
+        // Handle INITIAL candle
         if (data.updateType === "INITIAL" && data.updatedCandles?.length > 0) {
             const latestCandle = data.updatedCandles[data.updatedCandles.length - 1];
 
@@ -220,7 +208,7 @@ export function WebSocketProvider({ children, currentPage }) {
             return;
         }
 
-        // Handle UPDATE candles (live updates)
+        // Handle UPDATE candles
         if (data.updateType === "UPDATE" && data.updatedCandles?.length > 0) {
             const candles = data.updatedCandles;
             const latestCandle = candles[candles.length - 1];
@@ -237,8 +225,7 @@ export function WebSocketProvider({ children, currentPage }) {
                 timestamp: new Date(latestCandle.timestamp + 'Z').getTime(),
                 candle: latestCandle
             });
-
-            // Determine if this is a new candle or update to existing
+            
             const previousLatest = SubscriptionManager.latestCandleInfo;
             const isNewCandle = !previousLatest.sequence || latestCandle.sequence > previousLatest.sequence;
 
@@ -252,8 +239,7 @@ export function WebSocketProvider({ children, currentPage }) {
             });
             return;
         }
-
-        // Broadcast any other messages to handlers
+        
         if (data.subscriptionId === SubscriptionManager.activeSubscription) {
             SubscriptionManager.broadcastMessage(data);
         }
@@ -300,7 +286,6 @@ export function WebSocketProvider({ children, currentPage }) {
 
     /**
      * Subscribe to live candle updates for a symbol/timeframe
-     * This only sets up live streaming - historical data is fetched via REST
      */
     const subscribeToCandleUpdates = useCallback(async (platformName, stockSymbol, timeframe) => {
         if (!platformName || !stockSymbol || !timeframe) {
@@ -331,7 +316,6 @@ export function WebSocketProvider({ children, currentPage }) {
 
         SubscriptionManager.pendingRequests[requestKey] = (async () => {
             try {
-                // Unsubscribe from existing if different
                 if (SubscriptionManager.activeSubscription) {
                     await unsubscribeFromCandleUpdates();
                     await new Promise(resolve => setTimeout(resolve, 200));
@@ -416,7 +400,7 @@ export function WebSocketProvider({ children, currentPage }) {
                 SubscriptionManager.userQueueSubscription = null;  // ✅ Reset ref
             }
 
-            // Clear all message handlers (prevent memory leaks)
+            // Clear all message handlers
             SubscriptionManager.messageHandlers.clear();
 
             // Clear pending requests
@@ -432,7 +416,7 @@ export function WebSocketProvider({ children, currentPage }) {
             SubscriptionManager.awaitingActivation = false;
             SubscriptionManager.isConnected = false;
 
-            // Reset initialization flag (allow re-init if remounted)
+            // Reset initialization flag
             initialized.current = false;
 
             console.log("[WebSocketContext] Cleanup complete");

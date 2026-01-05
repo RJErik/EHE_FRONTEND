@@ -13,7 +13,7 @@ export function useHomeInfoChart() {
         setError(null);
         try {
             console.log("Fetching worst stock data.");
-            let response = await fetch("http://localhost:8080/api/home/worst-stock", {
+            let response = await fetch("http://localhost:8080/api/home/worst-stocks", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -26,12 +26,11 @@ export function useHomeInfoChart() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/home/worst-stock", {
+                response = await fetch("http://localhost:8080/api/home/worst-stocks", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -39,7 +38,6 @@ export function useHomeInfoChart() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -83,7 +81,7 @@ export function useHomeInfoChart() {
         setError(null);
         try {
             console.log("Fetching best stock data.");
-            let response = await fetch("http://localhost:8080/api/home/best-stock", {
+            let response = await fetch("http://localhost:8080/api/home/best-stocks", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -96,12 +94,11 @@ export function useHomeInfoChart() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/home/best-stock", {
+                response = await fetch("http://localhost:8080/api/home/best-stocks", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -109,7 +106,6 @@ export function useHomeInfoChart() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -166,7 +162,6 @@ export function useHomeInfoChart() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -179,7 +174,6 @@ export function useHomeInfoChart() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }

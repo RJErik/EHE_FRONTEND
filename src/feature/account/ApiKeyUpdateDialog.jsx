@@ -1,4 +1,3 @@
-// src/components/account/ApiKeyUpdateDialog.jsx
 import { useState, useEffect } from "react";
 import {
     Dialog,
@@ -14,18 +13,17 @@ import { Loader2 } from "lucide-react";
 
 const ApiKeyUpdateDialog = ({ open, onOpenChange, onUpdateKey, platforms, isLoading, apiKey }) => {
     const [platformName, setPlatformName] = useState("");
-    const [originalPlatformName, setOriginalPlatformName] = useState(""); // Store original platform
+    const [originalPlatformName, setOriginalPlatformName] = useState("");
     const [apiKeyValue, setApiKeyValue] = useState("");
     const [secretKey, setSecretKey] = useState("");
 
-    // Set initial values when dialog opens with an API key
     useEffect(() => {
         if (apiKey && open) {
             const platform = apiKey.platformName || "";
             setPlatformName(platform);
-            setOriginalPlatformName(platform); // Store the original platform
-            setApiKeyValue(""); // Don't pre-fill the API key for security
-            setSecretKey(""); // Don't pre-fill the secret key for security
+            setOriginalPlatformName(platform);
+            setApiKeyValue("");
+            setSecretKey("");
         }
     }, [apiKey, open]);
 
@@ -33,7 +31,6 @@ const ApiKeyUpdateDialog = ({ open, onOpenChange, onUpdateKey, platforms, isLoad
         onUpdateKey(apiKey.apiKeyId, platformName, apiKeyValue, secretKey);
     };
 
-    // Check if any changes were made
     const hasChanges = platformName !== originalPlatformName || apiKeyValue || secretKey;
 
     return (

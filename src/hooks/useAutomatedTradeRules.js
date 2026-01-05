@@ -1,9 +1,8 @@
-// src/hooks/useAutomaticTradeRules.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
-export function useAutomaticTradeRules() {
+export function useAutomatedTradeRules() {
     const [automaticTradeRules, setAutomaticTradeRules] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -30,7 +29,6 @@ export function useAutomaticTradeRules() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -43,7 +41,6 @@ export function useAutomaticTradeRules() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -120,7 +117,6 @@ export function useAutomaticTradeRules() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -143,7 +139,6 @@ export function useAutomaticTradeRules() {
                     }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -157,7 +152,6 @@ export function useAutomaticTradeRules() {
             console.log("Add response:", data);
 
             if (data.success) {
-                // ✨ CHANGE: Add the new rule directly to the local state
                 setAutomaticTradeRules(prevRules => [...prevRules, data.automatedTradeRule]);
                 toast({
                     title: "Success",
@@ -196,13 +190,12 @@ export function useAutomaticTradeRules() {
 
         try {
             console.log(`Removing automatic trade rule ${id}...`);
-            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch(`http://localhost:8080/api/user/automated-trade-rules/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ id }),
             });
 
             // Handle 401 - Token expired
@@ -210,21 +203,18 @@ export function useAutomaticTradeRules() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                response = await fetch(`http://localhost:8080/api/user/automated-trade-rules/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ id }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -238,7 +228,7 @@ export function useAutomaticTradeRules() {
             console.log("Remove response:", data);
 
             if (data.success) {
-                // ✨ CHANGE: Filter out the deleted rule from the local state
+                // Filter out the deleted rule from the local state
                 setAutomaticTradeRules(prevRules => prevRules.filter(rule => rule.id !== id));
 
                 toast({
@@ -288,29 +278,41 @@ export function useAutomaticTradeRules() {
         try {
             console.log(`Searching automatic trade rules...`);
 
-            const searchParams = {
-                portfolioId: portfolioId || null,
-                platform: platform || null,
-                symbol: symbol || null,
-                conditionType: conditionType || null,
-                actionType: actionType || null,
-                quantityType: quantityType || null,
-                minThresholdValue: minThresholdValue || null,
-                maxThresholdValue: maxThresholdValue || null
-            };
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (portfolioId) {
+                params.append("portfolioId", portfolioId);
+            }
+            if (platform) {
+                params.append("platform", platform);
+            }
+            if (symbol) {
+                params.append("symbol", symbol);
+            }
+            if (conditionType) {
+                params.append("conditionType", conditionType);
+            }
+            if (actionType) {
+                params.append("actionType", actionType);
+            }
+            if (quantityType) {
+                params.append("quantityType", quantityType);
+            }
+            if (minThresholdValue) {
+                params.append("minThresholdValue", minThresholdValue);
+            }
+            if (maxThresholdValue) {
+                params.append("maxThresholdValue", maxThresholdValue);
+            }
 
-            // Remove null values for cleaner request
-            Object.keys(searchParams).forEach(key =>
-                searchParams[key] === null && delete searchParams[key]
-            );
+            const url = `http://localhost:8080/api/user/automated-trade-rules/search?${params.toString()}`;
 
-            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules/search", {
-                method: "POST",
+            let response = await fetch(url, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify(searchParams),
             });
 
             // Handle 401 - Token expired
@@ -318,21 +320,18 @@ export function useAutomaticTradeRules() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/automated-trade-rules/search", {
-                    method: "POST",
+                response = await fetch(url, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify(searchParams),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }

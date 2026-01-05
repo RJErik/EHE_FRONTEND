@@ -1,4 +1,3 @@
-// src/components/stockMarket/indicators/renderIndicatorChart.js
 import * as d3 from 'd3';
 
 export function renderIndicatorChart({
@@ -15,7 +14,6 @@ export function renderIndicatorChart({
                                      }) {
     if (!data || !chartRef.current) return () => {};
 
-    // Clear previous chart
     d3.select(chartRef.current).selectAll("*").remove();
 
     // Set dimensions
@@ -33,7 +31,6 @@ export function renderIndicatorChart({
         .append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // Setup scales
     const xScale = d3.scaleLinear()
         .domain([0, Array.isArray(data) ? data.length - 1 : Object.values(data)[0].length - 1])
         .range([0, widthNum]);
@@ -44,7 +41,6 @@ export function renderIndicatorChart({
     if (Array.isArray(data)) {
         drawSingleLine(svg, data, xScale, yScale, indicator.settings.color, indicator.settings.thickness);
     } else {
-        // Multiple lines (e.g., MACD, Bollinger Bands)
         drawMultipleLines(svg, data, xScale, yScale, indicator);
     }
 
@@ -60,32 +56,25 @@ export function renderIndicatorChart({
         valueLabel
     } = createCrosshair(svg, width, height);
 
-    // Create hover detection zone
     createHoverZone(
         svg, width, height, isDragging,
         setActiveTimestamp, setHoveredIndex, setCurrentMouseY,
         data, xScale, yScale, crosshair, verticalLine, horizontalLine, valueLabel
     );
 
-    // Always show the vertical line if we have a valid hoveredIndex, even when mouse is not over chart
     if (hoveredIndex !== null && hoveredIndex !== undefined && !isDragging) {
-        // Show crosshair group
         crosshair.style("display", null);
 
-        // Get X position
         const xPos = xScale(hoveredIndex);
 
-        // Position vertical line
         verticalLine.attr("x1", xPos).attr("x2", xPos);
 
-        // Only show horizontal line and value label if mouse is over THIS chart
+        // Only show horizontal line and value label if mouse is over this chart
         if (isMouseOverChart) {
-            // Position horizontal line using local mouseY
             horizontalLine.attr("y1", currentMouseY || height / 2)
                 .attr("y2", currentMouseY || height / 2)
                 .style("display", null);
 
-            // Update value label for hover position
             updateValueLabel(
                 currentMouseY || height / 2,
                 yScale,
@@ -93,29 +82,24 @@ export function renderIndicatorChart({
                 width
             );
         } else {
-            // Hide horizontal components when mouse is not over this chart
             horizontalLine.style("display", "none");
             valueLabel.style("display", "none");
         }
     } else {
-        // Hide everything if no valid hoveredIndex
         crosshair.style("display", "none");
     }
 
-    // Cleanup function
     return () => {
         d3.select(chartRef.current).selectAll("*").remove();
     };
 }
 
 function drawSingleLine(svg, data, xScale, yScale, color, thickness) {
-    // Create line generator
     const line = d3.line()
         .x((d, i) => xScale(i))
         .y(d => d === null ? null : yScale(d))
         .defined(d => d !== null);
 
-    // Draw line
     svg.append("path")
         .datum(data)
         .attr("fill", "none")
@@ -125,7 +109,6 @@ function drawSingleLine(svg, data, xScale, yScale, color, thickness) {
 }
 
 function drawMultipleLines(svg, data, xScale, yScale, indicator) {
-    // Special handling for MACD indicator
     if (indicator.type === 'macd') {
         // Draw histogram as bars
         if (data.histogram && data.histogram.some(d => d !== null)) {
@@ -174,18 +157,15 @@ function drawMultipleLines(svg, data, xScale, yScale, indicator) {
 
     // Draw each line for other multi-line indicators
     Object.entries(data).forEach(([, values], i) => {
-        // Determine color based on index and indicator settings
         const color = i === 0 ? indicator.settings.color :
             i === 1 ? lightenColor(indicator.settings.color, 20) :
                 darkenColor(indicator.settings.color, 20);
 
-        // Create line generator
         const line = d3.line()
             .x((d, i) => xScale(i))
             .y(d => d === null ? null : yScale(d))
             .defined(d => d !== null);
 
-        // Draw line
         svg.append("path")
             .datum(values)
             .attr("fill", "none")

@@ -12,10 +12,8 @@ import { Badge } from "../../components/ui/badge.jsx";
 import { Label } from "../../components/ui/label.jsx";
 
 const TradePanel = ({ selectedPortfolioId }) => {
-    // Local state for selected stock
     const [selectedStock, setSelectedStock] = useState("");
 
-    // Subscribe to stock selection events
     useEffect(() => {
         console.log("[TradePanel] Setting up subscription");
         const unsubscribe = stockSelectionEvents.subscribe((platform, stock) => {
@@ -29,7 +27,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         };
     }, []);
 
-    // Trading hook for backend interactions
     const {
         tradingCapacity,
         isLoadingCapacity,
@@ -38,7 +35,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         executeTrade
     } = useTrading();
 
-    // Local state
     const [isBuyMode, setIsBuyMode] = useState(true);
     const [selectedQuantityType, setSelectedQuantityType] = useState("QUOTE_ORDER_QTY");
     const [quantity, setQuantity] = useState(0);
@@ -46,7 +42,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
     const [setIsInputFocused] = useState(false);
     const [maxValue, setMaxValue] = useState(0);
 
-    // Calculate if trading is enabled
     const isTradingEnabled = !!selectedPortfolioId &&
         !!selectedStock &&
         quantity > 0;

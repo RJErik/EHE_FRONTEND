@@ -1,4 +1,3 @@
-// src/components/account/ApiKeyItemCard.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Pencil, Trash2 } from "lucide-react";

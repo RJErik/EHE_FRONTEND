@@ -10,12 +10,11 @@ const SearchWatchlistItems = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [searchSymbol, setSearchSymbol] = useState("_any_");
-    const [hasSearched, setHasSearched] = useState(false);
+    const [, setHasSearched] = useState(false);
 
     const {
         platforms,
         stocks,
-        selectedPlatform,
         setSelectedPlatform,
         isLoadingPlatforms,
         isLoadingStocks
@@ -28,11 +27,9 @@ const SearchWatchlistItems = () => {
         setHasSearched(true);
 
         try {
-            // If both fields are "any", fetch all items
             if (searchPlatform === "_any_" && searchSymbol === "_any_") {
                 await fetchWatchlistItems();
             } else {
-                // Convert special values for API
                 const apiPlatform = searchPlatform === "_any_" ? "" : searchPlatform;
                 const apiSymbol = searchSymbol === "_any_" ? "" : searchSymbol;
                 await searchWatchlistItems(apiPlatform, apiSymbol);
@@ -53,7 +50,6 @@ const SearchWatchlistItems = () => {
         refreshLatestSearch();
     };
 
-    // Update the platform in stock data hook when search platform changes
     const handlePlatformChange = (value) => {
         setSearchPlatform(value);
         if (value !== "_any_") {

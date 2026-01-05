@@ -1,5 +1,4 @@
-// src/hooks/usePortfolios.js
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
@@ -84,7 +83,7 @@ export function usePortfolios() {
         if (!portfolioId) {
             toast({
                 title: "Validation Error",
-                description: "Portfolios ID is required",
+                description: "Portfolio ID is required",
                 variant: "destructive",
             });
             return null;
@@ -95,15 +94,12 @@ export function usePortfolios() {
 
         try {
             console.log(`Fetching portfolio details for ID: ${portfolioId}...`);
-            let response = await fetch(`http://localhost:8080/api/user/portfolios/details`, {
-                method: "POST",
+            let response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}/details`, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    portfolioId: portfolioId
-                }),
             });
 
             // Handle 401 - Token expired
@@ -115,15 +111,12 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/portfolios/details`, {
-                    method: "POST",
+                response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}/details`, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        portfolioId: portfolioId
-                    }),
                 });
 
                 if (response.status === 401) {
@@ -136,7 +129,7 @@ export function usePortfolios() {
             }
 
             const data = await response.json();
-            console.log("Portfolios details received:", data);
+            console.log("Portfolio details received:", data);
 
             if (data.success) {
                 return data.portfolio;
@@ -170,7 +163,7 @@ export function usePortfolios() {
         if (!portfolioName || !apiKeyId) {
             toast({
                 title: "Validation Error",
-                description: "Portfolios name and API key are required",
+                description: "Portfolio name and API key are required",
                 variant: "destructive",
             });
             return false;
@@ -264,13 +257,12 @@ export function usePortfolios() {
 
         try {
             console.log(`Deleting portfolio ${portfolioId}...`);
-            let response = await fetch("http://localhost:8080/api/user/portfolios", {
+            let response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ portfolioId }),
             });
 
             // Handle 401 - Token expired
@@ -282,13 +274,12 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/portfolios", {
+                response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ portfolioId }),
                 });
 
                 if (response.status === 401) {
@@ -304,12 +295,11 @@ export function usePortfolios() {
             console.log("Delete response:", data);
 
             if (data.success) {
-                // First update local state for immediate UI feedback
                 setPortfolios(prev => prev.filter(portfolio => portfolio.id !== portfolioId));
 
                 toast({
                     title: "Success",
-                    description: data.message || "Portfolios deleted successfully",
+                    description: data.message || "Portfolio deleted successfully",
                 });
 
                 return true;
@@ -345,17 +335,27 @@ export function usePortfolios() {
 
         try {
             console.log(`Searching portfolios: platform=${platform}, minValue=${minValue}, maxValue=${maxValue}`);
-            let response = await fetch("http://localhost:8080/api/user/portfolios/search", {
-                method: "POST",
+
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (platform) {
+                params.append("platform", platform);
+            }
+            if (minValue !== undefined && minValue !== null && minValue !== "") {
+                params.append("minValue", minValue);
+            }
+            if (maxValue !== undefined && maxValue !== null && maxValue !== "") {
+                params.append("maxValue", maxValue);
+            }
+
+            const url = `http://localhost:8080/api/user/portfolios/search?${params.toString()}`;
+
+            let response = await fetch(url, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    platform,
-                    minValue,
-                    maxValue
-                }),
             });
 
             // Handle 401 - Token expired
@@ -367,17 +367,12 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/portfolios/search", {
-                    method: "POST",
+                response = await fetch(url, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        platform,
-                        minValue,
-                        maxValue
-                    }),
                 });
 
                 if (response.status === 401) {
@@ -419,12 +414,6 @@ export function usePortfolios() {
             setIsLoading(false);
         }
     }, [toast, refreshToken]);
-
-    // Initial fetch
-    useEffect(() => {
-        console.log("Initial portfolios fetch...");
-        fetchPortfolios();
-    }, [fetchPortfolios]);
 
     return {
         portfolios,

@@ -1,4 +1,3 @@
-// src/components/account/ChangeEmailDialog.jsx
 import { useState, useEffect } from "react";
 import {
     Dialog,
@@ -14,15 +13,14 @@ import { Input } from "@/components/ui/input.jsx";
 export default function ChangeEmailDialog({ open, onOpenChange, onConfirm, isLoading, initialEmail = "" }) {
     const [email, setEmail] = useState(initialEmail);
     const [isValid, setIsValid] = useState(true);
+    const maxEmailLength = 255;
 
-    // Update email state when initialEmail prop changes
     useEffect(() => {
         if (initialEmail) {
             setEmail(initialEmail);
         }
     }, [initialEmail]);
 
-    // Reset form when dialog opens
     useEffect(() => {
         if (open) {
             setEmail(initialEmail || "");
@@ -30,7 +28,6 @@ export default function ChangeEmailDialog({ open, onOpenChange, onConfirm, isLoa
         }
     }, [open, initialEmail]);
 
-    // Basic email validation
     const validateEmail = (email) => {
         const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return regex.test(email);
@@ -44,7 +41,7 @@ export default function ChangeEmailDialog({ open, onOpenChange, onConfirm, isLoa
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (validateEmail(email)) {
+        if (validateEmail(email) || email.length > maxEmailLength) {
             onConfirm(email);
         } else {
             setIsValid(false);

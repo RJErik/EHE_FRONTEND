@@ -1,7 +1,7 @@
 // src/context/AlertWebSocketContext.jsx
-import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import {createContext, useCallback, useContext, useEffect, useRef, useState} from 'react';
 import webSocketService from '../services/websocketService';
-import { useToast } from '../hooks/use-toast';
+import {useToast} from '../hooks/use-toast';
 
 // Create the context
 const AlertWebSocketContext = createContext();
@@ -15,14 +15,12 @@ export function AlertWebSocketProvider({ children }) {
     const isConnectedRef = useRef(isConnected);
     const { toast } = useToast();
 
-    // Add a ref to store alert callback functions
     const alertCallbacksRef = useRef([]);
 
     // Function to register a callback when alerts are triggered
     const registerAlertCallback = useCallback((callback) => {
         alertCallbacksRef.current.push(callback);
 
-        // Return unregister function
         return () => {
             alertCallbacksRef.current = alertCallbacksRef.current.filter(cb => cb !== callback);
         };
@@ -37,10 +35,8 @@ export function AlertWebSocketProvider({ children }) {
     useEffect(() => {
         console.log('[AlertWebSocket] Initializing alert WebSocket connection...');
 
-        // Connect and subscribe function
         const setupAlertSubscription = async () => {
             try {
-                // Establish connection if not already connected
                 if (!webSocketService.isConnected()) {
                     console.log('[AlertWebSocket] Connecting to WebSocket server...');
                     await webSocketService.connect();
@@ -48,17 +44,14 @@ export function AlertWebSocketProvider({ children }) {
 
                 setIsConnected(webSocketService.isConnected());
 
-                // Only proceed with subscription if connected and not already subscribed
                 if (webSocketService.isConnected() && !alertSubscriptionRef.current) {
                     console.log('[AlertWebSocket] Creating alert subscription...');
 
-                    // First send subscription request to the server
                     const response = await webSocketService.send('/app/alerts/subscribe', {});
                     console.log('[AlertWebSocket] Subscription request sent:', response);
 
-                    // Then subscribe to the user's alert queue
-                    const subscription = await webSocketService.subscribe('/user/queue/alerts', handleAlertMessage);
-                    alertSubscriptionRef.current = subscription;
+                    // Subscribe to the user's alert queue
+                    alertSubscriptionRef.current = await webSocketService.subscribe('/user/queue/alerts', handleAlertMessage);
 
                     console.log('[AlertWebSocket] Successfully subscribed to alerts');
                 }
@@ -80,25 +73,20 @@ export function AlertWebSocketProvider({ children }) {
             }
         };
 
-        // Start the initial setup
         setupAlertSubscription();
 
         // Set up periodic connection checking
         connectionCheckRef.current = setInterval(() => {
             const currentlyConnected = webSocketService.isConnected();
 
-            // Update state if connection status has changed
-            // Using the ref for comparison instead of the stale closure value
             if (isConnectedRef.current !== currentlyConnected) {
                 console.log(`[AlertWebSocket] Connection status changed: ${currentlyConnected ? 'connected' : 'disconnected'}`);
                 setIsConnected(currentlyConnected);
 
-                // If connection was lost, clear subscription reference
                 if (!currentlyConnected) {
                     alertSubscriptionRef.current = null;
                     scheduleReconnect();
                 }
-                // If connection was restored but not subscribed, resubscribe
                 else if (!alertSubscriptionRef.current) {
                     setupAlertSubscription();
                 }
@@ -109,23 +97,19 @@ export function AlertWebSocketProvider({ children }) {
         return () => {
             console.log('[AlertWebSocket] Cleaning up...');
 
-            // Cancel subscription on the server if we have an ID (using ref)
             if (subscriptionIdRef.current) {
                 console.log('[AlertWebSocket] Unsubscribing with ID:', subscriptionIdRef.current);
-                // Send unsubscription request with the new DTO structure
                 webSocketService.safeSend('/app/alerts/unsubscribe', {
                     subscriptionId: subscriptionIdRef.current
                 });
             }
 
-            // Clean up local subscription
             if (alertSubscriptionRef.current) {
                 console.log('[AlertWebSocket] Unsubscribing from /user/queue/alerts');
                 webSocketService.unsubscribe('/user/queue/alerts');
                 alertSubscriptionRef.current = null;
             }
 
-            // Clear timers
             if (connectionCheckRef.current) {
                 clearInterval(connectionCheckRef.current);
                 connectionCheckRef.current = null;
@@ -138,9 +122,8 @@ export function AlertWebSocketProvider({ children }) {
 
             console.log('[AlertWebSocket] Cleanup complete');
         };
-    }, []); // Empty dependency array is fine - we use refs for cleanup
+    }, []);
 
-    // Schedule reconnection attempt
     const scheduleReconnect = () => {
         if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
@@ -149,10 +132,8 @@ export function AlertWebSocketProvider({ children }) {
         reconnectTimerRef.current = setTimeout(() => {
             console.log('[AlertWebSocket] Attempting to reconnect...');
 
-            // Reset subscription reference before attempting to reconnect
             alertSubscriptionRef.current = null;
 
-            // Attempt to reconnect and subscribe
             webSocketService.connect().then(() => {
                 setIsConnected(webSocketService.isConnected());
 
@@ -166,9 +147,9 @@ export function AlertWebSocketProvider({ children }) {
                 }
             }).catch(error => {
                 console.error('[AlertWebSocket] Reconnection failed:', error);
-                scheduleReconnect(); // Schedule another attempt
+                scheduleReconnect();
             });
-        }, 5000); // Try every 5 seconds
+        }, 5000);
     };
 
     // Handle incoming alert messages
@@ -179,20 +160,16 @@ export function AlertWebSocketProvider({ children }) {
         if (message.success) {
             // This is a subscription confirmation
             if (message.subscriptionId && !message.alertId) {
-                // Extract the actual subscription ID from the response object
                 const actualSubscriptionId = message.subscriptionId.subscriptionId;
 
-                // Store in ref for cleanup
                 subscriptionIdRef.current = actualSubscriptionId;
                 console.log('[AlertWebSocket] Subscription confirmed, ID:', actualSubscriptionId);
             }
             // This is an actual alert notification
             else if (message.alertId) {
-                // Format price values with appropriate decimal places
                 const formatPrice = (price) => {
                     if (!price) return 'N/A';
 
-                    // Determine decimal places based on price magnitude
                     const decimalPlaces = price < 1 ? 6 : 2;
                     return price.toLocaleString(undefined, {
                         minimumFractionDigits: decimalPlaces,
@@ -200,16 +177,13 @@ export function AlertWebSocketProvider({ children }) {
                     });
                 };
 
-                // Format threshold and current prices
                 const formattedThreshold = formatPrice(message.thresholdValue);
                 const formattedCurrent = formatPrice(message.currentPrice);
 
-                // Get appropriate action verb based on condition type
                 const priceAction = message.conditionType === 'PRICE_ABOVE'
                     ? 'rose above'
                     : 'fell below';
 
-                // Create a user-friendly description
                 const description = message.message ||
                     `${message.platformName} ${message.stockSymbol} ${priceAction} ${formattedThreshold} (Current: ${formattedCurrent})`;
 
@@ -217,7 +191,7 @@ export function AlertWebSocketProvider({ children }) {
                 toast({
                     title: `${message.stockSymbol} Alert Triggered!`,
                     description: description,
-                    duration: 10000, // 10 seconds for important alerts
+                    duration: 10000,
                 });
 
                 console.log('[AlertWebSocket] Alert notification displayed for', message.stockSymbol);
@@ -239,7 +213,6 @@ export function AlertWebSocketProvider({ children }) {
         else {
             console.error('[AlertWebSocket] Error from server:', message.message);
 
-            // Only show toast for substantial errors (not just heartbeat issues)
             if (message.message && !message.message.includes('heartbeat')) {
                 toast({
                     title: 'Alert System Issue',
@@ -251,22 +224,18 @@ export function AlertWebSocketProvider({ children }) {
         }
     };
 
-    // Manual reconnect function for external use
     const reconnect = () => {
         console.log('[AlertWebSocket] Manual reconnection requested');
 
-        // Reset current state
         if (alertSubscriptionRef.current) {
             webSocketService.unsubscribe('/user/queue/alerts');
             alertSubscriptionRef.current = null;
         }
 
-        // Try to reconnect
         if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
         }
 
-        // Immediate reconnection attempt
         webSocketService.connect().then(() => {
             setIsConnected(webSocketService.isConnected());
 

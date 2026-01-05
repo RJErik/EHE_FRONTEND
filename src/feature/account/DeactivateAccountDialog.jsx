@@ -1,4 +1,3 @@
-// src/components/account/DeactivateAccountDialog.jsx
 import {
     Dialog,
     DialogContent,

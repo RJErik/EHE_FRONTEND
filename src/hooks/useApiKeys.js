@@ -1,4 +1,3 @@
-// src/hooks/useApiKeys.js
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "./use-toast.js";
 import { useJwtRefresh } from "./useJwtRefresh";
@@ -29,7 +28,6 @@ export function useApiKeys() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -42,7 +40,6 @@ export function useApiKeys() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -95,7 +92,6 @@ export function useApiKeys() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -109,7 +105,6 @@ export function useApiKeys() {
                     body: JSON.stringify({ platformName, apiKeyValue, secretKey }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -119,7 +114,6 @@ export function useApiKeys() {
 
             if (data.success) {
                 // Create a properly formatted API key object for the local state
-                // The backend now returns the full response with masked values
                 const newApiKey = {
                     apiKeyId: data.apiKey.apiKeyId,
                     platformName: data.apiKey.platformName,
@@ -132,7 +126,7 @@ export function useApiKeys() {
                     title: "Success",
                     description: data.message || "API key added successfully",
                 });
-                return true; // Return success indicator
+                return true;
             } else {
                 setError(data.message || "Failed to add API key");
                 toast({
@@ -164,13 +158,25 @@ export function useApiKeys() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/api-keys", {
+            // Build request body with only the fields to update (not apiKeyId)
+            const requestBody = {};
+            if (platformName !== undefined && platformName !== null) {
+                requestBody.platformName = platformName;
+            }
+            if (apiKeyValue !== undefined && apiKeyValue !== null) {
+                requestBody.apiKeyValue = apiKeyValue;
+            }
+            if (secretKey !== undefined && secretKey !== null) {
+                requestBody.secretKey = secretKey;
+            }
+
+            let response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
                 method: "PUT",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ apiKeyId, platformName, apiKeyValue, secretKey }),
+                body: JSON.stringify(requestBody),
             });
 
             // Handle 401 - Token expired
@@ -178,21 +184,19 @@ export function useApiKeys() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/api-keys", {
+                response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
                     method: "PUT",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ apiKeyId, platformName, apiKeyValue, secretKey }),
+                    body: JSON.stringify(requestBody),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -202,7 +206,6 @@ export function useApiKeys() {
 
             if (data.success) {
                 // Update the local state with the updated API key data
-                // The backend now returns the full response with masked values
                 setApiKeys(prevKeys =>
                     prevKeys.map(key =>
                         key.apiKeyId === apiKeyId
@@ -220,7 +223,7 @@ export function useApiKeys() {
                     title: "Success",
                     description: data.message || "API key updated successfully",
                 });
-                return true; // Return success indicator
+                return true;
             } else {
                 setError(data.message || "Failed to update API key");
                 toast({
@@ -252,13 +255,12 @@ export function useApiKeys() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/api-keys", {
+            let response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ apiKeyId }),
             });
 
             // Handle 401 - Token expired
@@ -266,21 +268,18 @@ export function useApiKeys() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/api-keys", {
+                response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ apiKeyId }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -295,7 +294,7 @@ export function useApiKeys() {
                     title: "Success",
                     description: data.message || "API key deleted successfully",
                 });
-                return true; // Return success indicator
+                return true;
             } else {
                 setError(data.message || "Failed to delete API key");
                 toast({

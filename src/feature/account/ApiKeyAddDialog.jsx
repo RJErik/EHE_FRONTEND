@@ -1,4 +1,3 @@
-// src/components/account/ApiKeyAddDialog.jsx
 import { useState } from "react";
 import {
     Dialog,
@@ -15,11 +14,10 @@ import { Loader2 } from "lucide-react";
 const ApiKeyAddDialog = ({ open, onOpenChange, onAddKey, platforms, isLoading }) => {
     const [platformName, setPlatformName] = useState("");
     const [apiKeyValue, setApiKeyValue] = useState("");
-    const [secretKey, setSecretKey] = useState(""); // Added state for secret key
+    const [secretKey, setSecretKey] = useState("");
 
     const handleAddKey = () => {
-        onAddKey(platformName, apiKeyValue, secretKey); // Pass secretKey to onAddKey
-        // Reset form
+        onAddKey(platformName, apiKeyValue, secretKey);
         setPlatformName("");
         setApiKeyValue("");
         setSecretKey("");

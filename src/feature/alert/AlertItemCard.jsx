@@ -1,4 +1,3 @@
-// src/components/alert/AlertItemCard.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Trash2, ArrowUp, ArrowDown } from "lucide-react";

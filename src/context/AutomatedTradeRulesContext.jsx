@@ -1,16 +1,14 @@
-// src/context/AutomaticTradeRulesContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useAutomaticTradeRules } from '../hooks/useAutomaticTradeRules.js';
+import { useAutomatedTradeRules } from '../hooks/useAutomatedTradeRules.js';
 
 // Create the context
-const AutomaticTradeRulesContext = createContext(null);
+const AutomatedTradeRulesContext = createContext(null);
 
 // Provider component
 export function AutomaticTradeProvider({ children }) {
-    const automaticTradeData = useAutomaticTradeRules();
+    const automaticTradeData = useAutomatedTradeRules();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
-    // Use a ref for last search params to prevent unnecessary renders
     const lastSearchParamsRef = useRef({
         type: 'fetchAll',
         portfolioId: null,
@@ -23,14 +21,12 @@ export function AutomaticTradeProvider({ children }) {
         maxThresholdValue: null
     });
 
-    // Force a re-render when automatic trade rules change
     useEffect(() => {
         setLastUpdate(Date.now());
     }, [automaticTradeData.automaticTradeRules]);
 
-    // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
-        console.log('[AutomaticTradeRulesContext] Refreshing with last search:', lastSearchParamsRef.current);
+        console.log('[AutomatedTradeRulesContext] Refreshing with last search:', lastSearchParamsRef.current);
 
         if (lastSearchParamsRef.current.type === 'search') {
             automaticTradeData.searchAutomaticTradeRules(
@@ -48,7 +44,6 @@ export function AutomaticTradeProvider({ children }) {
         }
     }, [automaticTradeData]);
 
-    // Extended search function that stores the parameters
     const searchAutomaticTradeRulesWithMemory = useCallback((
         portfolioId,
         platform,
@@ -82,7 +77,6 @@ export function AutomaticTradeProvider({ children }) {
         );
     }, [automaticTradeData]);
 
-    // Extended fetchAutomaticTradeRules function that stores it was a general fetch
     const fetchAutomaticTradeRulesWithMemory = useCallback(() => {
         lastSearchParamsRef.current = {
             type: 'fetchAll',
@@ -98,7 +92,6 @@ export function AutomaticTradeProvider({ children }) {
         return automaticTradeData.fetchAutomaticTradeRules();
     }, [automaticTradeData]);
 
-    // Memoize the context value to prevent unnecessary renders
     const contextValue = {
         ...automaticTradeData,
         lastUpdate,
@@ -108,17 +101,17 @@ export function AutomaticTradeProvider({ children }) {
     };
 
     return (
-        <AutomaticTradeRulesContext.Provider value={contextValue}>
+        <AutomatedTradeRulesContext.Provider value={contextValue}>
             {children}
-        </AutomaticTradeRulesContext.Provider>
+        </AutomatedTradeRulesContext.Provider>
     );
 }
 
 // Custom hook to use the automatic trade context
-export function useAutomaticTradeContext() {
-    const context = useContext(AutomaticTradeRulesContext);
+export function useAutomatedTradeRuleContext() {
+    const context = useContext(AutomatedTradeRulesContext);
     if (!context) {
-        throw new Error('useAutomaticTradeContext must be used within an AutomaticTradeProvider');
+        throw new Error('useAutomatedTradeRuleContext must be used within an AutomatedTradeRuleProvider');
     }
     return context;
 }

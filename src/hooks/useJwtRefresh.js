@@ -1,9 +1,7 @@
-// src/hooks/useJwtRefresh.js
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "./use-toast";
 
-// Module-level variable to deduplicate refresh requests across ALL hook instances
 let refreshPromiseRef = null;
 
 export function useJwtRefresh() {
@@ -21,7 +19,7 @@ export function useJwtRefresh() {
 
         refreshPromiseRef = (async () => {
             try {
-                const response = await fetch("http://localhost:8080/api/session/renew-token", {
+                const response = await fetch("http://localhost:8080/api/session/token", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -37,7 +35,6 @@ export function useJwtRefresh() {
                 console.log("Token refresh response:", data);
 
                 if (data.success) {
-                    // Don't show success toast - token refresh should be silent
                     return true;
                 } else {
                     throw new Error(data.message || "Token refresh failed");
@@ -51,18 +48,16 @@ export function useJwtRefresh() {
                     variant: "destructive",
                 });
 
-                // Redirect to login page
                 navigate("/login");
 
                 throw err;
             } finally {
-                // Clear the reference so future refresh requests can start a new one
                 refreshPromiseRef = null;
             }
         })();
 
         return refreshPromiseRef;
-    }, []);
+    }, [toast, navigate]);
 
     return {
         refreshToken,

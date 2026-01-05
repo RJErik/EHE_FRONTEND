@@ -1,8 +1,6 @@
-// src/services/websocketService.js
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 
-// Configuration constants
 const SOCKET_URL = 'http://localhost:8080/ws';
 const RECONNECT_DELAY_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -64,7 +62,6 @@ class WebSocketService {
                                 this.reconnectAttempts++;
                                 console.log(`[WebSocket] Attempting to reconnect... (${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
-                                // Use exponential backoff
                                 const timeout = RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1);
                                 setTimeout(() => this.connect(), timeout);
                             } else {
@@ -102,7 +99,6 @@ class WebSocketService {
 
         return this.ensureConnected()
             .then(() => {
-                // Create subscription
                 const subscription = this.stompClient.subscribe(destination, message => {
                     try {
                         const payload = JSON.parse(message.body);
@@ -110,11 +106,10 @@ class WebSocketService {
                     } catch (err) {
                         console.error(`[WebSocket] Error processing message from ${destination}:`, err);
                         console.error(`[WebSocket] Raw message:`, message.body);
-                        callback(message.body); // Pass through as-is if parsing fails
+                        callback(message.body);
                     }
                 });
 
-                // Store the subscription
                 this.subscriptions.set(destination, subscription);
                 console.log(`[WebSocket] Subscribed to ${destination}`);
 
@@ -159,7 +154,7 @@ class WebSocketService {
 
         if (!this.connected || !this.stompClient) {
             console.log(`[WebSocket] Not connected, cannot send to ${destination}`);
-            return Promise.resolve(false); // Return resolved promise instead of error
+            return Promise.resolve(false);
         }
 
         return new Promise((resolve) => {
@@ -172,7 +167,7 @@ class WebSocketService {
                 resolve(true);
             } catch (error) {
                 console.warn(`[WebSocket] Safe send error to ${destination}:`, error);
-                resolve(false); // Still resolve but with false to indicate failure
+                resolve(false);
             }
         });
     }
@@ -192,8 +187,6 @@ class WebSocketService {
 }
 
 // Create a singleton instance
-// Note: This service is now managed at the app level via CandleWebSocketContext,
-// but we maintain this singleton for backward compatibility
 const webSocketService = new WebSocketService();
 
 export default webSocketService;

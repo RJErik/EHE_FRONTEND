@@ -1,4 +1,3 @@
-// src/components/stockMarket/indicators/IndicatorChart.jsx
 import {useContext, useEffect, useRef, useState} from "react";
 import {renderIndicatorChart} from "./renderIndicatorChart.js";
 import {ChartContext} from "../ChartContext.jsx";
@@ -6,13 +5,9 @@ import {ChartContext} from "../ChartContext.jsx";
 const IndicatorChart = ({ indicator }) => {
     const chartRef = useRef(null);
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
-    // Add mouseX state to track horizontal position for hover recalculation
     const [mouseX, setMouseX] = useState(null);
-    // Add refs for tracking drag state
     const dragStartXRef = useRef(null);
     const dragStartViewIndexRef = useRef(null);
-
-    // Shared helpers moved into effect to satisfy hooks exhaustive-deps
 
     const {
         candleData,
@@ -37,12 +32,10 @@ const IndicatorChart = ({ indicator }) => {
 
         console.log(`[IndicatorChart] Rendering chart for indicator: ${indicator.name} (${indicator.id})`);
 
-        // Extract indicator values from candleData
         const indicatorValues = extractIndicatorValues(candleData, indicator.id, indicator.type);
 
         console.log(`[IndicatorChart] Extracted values for ${indicator.name}:`, indicatorValues);
 
-        // Only render if we have valid data
         if (!indicatorValues ||
             (Array.isArray(indicatorValues) && indicatorValues.every(v => v === null)) ||
             (typeof indicatorValues === 'object' && Object.keys(indicatorValues).length === 0)) {
@@ -50,7 +43,6 @@ const IndicatorChart = ({ indicator }) => {
             return;
         }
 
-        // Render chart using D3
         return renderIndicatorChart({
             chartRef,
             data: indicatorValues,
@@ -65,50 +57,38 @@ const IndicatorChart = ({ indicator }) => {
         });
     }, [indicator, candleData, viewStartIndex, displayedCandles, isDragging, hoveredIndex, currentMouseY, isMouseOverChart, setActiveTimestamp, setCurrentMouseY, setHoveredIndex]);
 
-    // NEW: Effect to recalculate hover index when displayed candles change (zoom)
     useEffect(() => {
-        // Skip if dragging, no data, not hovering or no valid mouse position
         if (isDragging || !candleData || !candleData.length || !isMouseOverChart || mouseX === null || !chartRef.current) {
             return;
         }
 
-        // Calculate which candle is under the mouse after zoom
         const chartRect = chartRef.current.getBoundingClientRect();
         const marginLeft = 40;
         const marginRight = 40;
         const chartWidth = chartRect.width - marginLeft - marginRight;
 
-        // Calculate what percentage across the chart the mouse is
         const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth));
-
-        // Convert to an index based on current number of displayed candles
         const newHoveredIndex = Math.floor(mouseXRatio * displayedCandles);
 
-        // Ensure index is within valid bounds
         if (newHoveredIndex >= 0 && newHoveredIndex < candleData.length) {
-            // Update hover state
             setHoveredIndex(newHoveredIndex);
 
-            // Set active timestamp from the corresponding candle
             if (candleData[newHoveredIndex]) {
                 setActiveTimestamp(candleData[newHoveredIndex].timestamp);
             }
         }
     }, [displayedCandles, candleData, isDragging, isMouseOverChart, mouseX, setHoveredIndex, setActiveTimestamp]);
 
-    // Setup dragging events for the indicator chart
     useEffect(() => {
         const getCandleWidth = () => {
             if (chartRef.current && displayedCandles > 0) {
                 const chartWidth = chartRef.current.clientWidth;
-                // Use the actual chart drawing area width
-                const drawingWidth = chartWidth - 80; // Adjust for margins (40 left + 40 right)
+                const drawingWidth = chartWidth - 80;
                 return drawingWidth / displayedCandles;
             }
-            return 10; // Fallback width
+            return 10;
         };
 
-        // Define helpers inside effect to avoid changing deps
         const CHART_MARGINS = { left: 40, right: 40, top: 5, bottom: 5 };
         const getChartRect = () => chartRef.current?.getBoundingClientRect();
         const isEventInChartArea = (e) => {
@@ -133,7 +113,7 @@ const IndicatorChart = ({ indicator }) => {
         };
 
         const handleMouseDown = (e) => {
-            if (e.button === 0 && isEventInChartArea(e)) { // Only left mouse button
+            if (e.button === 0 && isEventInChartArea(e)) {
                 setIsDragging(true);
                 dragStartXRef.current = e.clientX;
                 dragStartViewIndexRef.current = viewStartIndex;
@@ -145,34 +125,27 @@ const IndicatorChart = ({ indicator }) => {
         };
 
         const handleMouseMove = (e) => {
-            // Handle dragging logic
             if (isDragging && dragStartXRef.current !== null && dragStartViewIndexRef.current !== null) {
                 const currentX = e.clientX;
                 const deltaX = currentX - dragStartXRef.current;
                 const candleWidth = getCandleWidth();
 
                 if (candleWidth > 0) {
-                    // Calculate the total number of candles to shift based on total drag distance
                     const totalCandlesToShift = deltaX / candleWidth;
-
-                    // Calculate the target new index based on the index when drag started
                     const targetViewStartIndex = dragStartViewIndexRef.current - totalCandlesToShift;
 
-                    // Apply bounds and rounding
                     const newIndex = Math.round(targetViewStartIndex);
                     const boundedIndex = Math.max(
                         0,
                         Math.min(newIndex, (displayCandles?.length || 0) - displayedCandles)
                     );
 
-                    // Update state only if the index actually changes to avoid unnecessary re-renders
                     if (boundedIndex !== viewStartIndex) {
                         setViewStartIndex(boundedIndex);
                     }
                 }
             }
 
-            // Update hover state if not dragging
             if (chartRef.current && isMouseOverChart && !isDragging) {
                 const chartRect = chartRef.current.getBoundingClientRect();
                 const marginLeft = 40;
@@ -180,9 +153,8 @@ const IndicatorChart = ({ indicator }) => {
                 const relativeX = e.clientX - chartRect.left - marginLeft;
                 const relativeY = e.clientY - chartRect.top - marginTop;
 
-                // Store both X and Y positions
-                setMouseX(relativeX); // Update X for hover recalculation
-                setCurrentMouseY(relativeY); // Update Y for crosshair
+                setMouseX(relativeX);
+                setCurrentMouseY(relativeY);
             }
         };
 
@@ -192,7 +164,6 @@ const IndicatorChart = ({ indicator }) => {
                 dragStartXRef.current = null;
                 dragStartViewIndexRef.current = null;
 
-                // Update cursor based on whether the mouse is still over the chart
                 if (chartRef.current) {
                     chartRef.current.style.cursor = isMouseOverChart ? 'crosshair' : 'default';
                 }
@@ -200,7 +171,7 @@ const IndicatorChart = ({ indicator }) => {
         };
 
         const handleWheel = (e) => {
-            e.preventDefault(); // Prevent page scrolling
+            e.preventDefault();
 
             const isZoomIn = e.deltaY < 0;
             const chartRect = chartRef.current.getBoundingClientRect();
@@ -209,9 +180,8 @@ const IndicatorChart = ({ indicator }) => {
             const chartWidth = chartRect.width - marginLeft - marginRight;
 
             const mouseX = e.clientX - chartRect.left - marginLeft;
-            const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth)); // Clamp ratio [0, 1]
+            const mouseXRatio = Math.max(0, Math.min(1, mouseX / chartWidth));
 
-            // Store mouse X position before zoom
             setMouseX(mouseX);
 
             const candleIndexUnderMouse = Math.floor(mouseXRatio * displayedCandles);
@@ -222,14 +192,11 @@ const IndicatorChart = ({ indicator }) => {
                 ? Math.max(MIN_DISPLAY_CANDLES, displayedCandles - ZOOM_STEP)
                 : Math.min(MAX_DISPLAY_CANDLES, displayedCandles + ZOOM_STEP);
 
-            // If the number of candles didn't change, do nothing
             if (newDisplayedCandles === displayedCandles) return;
 
-            // Calculate the new index ratio under the mouse for the new zoom level
             const newCandleIndexUnderMouse = Math.floor(mouseXRatio * newDisplayedCandles);
             let newViewStartIndex = absoluteIndexUnderMouse - newCandleIndexUnderMouse;
 
-            // Adjust start index to stay within bounds
             newViewStartIndex = Math.max(
                 0,
                 Math.min(newViewStartIndex, (displayCandles?.length || 0) - newDisplayedCandles)
@@ -254,15 +221,13 @@ const IndicatorChart = ({ indicator }) => {
             if (chartRef.current && !chartRef.current.contains(e.relatedTarget)) {
                 setIsMouseOverChart(false);
                 if (isDragging) {
-                    // If dragging stops because mouse left, treat it like mouse up
                     setIsDragging(false);
                     dragStartXRef.current = null;
                     dragStartViewIndexRef.current = null;
                 }
-                // Clear crosshair state
                 setCurrentMouseY(null);
                 setHoveredIndex(null);
-                setMouseX(null); // Also clear mouseX
+                setMouseX(null);
             }
         };
 
@@ -271,23 +236,21 @@ const IndicatorChart = ({ indicator }) => {
             if (isEventInChartArea(e)) {
                 const { x } = getRelativeMouse(e);
                 setMouseX(x);
-                handleWheel(e); // Call the zoom handler
+                handleWheel(e);
             }
         };
 
-        // Global mouse move listener to catch mouse leaving the chart area *while not dragging*
         const handleGlobalMouseMoveForLeave = (e) => {
             if (chartRef.current && !isDragging && isMouseOverChart) {
                 if (!isEventInChartArea(e)) {
                     setIsMouseOverChart(false);
                     setCurrentMouseY(null);
                     setHoveredIndex(null);
-                    setMouseX(null); // Also clear mouseX
+                    setMouseX(null);
                 }
             }
         };
 
-        // Attach event listeners
         const chartElement = chartRef.current;
         if (chartElement) {
             chartElement.addEventListener('mousedown', handleMouseDown);
@@ -295,12 +258,10 @@ const IndicatorChart = ({ indicator }) => {
             chartElement.addEventListener('mouseenter', handleMouseEnter);
             chartElement.addEventListener('mouseleave', handleMouseLeave);
         }
-        // Use document listeners for move/up to capture events outside the chart element during drag
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
-        document.addEventListener('mousemove', handleGlobalMouseMoveForLeave); // Separate listener for leave detection
+        document.addEventListener('mousemove', handleGlobalMouseMoveForLeave);
 
-        // Cleanup
         return () => {
             if (chartElement) {
                 chartElement.removeEventListener('mousedown', handleMouseDown);
@@ -314,32 +275,24 @@ const IndicatorChart = ({ indicator }) => {
         };
     }, [isDragging, setIsDragging, viewStartIndex, setViewStartIndex, displayCandles.length, displayedCandles, setDisplayedCandles, setCurrentMouseY, isMouseOverChart, setMouseX, setHoveredIndex, setActiveTimestamp, MIN_DISPLAY_CANDLES, MAX_DISPLAY_CANDLES]);
 
-    // Helper function to extract indicator values from candle data
     const extractIndicatorValues = (candles, indicatorId, indicatorType) => {
-        // For simple indicators like SMA, EMA, RSI, ATR
         if (['sma', 'ema', 'rsi', 'atr'].includes(indicatorType)) {
             return candles.map(candle =>
                 candle.indicatorValues && candle.indicatorValues[indicatorId]
             );
         }
 
-        // For composite indicators like MACD, Bollinger Bands
         if (['macd', 'bb'].includes(indicatorType)) {
-            // Initialize an empty result object
             const result = {};
 
-            // Iterate through candles to extract all properties
             candles.forEach((candle, index) => {
                 if (candle.indicatorValues && candle.indicatorValues[indicatorId]) {
                     const indicatorValue = candle.indicatorValues[indicatorId];
 
-                    // For each property in the indicator value
                     Object.entries(indicatorValue).forEach(([key, value]) => {
-                        // Initialize array if it doesn't exist
                         if (!result[key]) {
                             result[key] = new Array(candles.length).fill(null);
                         }
-                        // Set the value for this candle
                         result[key][index] = value;
                     });
                 }
@@ -348,7 +301,6 @@ const IndicatorChart = ({ indicator }) => {
             return result;
         }
 
-        // Default fallback
         return [];
     };
 

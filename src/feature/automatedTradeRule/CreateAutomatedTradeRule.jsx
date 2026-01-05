@@ -1,4 +1,3 @@
-// src/components/automaticTransaction/CreateAutomaticTradeRule.jsx
 import { useState, useEffect } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -10,13 +9,11 @@ import { useToast } from "../../hooks/use-toast.js";
 import { Loader2 } from "lucide-react";
 import { useStockData } from "../../hooks/useStockData.js";
 import { useTrading } from "../../hooks/useTrading.js";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
+import { useAutomatedTradeRuleContext } from "../../context/AutomatedTradeRulesContext.jsx";
 
-const CreateAutomaticTradeRule = () => {
-    // Toast for notifications
+const CreateAutomatedTradeRule = () => {
     const { toast } = useToast();
 
-    // Stock data hook for platform and stock selection
     const {
         platforms,
         stocks,
@@ -28,7 +25,6 @@ const CreateAutomaticTradeRule = () => {
         isLoadingStocks
     } = useStockData();
 
-    // Trading hook for portfolio data and trading capacity
     const {
         portfolios,
         tradingCapacity,
@@ -38,10 +34,8 @@ const CreateAutomaticTradeRule = () => {
         getTradingCapacity
     } = useTrading();
 
-    // Automatic trade context for adding rules
-    const { addAutomaticTradeRule, refreshLatestSearch } = useAutomaticTradeContext();
+    const { addAutomaticTradeRule, refreshLatestSearch } = useAutomatedTradeRuleContext();
 
-    // Form state
     const [selectedPortfolioId, setSelectedPortfolioId] = useState("");
     const [selectedConditionType, setSelectedConditionType] = useState("");
     const [selectedActionType, setSelectedActionType] = useState("BUY");
@@ -49,96 +43,77 @@ const CreateAutomaticTradeRule = () => {
     const [thresholdValue, setThresholdValue] = useState("");
     const [quantity, setQuantity] = useState(0);
     const [inputValue, setInputValue] = useState("0");
-    const [isInputFocused, setIsInputFocused] = useState(false);
+    const [setIsInputFocused] = useState(false);
     const [maxValue, setMaxValue] = useState(0);
     const [isCreating, setIsCreating] = useState(false);
 
-    // Handle platform change directly, similar to search component
     const handlePlatformChange = (value) => {
         setSelectedPlatform(value);
 
-        // Reset form values when platform changes
         setSelectedPortfolioId("");
         setQuantity(0);
         setInputValue("0");
 
-        // Only fetch portfolios if we have a valid platform
         if (value) {
             fetchPortfoliosByPlatform(value);
         }
     };
 
-    // Get trading capacity when portfolio and stock are selected
     useEffect(() => {
         if (selectedPortfolioId && selectedStock) {
             getTradingCapacity(selectedPortfolioId, selectedStock);
         }
     }, [selectedPortfolioId, selectedStock]);
 
-    // Update max value when trading capacity, action type, or quantity type changes
     useEffect(() => {
         if (tradingCapacity) {
             updateMaxValue(tradingCapacity);
         }
     }, [tradingCapacity, selectedActionType, selectedQuantityType]);
 
-    // Update max value based on action type and quantity type
     const updateMaxValue = (capacity) => {
         if (!capacity) return;
 
         if (selectedActionType === "BUY") {
             if (selectedQuantityType === "QUANTITY") {
-                // Buy mode, Quantity - use max buy quantity (cash/price)
                 setMaxValue(capacity.maxBuyQuantity);
             } else {
-                // Buy mode, Quote Order Qty - use reserved cash
                 setMaxValue(capacity.reservedCash);
             }
         } else {
             if (selectedQuantityType === "QUANTITY") {
-                // Sell mode, Quantity - use current holdings
                 setMaxValue(capacity.currentHolding);
             } else {
-                // Sell mode, Quote Order Qty - use current holdings * price
                 const holdingValue = capacity.currentHolding * capacity.currentPrice;
                 setMaxValue(holdingValue);
             }
         }
 
-        // Reset quantity to 0 when updating max values
         setQuantity(0);
         setInputValue("0");
     };
 
-    // Handle portfolio selection
     const handlePortfolioChange = (value) => {
         setSelectedPortfolioId(value);
     };
 
-    // Handle action type change
     const handleActionTypeChange = (value) => {
         setSelectedActionType(value);
-        // Max value will be updated by the useEffect
     };
 
-    // Handle quantity type change
     const handleQuantityTypeChange = (value) => {
         setSelectedQuantityType(value);
-        // Max value will be updated by the useEffect
     };
 
-    // Handle quantity changes from slider
     const handleQuantitySlider = (values) => {
         const newQuantity = values[0];
         setQuantity(newQuantity);
         setInputValue(newQuantity.toString());
     };
 
-    // Handle quantity changes from input
     const handleQuantityInput = (e) => {
         const value = e.target.value;
 
-        // Allow empty input when focused
         if (value === "") {
             setInputValue("");
             setQuantity(0);
@@ -152,23 +127,18 @@ const CreateAutomaticTradeRule = () => {
         setInputValue(value);
     };
 
-    // Handle input focus
     const handleInputFocus = () => {
         setIsInputFocused(true);
-        // Clear the input if it's "0" to allow user to type from scratch
         if (inputValue === "0") {
             setInputValue("");
         }
     };
 
-    // Handle input blur
     const handleInputBlur = () => {
         setIsInputFocused(false);
-        // If input is empty, set it back to "0"
         if (inputValue === "") {
             setInputValue("0");
         } else {
-            // Ensure the displayed value respects the max limit
             const numericValue = parseFloat(inputValue) || 0;
             const limitedValue = Math.min(numericValue, maxValue);
             setInputValue(limitedValue.toString());
@@ -176,16 +146,6 @@ const CreateAutomaticTradeRule = () => {
         }
     };
 
-    // Get the appropriate unit label based on action and quantity types
-    const getQuantityUnitLabel = () => {
-        if (selectedQuantityType === "QUANTITY") {
-            return getBaseCurrency(selectedStock);
-        } else {
-            return "$";
-        }
-    };
-
-    // Get the appropriate slider label
     const getSliderLabel = () => {
         if (selectedActionType === "BUY") {
             if (selectedQuantityType === "QUANTITY") {
@@ -202,20 +162,15 @@ const CreateAutomaticTradeRule = () => {
         }
     };
 
-    // Format the max value display
     const getFormattedMaxValue = () => {
         if (selectedQuantityType === "QUANTITY") {
-            // For quantity, use more decimal places for crypto
             return maxValue.toFixed(8);
         } else {
-            // For cash values, use 2 decimal places
             return `$${maxValue.toFixed(2)}`;
         }
     };
 
-    // Handle create button click
     const handleCreate = async () => {
-        // Validate all required fields
         if (!selectedPlatform || !selectedStock || !selectedPortfolioId ||
             !selectedConditionType || !selectedActionType || !selectedQuantityType ||
             !thresholdValue || quantity <= 0) {
@@ -241,14 +196,12 @@ const CreateAutomaticTradeRule = () => {
             );
 
             if (success) {
-                // Reset form after successful creation
                 setSelectedStock("");
                 setSelectedConditionType("");
                 setThresholdValue("");
                 setQuantity(0);
                 setInputValue("0");
 
-                // Force refresh the automatic trade rules list
                 console.log("Automatic trade rule created successfully - forcing refresh");
                 refreshLatestSearch();
             }
@@ -257,10 +210,8 @@ const CreateAutomaticTradeRule = () => {
         }
     };
 
-    // Helper function to extract base currency from trading pair
     const getBaseCurrency = (symbol) => {
         if (!symbol) return "";
-        // Common quote currencies to remove from the end
         const quoteCurrencies = ["USDT", "USD", "BTC", "ETH", "BNB"];
 
         for (const quote of quoteCurrencies) {
@@ -269,11 +220,9 @@ const CreateAutomaticTradeRule = () => {
             }
         }
 
-        // Default fallback - return the original symbol
         return symbol;
     };
 
-    // Calculate if form is valid
     const isFormValid = !!selectedPlatform && !!selectedStock && !!selectedPortfolioId &&
         !!selectedConditionType && !!selectedActionType &&
         !!selectedQuantityType && !!thresholdValue && quantity > 0;
@@ -490,4 +439,4 @@ const CreateAutomaticTradeRule = () => {
     );
 };
 
-export default CreateAutomaticTradeRule;
+export default CreateAutomatedTradeRule;

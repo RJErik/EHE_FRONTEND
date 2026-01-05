@@ -7,22 +7,84 @@ import { useWatchlist } from "../../context/WatchlistItemsContext.jsx";
 const WatchlistTicker = () => {
     const [isOpen, setIsOpen] = useState(true);
     const scrollRef = useRef(null);
-    const { watchlistItems, watchlistCandles, fetchWatchlistCandles, lastUpdate } = useWatchlist();
+    const { watchlistItems, watchlistCandles, fetchWatchlistCandles, fetchWatchlistItems, lastUpdate } = useWatchlist();
 
-    // Setup ticker animation for scrolling
+    const intervalRef = useRef(null);
+    const previousItemsRef = useRef(null);
+    const isFirstRender = useRef(true);
+
+    useEffect(() => {
+        console.log("Ticker: Initial mount - fetching items");
+        fetchWatchlistItems();
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen || watchlistItems.length === 0) {
+            if (intervalRef.current) {
+                console.log("Ticker: Clearing interval (closed or no items)");
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            previousItemsRef.current = null;
+            return;
+        }
+
+        // Compare with previous items
+        const currentItemsString = JSON.stringify(watchlistItems);
+        const previousItemsString = previousItemsRef.current
+            ? JSON.stringify(previousItemsRef.current)
+            : null;
+
+        const itemsChanged = currentItemsString !== previousItemsString;
+
+        if (itemsChanged || isFirstRender.current) {
+            console.log(isFirstRender.current
+                ? "Ticker: First render with items, fetching candles and starting timer"
+                : "Ticker: Items changed, fetching candles and resetting timer"
+            );
+
+            isFirstRender.current = false;
+            previousItemsRef.current = watchlistItems;
+
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+
+            fetchWatchlistCandles();
+
+            intervalRef.current = setInterval(() => {
+                console.log("Ticker: Periodic candle refresh");
+                fetchWatchlistCandles();
+            }, 30000);
+        } else {
+            console.log("Ticker: Items unchanged, keeping timer");
+        }
+
+    }, [isOpen, watchlistItems]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (intervalRef.current) {
+                console.log("Ticker: Unmounting, clearing interval");
+                clearInterval(intervalRef.current);
+            }
+        };
+    }, []);
+
+    // Ticker animation
     useEffect(() => {
         if (!scrollRef.current || !isOpen || watchlistItems.length <= 5) return;
 
         const scrollContainer = scrollRef.current;
         let scrollAmount = 0;
-        const speed = 1; // pixels per frame
+        const speed = 1;
         let animationFrameId;
 
         const scroll = () => {
             scrollContainer.scrollLeft = scrollAmount;
             scrollAmount += speed;
 
-            // Reset scroll position when we reach the end
             if (scrollAmount >= scrollContainer.scrollWidth - scrollContainer.clientWidth) {
                 scrollAmount = 0;
             }
@@ -37,27 +99,12 @@ const WatchlistTicker = () => {
         };
     }, [isOpen, watchlistItems, lastUpdate]);
 
-    // Refresh candles periodically when ticker is open
-    useEffect(() => {
-        if (!isOpen || watchlistItems.length === 0) return;
-
-        // Initial fetch
-        fetchWatchlistCandles();
-
-        const interval = setInterval(() => {
-            fetchWatchlistCandles();
-        }, 30000);
-
-        return () => clearInterval(interval);
-    }, [isOpen, fetchWatchlistCandles, watchlistItems, lastUpdate]);
-
     return (
         <div className={cn(
             "sticky top-[60px] w-full bg-background border-b z-40 transition-all duration-300",
-            isOpen ? "h-18" : "h-7" // Increased height when open
+            isOpen ? "h-18" : "h-7"
         )}>
             <div className="container mx-auto h-full flex flex-col">
-                {/* Toggle button */}
                 <Button
                     variant="ghost"
                     size="sm"
@@ -67,7 +114,6 @@ const WatchlistTicker = () => {
                     {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
 
-                {/* Ticker content */}
                 {isOpen && (
                     <div
                         ref={scrollRef}

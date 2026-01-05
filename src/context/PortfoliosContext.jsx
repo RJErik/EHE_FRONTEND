@@ -1,4 +1,3 @@
-// src/context/PortfoliosContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { usePortfolios } from '../hooks/usePortfolios.js';
 
@@ -10,7 +9,6 @@ export function PortfolioProvider({ children }) {
     const portfolioData = usePortfolios();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
-    // Use a ref for last search params to prevent unnecessary renders
     const lastSearchParamsRef = useRef({
         type: 'fetchAll',
         platform: null,
@@ -18,12 +16,10 @@ export function PortfolioProvider({ children }) {
         maxValue: null
     });
 
-    // Force a re-render when portfolio items change
     useEffect(() => {
         setLastUpdate(Date.now());
     }, [portfolioData.portfolios]);
 
-    // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
         console.log('[PortfoliosContext] Refreshing with last search:', lastSearchParamsRef.current);
 
@@ -38,7 +34,6 @@ export function PortfolioProvider({ children }) {
         }
     }, [portfolioData]);
 
-    // Extended search function that stores the parameters
     const searchPortfoliosWithMemory = useCallback((platform, minValue, maxValue) => {
         lastSearchParamsRef.current = {
             type: 'search',
@@ -49,7 +44,6 @@ export function PortfolioProvider({ children }) {
         return portfolioData.searchPortfolios(platform, minValue, maxValue);
     }, [portfolioData]);
 
-    // Extended fetchPortfolios function that stores it was a general fetch
     const fetchPortfoliosWithMemory = useCallback(() => {
         lastSearchParamsRef.current = {
             type: 'fetchAll',
@@ -60,7 +54,6 @@ export function PortfolioProvider({ children }) {
         return portfolioData.fetchPortfolios();
     }, [portfolioData]);
 
-    // Memoize the context value to prevent unnecessary renders
     const contextValue = {
         ...portfolioData,
         lastUpdate,

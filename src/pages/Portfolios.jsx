@@ -1,15 +1,39 @@
-// src/pages/Portfolios.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SearchPortfolios from "@/feature/portfolio/SearchPortfolios.jsx";
 import CreatePortfolio from "@/feature/portfolio/CreatePortfolio.jsx";
 import PortfolioList from "@/feature/portfolio/PortfolioList.jsx";
 import PortfolioDetail from "./PortfolioDetail";
 import { Button } from "../components/ui/button";
-import { PortfolioProvider } from "../context/PortfoliosContext.jsx";
+import { PortfolioProvider, usePortfolioContext } from "../context/PortfoliosContext.jsx";
 import { useNavigate } from "react-router-dom";
 
-const Portfolios = () => {
+const PortfoliosListContent = ({ onSelectPortfolio }) => {
     const navigate = useNavigate();
+    const { fetchPortfolios } = usePortfolioContext();
+
+    useEffect(() => {
+        console.log("Initial portfolios fetch...");
+        fetchPortfolios();
+    }, []);
+
+    return (
+        <div className="flex flex-col md:flex-row gap-6">
+            <div className="w-full md:w-1/4">
+                <Button className="w-full mb-4" onClick={() => navigate("/account")}>
+                    Manage API Keys
+                </Button>
+                <SearchPortfolios />
+                <CreatePortfolio />
+            </div>
+
+            <div className="w-full md:w-3/4">
+                <PortfolioList onSelectPortfolio={onSelectPortfolio} />
+            </div>
+        </div>
+    );
+};
+
+const Portfolios = () => {
     const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
 
     const handlePortfolioSelect = (portfolioId) => {
@@ -46,25 +70,12 @@ const Portfolios = () => {
     // Otherwise, show the list view
     return (
         <div className="min-h-screen flex flex-col">
-
             <main className="flex-1 p-4">
                 <h1 className="text-4xl font-semibold text-center mb-8">Portfolio</h1>
 
                 <div className="container mx-auto">
                     <PortfolioProvider>
-                        <div className="flex flex-col md:flex-row gap-6">
-                            <div className="w-full md:w-1/4">
-                                <Button className="w-full mb-4" onClick={() => navigate("/account")}>
-                                    Manage API Keys
-                                </Button>
-                                <SearchPortfolios />
-                                <CreatePortfolio />
-                            </div>
-
-                            <div className="w-full md:w-3/4">
-                                <PortfolioList onSelectPortfolio={handlePortfolioSelect} />
-                            </div>
-                        </div>
+                        <PortfoliosListContent onSelectPortfolio={handlePortfolioSelect} />
                     </PortfolioProvider>
                 </div>
             </main>

@@ -1,4 +1,3 @@
-// src/components/automaticTransaction/SearchAutomaticTradeRules.jsx
 import { useState } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -8,33 +7,28 @@ import { Label } from "../../components/ui/label.jsx";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useStockData } from "../../hooks/useStockData.js";
 import { useTrading } from "../../hooks/useTrading.js";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
+import { useAutomatedTradeRuleContext } from "../../context/AutomatedTradeRulesContext.jsx";
 
-const SearchAutomaticTradeRules = () => {
+const SearchAutomatedTradeRules = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
 
-    // Stock data hook for platform and stock selection
     const {
         platforms,
         stocks,
-        selectedPlatform,
         setSelectedPlatform,
         isLoadingPlatforms,
         isLoadingStocks
     } = useStockData();
 
-    // Trading hook for portfolio data
     const {
         portfolios,
         isLoadingPortfolios,
         fetchPortfoliosByPlatform
     } = useTrading();
 
-    // Automatic trade context for searching rules
-    const { searchAutomaticTradeRules, fetchAutomaticTradeRules } = useAutomaticTradeContext();
+    const { searchAutomaticTradeRules, fetchAutomaticTradeRules } = useAutomatedTradeRuleContext();
 
-    // Search form state
     const [searchPlatform, setSearchPlatform] = useState("_any_");
     const [searchPortfolioId, setSearchPortfolioId] = useState("_any_");
     const [searchSymbol, setSearchSymbol] = useState("_any_");
@@ -44,7 +38,6 @@ const SearchAutomaticTradeRules = () => {
     const [minThresholdValue, setMinThresholdValue] = useState("");
     const [maxThresholdValue, setMaxThresholdValue] = useState("");
 
-    // Update portfolios when platform changes
     const handlePlatformChange = (value) => {
         setSearchPlatform(value);
         setSearchPortfolioId("_any_");
@@ -59,7 +52,6 @@ const SearchAutomaticTradeRules = () => {
         setHasSearched(true);
 
         try {
-            // If all fields are "any" or empty, fetch all items
             if (searchPlatform === "_any_" &&
                 searchPortfolioId === "_any_" &&
                 searchSymbol === "_any_" &&
@@ -70,7 +62,6 @@ const SearchAutomaticTradeRules = () => {
                 !maxThresholdValue) {
                 await fetchAutomaticTradeRules();
             } else {
-                // Convert special values for API
                 const apiPortfolioId = searchPortfolioId === "_any_" ? null : parseInt(searchPortfolioId);
                 const apiPlatform = searchPlatform === "_any_" ? null : searchPlatform;
                 const apiSymbol = searchSymbol === "_any_" ? null : searchSymbol;
@@ -111,10 +102,8 @@ const SearchAutomaticTradeRules = () => {
 
     const handleRefresh = () => {
         if (hasSearched) {
-            // Repeat the last search
             handleSearch();
         } else {
-            // Just refresh all items
             fetchAutomaticTradeRules();
         }
     };
@@ -307,4 +296,4 @@ const SearchAutomaticTradeRules = () => {
     );
 };
 
-export default SearchAutomaticTradeRules;
+export default SearchAutomatedTradeRules;

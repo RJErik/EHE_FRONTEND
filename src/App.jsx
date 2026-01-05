@@ -1,10 +1,9 @@
-// App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Account from "./pages/Account";
 import StockMarket from "./pages/StockMarket";
 import Alerts from "./pages/Alerts.jsx";
-import AutomaticTradeRules from "./pages/AutomaticTradeRules.jsx";
+import AutomatedTradeRules from "./pages/AutomatedTradeRules.jsx";
 import Portfolios from "./pages/Portfolios.jsx";
 import WatchlistItems from "./pages/WatchlistItems.jsx";
 import { Toaster } from "./components/ui/toaster";
@@ -13,7 +12,7 @@ import { AlertWebSocketProvider } from "./context/AlertWebSocketContext";
 import WatchlistTicker from "@/feature/watchlist/WatchlistTicker";
 import { WatchlistProvider } from "./context/WatchlistItemsContext.jsx";
 import Header from "./feature/Header.jsx";
-import { AutomaticTradeProvider } from "@/context/AutomaticTradeRulesContext.jsx";
+import { AutomaticTradeProvider } from "@/context/AutomatedTradeRulesContext.jsx";
 import { AutomatedTradeWebSocketProvider } from "./context/AutomatedTradeRuleWebSocketContext.jsx";
 
 function App() {
@@ -40,7 +39,7 @@ function App() {
                                                 <Route path="/portfolios" element={<Portfolios />} />
                                                 <Route path="/stock-market" element={<StockMarket />} />
                                                 <Route path="/alerts" element={<Alerts />} />
-                                                <Route path="/automatic-trade-rules" element={<AutomaticTradeRules />} />
+                                                <Route path="/automated-trade-rules" element={<AutomatedTradeRules />} />
                                                 <Route path="/watchlist-items" element={<WatchlistItems />} />
                                                 {/* Redirect any unknown routes to home */}
                                                 <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "../../components/ui/card.jsx";
-import { PieChart, Pie, Cell, Label, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Label } from "recharts";
 import {
     ChartContainer,
     ChartTooltip,
@@ -19,15 +19,13 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
 
     // Prepare data for the pie chart
     const chartData = portfolioData.stocks.map((stock, index) => ({
-        browser: stock.symbol, // Using 'browser' to match the expected format
-        visitors: parseFloat(stock.value), // Using 'visitors' to match the expected format
+        browser: stock.symbol,
+        visitors: parseFloat(stock.value),
         fill: `hsl(${(index * 40) % 360}, 70%, 50%)`
     }));
 
-    // Calculate total value for center label
     const totalStocksValue = chartData.reduce((sum, item) => sum + item.visitors, 0);
 
-    // Define chart configuration
     const chartConfig = {
         visitors: {
             label: "Value",

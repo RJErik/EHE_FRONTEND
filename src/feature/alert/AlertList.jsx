@@ -1,4 +1,3 @@
-// src/components/alert/AlertList.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { useAlert } from "../../context/AlertsContext.jsx";
 import { useAlertWebSocket } from "../../context/AlertWebSocketContext.jsx";
@@ -7,37 +6,29 @@ import AlertItemCard from "./AlertItemCard.jsx";
 import { useEffect, useCallback, useRef } from "react";
 
 const AlertList = () => {
-    const { alerts, isLoading, error, removeAlert, fetchAlerts, refreshLatestSearch, lastUpdate } = useAlert();
+    const { alerts, isLoading, error, removeAlert, refreshLatestSearch, lastUpdate } = useAlert();
     const { registerAlertCallback } = useAlertWebSocket();
 
-    // Use a ref to prevent multiple fetches on initial render
-    const initialFetchDoneRef = useRef(false);
-
-    // Fetch alerts only on initial mount
-    useEffect(() => {
-        if (!initialFetchDoneRef.current) {
-            console.log("AlertList mounted - fetching alerts");
-            fetchAlerts();
-            initialFetchDoneRef.current = true;
-        }
-    }, [fetchAlerts]);
-
-    // Memoize the alert callback to prevent effect regeneration
-    const alertCallback = useCallback((alertMessage) => {
+    const alertCallback = useCallback(() => {
         console.log('[AlertList] Received alert notification, refreshing list');
         refreshLatestSearch();
     }, [refreshLatestSearch]);
 
-    // Register for alert notifications once
+    const callbackRef = useRef(alertCallback);
+
+    useEffect(() => {
+        callbackRef.current = alertCallback;
+    }, [alertCallback]);
+
     useEffect(() => {
         console.log("Registering for alert notifications");
-        const unregister = registerAlertCallback(alertCallback);
+        const unregister = registerAlertCallback(() => callbackRef.current());
 
         return () => {
             console.log("Unregistering from alert notifications");
             unregister();
         };
-    }, [registerAlertCallback, alertCallback]);
+    }, [registerAlertCallback]);
 
     return (
         <Card className="w-full h-full">

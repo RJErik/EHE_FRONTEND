@@ -6,14 +6,11 @@ import { useJwtRefresh } from "./useJwtRefresh";
 export function useChangeEmail() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    // Initialize from localStorage if available
     const [lastEmailRequested, setLastEmailRequested] = useState(() => {
         return localStorage.getItem('lastEmailChangeRequested') || "";
     });
-    const { toast } = useToast();
     const { refreshToken } = useJwtRefresh();
 
-    // Sync the state with localStorage whenever it changes
     useEffect(() => {
         if (lastEmailRequested) {
             localStorage.setItem('lastEmailChangeRequested', lastEmailRequested);
@@ -24,12 +21,11 @@ export function useChangeEmail() {
         setIsLoading(true);
         setError(null);
 
-        // Store the requested email for potential resend
         setLastEmailRequested(newEmail);
         localStorage.setItem('lastEmailChangeRequested', newEmail);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/change-email", {
+            let response = await fetch("http://localhost:8080/api/user/email-change-requests", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -43,12 +39,11 @@ export function useChangeEmail() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/change-email", {
+                response = await fetch("http://localhost:8080/api/user/email-change-requests", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -57,7 +52,6 @@ export function useChangeEmail() {
                     body: JSON.stringify({ newEmail }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -65,7 +59,6 @@ export function useChangeEmail() {
 
             const data = await response.json();
 
-            // Make sure we preserve the email even on failure
             if (!data.success) {
                 console.log("Email change unsuccessful, but keeping email for resend");
             }
@@ -87,7 +80,6 @@ export function useChangeEmail() {
     }, [refreshToken]);
 
     const resendChangeEmail = useCallback(() => {
-        // Get the latest email from localStorage as a fallback
         const emailToResend = lastEmailRequested || localStorage.getItem('lastEmailChangeRequested');
 
         console.log("Attempting to resend to email:", emailToResend);

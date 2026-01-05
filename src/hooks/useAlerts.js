@@ -1,5 +1,4 @@
-// src/hooks/useAlerts.js
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
@@ -30,7 +29,6 @@ export function useAlerts() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -43,7 +41,6 @@ export function useAlerts() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -116,7 +113,6 @@ export function useAlerts() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
@@ -135,7 +131,6 @@ export function useAlerts() {
                     }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -149,7 +144,6 @@ export function useAlerts() {
             console.log("Add response:", data);
 
             if (data.success) {
-                // ✨ CHANGE: Update state directly instead of re-fetching
                 setAlerts(prevAlerts => [...prevAlerts, data.alert]);
                 toast({
                     title: "Success",
@@ -188,13 +182,12 @@ export function useAlerts() {
 
         try {
             console.log(`Removing alert ${id}...`);
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            let response = await fetch(`http://localhost:8080/api/user/alerts/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ id }),
             });
 
             // Handle 401 - Token expired
@@ -202,21 +195,18 @@ export function useAlerts() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch(`http://localhost:8080/api/user/alerts/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ id }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -230,7 +220,6 @@ export function useAlerts() {
             console.log("Remove response:", data);
 
             if (data.success) {
-                // Update local state
                 setAlerts(prevAlerts => prevAlerts.filter(alert => alert.id !== id));
 
                 toast({
@@ -271,17 +260,26 @@ export function useAlerts() {
         try {
             console.log(`Searching alerts: platform=${platform}, symbol=${symbol}, conditionType=${conditionType}`);
 
-            let response = await fetch("http://localhost:8080/api/user/alerts/search", {
-                method: "POST",
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (platform && platform !== "_any_") {
+                params.append("platform", platform);
+            }
+            if (symbol && symbol !== "_any_") {
+                params.append("symbol", symbol);
+            }
+            if (conditionType && conditionType !== "_any_") {
+                params.append("conditionType", conditionType);
+            }
+
+            const url = `http://localhost:8080/api/user/alerts/search?${params.toString()}`;
+
+            let response = await fetch(url, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    platform: platform === "_any_" ? "" : platform,
-                    symbol: symbol === "_any_" ? "" : symbol,
-                    conditionType: conditionType === "_any_" ? "" : conditionType
-                }),
             });
 
             // Handle 401 - Token expired
@@ -289,25 +287,18 @@ export function useAlerts() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts/search", {
-                    method: "POST",
+                response = await fetch(url, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        platform: platform === "_any_" ? "" : platform,
-                        symbol: symbol === "_any_" ? "" : symbol,
-                        conditionType: conditionType === "_any_" ? "" : conditionType
-                    }),
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -347,12 +338,6 @@ export function useAlerts() {
             setIsLoading(false);
         }
     };
-
-    // Initial fetch
-    useEffect(() => {
-        console.log("Initial alerts fetch...");
-        fetchAlerts();
-    }, [fetchAlerts]);
 
     return {
         alerts,

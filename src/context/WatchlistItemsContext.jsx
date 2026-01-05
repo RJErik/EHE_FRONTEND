@@ -1,4 +1,3 @@
-// src/context/WatchlistItemsContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useWatchlistItems as useWatchlistHook } from '../hooks/useWatchlistItems.js';
 
@@ -10,19 +9,16 @@ export function WatchlistProvider({ children }) {
     const watchlistData = useWatchlistHook();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
-    // Use a ref for last search params to prevent unnecessary renders
     const lastSearchParamsRef = useRef({
         type: 'fetchAll',
         platform: '',
         symbol: ''
     });
 
-    // Force a re-render when watchlist items change
     useEffect(() => {
         setLastUpdate(Date.now());
     }, [watchlistData.watchlistItems]);
 
-    // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
         console.log('[WatchlistItemsContext] Refreshing with last search:', lastSearchParamsRef.current);
 
@@ -36,7 +32,6 @@ export function WatchlistProvider({ children }) {
         }
     }, [watchlistData]);
 
-    // Extended search function that stores the parameters
     const searchWatchlistItemsWithMemory = useCallback((platform, symbol) => {
         lastSearchParamsRef.current = {
             type: 'search',
@@ -46,7 +41,6 @@ export function WatchlistProvider({ children }) {
         return watchlistData.searchWatchlistItems(platform, symbol);
     }, [watchlistData]);
 
-    // Extended fetchWatchlistItems function that stores it was a general fetch
     const fetchWatchlistItemsWithMemory = useCallback(() => {
         lastSearchParamsRef.current = {
             type: 'fetchAll',
@@ -56,7 +50,6 @@ export function WatchlistProvider({ children }) {
         return watchlistData.fetchWatchlistItems();
     }, [watchlistData]);
 
-    // Memoize the context value to prevent unnecessary renders
     const contextValue = {
         ...watchlistData,
         lastUpdate,

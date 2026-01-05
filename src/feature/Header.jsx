@@ -1,4 +1,3 @@
-// src/components/Header.jsx
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button.jsx";
@@ -23,7 +22,7 @@ const Header = () => {
             case '/portfolios': return 'portfolios';
             case '/stock-market': return 'stockMarket';
             case '/alerts': return 'alerts';
-            case '/automatic-trade-rules': return 'automaticTradeRules';
+            case '/automated-trade-rules': return 'automatedTradeRules';
             case '/watchlist-items': return 'watchlistItems';
             default: return 'home';
         }
@@ -38,7 +37,7 @@ const Header = () => {
             'portfolios': '/portfolios',
             'stockMarket': '/stock-market',
             'alerts': '/alerts',
-            'automaticTradeRules': '/automatic-trade-rules',
+            'automatedTradeRules': '/automated-trade-rules',
             'watchlistItems': '/watchlist-items'
         };
 
@@ -105,8 +104,8 @@ const Header = () => {
                         </Button>
                         <Button
                             variant="outline"
-                            className={currentPage === 'automaticTradeRules' ? 'bg-muted' : ''}
-                            onClick={() => handleNavigation("automaticTradeRules")}
+                            className={currentPage === 'automatedTradeRules' ? 'bg-muted' : ''}
+                            onClick={() => handleNavigation("automatedTradeRules")}
                         >
                             Automatic Trade Rule
                         </Button>

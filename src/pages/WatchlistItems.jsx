@@ -1,8 +1,17 @@
 import SearchWatchlistItems from "@/feature/watchlist/SearchWatchlistItems.jsx";
 import CreateWatchlistItem from "@/feature/watchlist/CreateWatchlistItem.jsx";
 import WatchlistItemList from "@/feature/watchlist/WatchlistItemList.jsx";
+import { useWatchlist } from "@/context/WatchlistItemsContext.jsx";
+import { useEffect } from "react";
 
 const WatchlistItems = () => {
+    const { fetchWatchlistItems } = useWatchlist();
+
+    useEffect(() => {
+        console.log("Initial watchlist fetch...");
+        fetchWatchlistItems();
+    }, []);
+
     return (
         <div className="flex flex-col">
             <main className="flex-1 p-4">

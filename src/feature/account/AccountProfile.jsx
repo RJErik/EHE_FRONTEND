@@ -1,4 +1,3 @@
-// src/components/account/AccountProfile.jsx
 import { useState, useEffect } from "react";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar.jsx";
 import { Input } from "../../components/ui/input.jsx";
@@ -40,10 +39,8 @@ const AccountProfile = () => {
         console.log("Email change result:", result);
         console.log("Stored email for resend:", lastEmailRequested);
 
-        // Always ensure we show the resend button if this was a success
         const shouldShowResendButton = result.success || result.showResendButton;
 
-        // Display the appropriate toast based on the response
         toast({
             title: result.success ? "Email Change Requested" : "Error",
             description: result.message,

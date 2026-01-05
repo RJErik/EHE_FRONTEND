@@ -1,9 +1,7 @@
-// src/components/portfolio/PortfolioList.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { usePortfolioContext } from "../../context/PortfoliosContext.jsx";
 import { Loader2 } from "lucide-react";
 import PortfolioItemCard from "./PortfolioItemCard.jsx";
-import { useEffect, useRef } from "react";
 
 const PortfolioList = ({ onSelectPortfolio }) => {
     const {
@@ -16,20 +14,7 @@ const PortfolioList = ({ onSelectPortfolio }) => {
         lastUpdate
     } = usePortfolioContext();
 
-    // Use a ref to prevent multiple fetches on initial render
-    const initialFetchDoneRef = useRef(false);
-
-    // Force refresh when the component mounts
-    useEffect(() => {
-        if (!initialFetchDoneRef.current) {
-            console.log("PortfolioList mounted - fetching items");
-            fetchPortfolios();
-            initialFetchDoneRef.current = true;
-        }
-    }, [fetchPortfolios]);
-
     const handleDelete = async (portfolioId, event) => {
-        // Stop the event from bubbling up to parent elements
         if (event) {
             event.stopPropagation();
         }
@@ -37,12 +22,10 @@ const PortfolioList = ({ onSelectPortfolio }) => {
     };
 
     const handleUpdate = async (portfolioId, event) => {
-        // Stop the event from bubbling up to parent elements
         if (event) {
             event.stopPropagation();
         }
         await updateHoldings(portfolioId);
-        // Refresh portfolios to show updated values
         fetchPortfolios();
     };
 

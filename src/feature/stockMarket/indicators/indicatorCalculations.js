@@ -1,5 +1,3 @@
-// src/components/stockMarket/indicators/indicatorCalculations.js
-
 export function calculateIndicator(indicator, candleData) {
     if (!candleData || candleData.length === 0) return [];
 
@@ -27,18 +25,15 @@ function calculateSMA(data, settings) {
     const { period = 14, source = 'close' } = settings;
     const result = new Array(data.length).fill(null);
 
-    // Add error checking
     if (!data || !Array.isArray(data) || data.length === 0) {
         console.error("Invalid data for SMA calculation");
         return [];
     }
 
-    // For each point in the data
     for (let i = period - 1; i < data.length; i++) {
         let sum = 0;
         let validPoints = 0;
 
-        // Look back 'period' candles to calculate average
         for (let j = 0; j < period; j++) {
             const value = data[i-j]?.[source];
             if (value !== null && value !== undefined && !isNaN(value)) {
@@ -47,8 +42,7 @@ function calculateSMA(data, settings) {
             }
         }
 
-        // Only calculate average if we have enough valid points
-        if (validPoints >= Math.ceil(period * 0.8)) { // At least 80% of required data
+        if (validPoints >= Math.ceil(period * 0.8)) {
             result[i] = sum / validPoints;
         }
     }
@@ -60,10 +54,8 @@ function calculateEMA(data, settings) {
     const { period = 14, source = 'close' } = settings;
     const result = new Array(data.length).fill(null);
 
-    // Calculate multiplier
     const multiplier = 2 / (period + 1);
 
-    // Find first valid SMA as starting point
     let firstValidIndex = period - 1;
     let sum = 0;
 
@@ -74,14 +66,11 @@ function calculateEMA(data, settings) {
         }
     }
 
-    // Initialize first EMA with SMA
     result[firstValidIndex] = sum / period;
 
-    // Calculate EMA for remaining points
     for (let i = firstValidIndex + 1; i < data.length; i++) {
         const currentValue = data[i]?.[source];
         if (currentValue !== null && currentValue !== undefined && !isNaN(currentValue) && result[i-1] !== null) {
-            // EMA = Current price × multiplier + Previous EMA × (1 - multiplier)
             result[i] = currentValue * multiplier + result[i-1] * (1 - multiplier);
         }
     }
@@ -93,10 +82,8 @@ function calculateRSI(data, settings) {
     const { period = 14, source = 'close' } = settings;
     const result = new Array(data.length).fill(null);
 
-    // Need at least period+1 data points to calculate RSI
     if (data.length <= period) return result;
 
-    // Calculate price changes
     const changes = [];
 
     for (let i = 1; i < data.length; i++) {
@@ -111,11 +98,9 @@ function calculateRSI(data, settings) {
         }
     }
 
-    // Initialize first average gain and loss
     let avgGain = 0;
     let avgLoss = 0;
 
-    // First period changes
     for (let i = 0; i < period; i++) {
         if (changes[i] > 0) {
             avgGain += changes[i];
@@ -127,7 +112,6 @@ function calculateRSI(data, settings) {
     avgGain /= period;
     avgLoss /= period;
 
-    // Calculate first RSI value
     if (avgLoss === 0) {
         result[period] = 100;
     } else {
@@ -135,13 +119,11 @@ function calculateRSI(data, settings) {
         result[period] = 100 - (100 / (1 + rs));
     }
 
-    // Calculate RSI for the rest of the series using smoothed method
     for (let i = period + 1; i < data.length; i++) {
         const change = changes[i-1];
         const gain = change > 0 ? change : 0;
         const loss = change < 0 ? Math.abs(change) : 0;
 
-        // Smooth the averages
         avgGain = ((avgGain * (period - 1)) + gain) / period;
         avgLoss = ((avgLoss * (period - 1)) + loss) / period;
 
@@ -164,29 +146,21 @@ function calculateMACD(data, settings) {
         source = 'close'
     } = settings;
 
-    // Arrays for results
     const macdLine = new Array(data.length).fill(null);
     const signalLine = new Array(data.length).fill(null);
     const histogram = new Array(data.length).fill(null);
 
-    // Calculate fast EMA
     const fastEMA = calculateEMA(data, { period: fastPeriod, source });
-
-    // Calculate slow EMA
     const slowEMA = calculateEMA(data, { period: slowPeriod, source });
 
-    // Calculate MACD line (fastEMA - slowEMA)
     for (let i = 0; i < data.length; i++) {
         if (fastEMA[i] !== null && slowEMA[i] !== null) {
             macdLine[i] = fastEMA[i] - slowEMA[i];
         }
     }
 
-    // Calculate signal line (EMA of MACD line)
-    // We need at least signalPeriod valid MACD values to calculate the signal line
     let firstValidMacdIndex = macdLine.findIndex(val => val !== null);
     if (firstValidMacdIndex !== -1) {
-        // First calculate simple average for the first signal point
         let sum = 0;
         let count = 0;
 
@@ -202,7 +176,6 @@ function calculateMACD(data, settings) {
             if (startIndex < macdLine.length) {
                 signalLine[startIndex] = sum / count;
 
-                // Then calculate EMA for the rest
                 const multiplier = 2 / (signalPeriod + 1);
 
                 for (let i = startIndex + 1; i < macdLine.length; i++) {
@@ -214,14 +187,12 @@ function calculateMACD(data, settings) {
         }
     }
 
-    // Calculate histogram (MACD - signal)
     for (let i = 0; i < data.length; i++) {
         if (macdLine[i] !== null && signalLine[i] !== null) {
             histogram[i] = macdLine[i] - signalLine[i];
         }
     }
 
-    // Return an object for each candle with macd, signal and histogram values
     return data.map((_, i) => {
         if (macdLine[i] === null) return null;
 
@@ -236,22 +207,18 @@ function calculateMACD(data, settings) {
 function calculateBollingerBands(data, settings) {
     const {
         period = 20,
-        multiplier = 2, // Changed from stdDev to multiplier to match UI
+        multiplier = 2,
         source = 'close'
     } = settings;
 
-    // Calculate SMA for middle band
     const sma = calculateSMA(data, { period, source });
 
-    // Initialize result arrays for each band
     const upper = new Array(data.length).fill(null);
     const middle = [...sma];
     const lower = new Array(data.length).fill(null);
 
-    // Calculate standard deviation and bands
     for (let i = period - 1; i < data.length; i++) {
         if (middle[i] !== null) {
-            // Calculate standard deviation
             let sumSquaredDeviation = 0;
             let validPoints = 0;
 
@@ -271,7 +238,6 @@ function calculateBollingerBands(data, settings) {
         }
     }
 
-    // Return an object for each candle with upper, middle, and lower values
     return data.map((_, i) => {
         if (middle[i] === null) return null;
         return {
@@ -286,18 +252,12 @@ function calculateATR(data, settings) {
     const { period = 14 } = settings;
     const result = new Array(data.length).fill(null);
 
-    // Calculate True Range for each candle
     const trueRanges = [];
 
     for (let i = 0; i < data.length; i++) {
         if (i === 0) {
-            // First candle, TR is just the high-low range
             trueRanges.push(data[i].high - data[i].low);
         } else {
-            // True Range is the greatest of:
-            // 1. Current High - Current Low
-            // 2. |Current High - Previous Close|
-            // 3. |Current Low - Previous Close|
             const highLow = data[i].high - data[i].low;
             const highPrevClose = Math.abs(data[i].high - data[i-1].close);
             const lowPrevClose = Math.abs(data[i].low - data[i-1].close);
@@ -306,7 +266,6 @@ function calculateATR(data, settings) {
         }
     }
 
-    // Calculate first ATR as simple average of TR over the period
     if (trueRanges.length >= period) {
         let sum = 0;
         for (let i = 0; i < period; i++) {
@@ -314,9 +273,7 @@ function calculateATR(data, settings) {
         }
         result[period - 1] = sum / period;
 
-        // Calculate remaining ATR values using smoothed method
         for (let i = period; i < data.length; i++) {
-            // ATR = ((Previous ATR * (period - 1)) + Current TR) / period
             result[i] = ((result[i-1] * (period - 1)) + trueRanges[i]) / period;
         }
     }

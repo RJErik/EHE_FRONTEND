@@ -72,16 +72,15 @@ export function useStockData() {
 
         setIsLoadingStocks(true);
         setError(null);
-        setStocks([]); // Clear previous stocks while loading
+        setStocks([]);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/stocks-by-platform", {
-                method: "POST",
+            let response = await fetch(`http://localhost:8080/api/user/platforms/${platform}/stocks`, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ platform }),
             });
 
             // Handle 401 - Token expired
@@ -93,13 +92,12 @@ export function useStockData() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/stocks-by-platform", {
-                    method: "POST",
+                response = await fetch(`http://localhost:8080/api/user/platforms/${platform}/stocks`, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ platform }),
                 });
 
                 if (response.status === 401) {
@@ -110,13 +108,9 @@ export function useStockData() {
             const data = await response.json();
 
             if (data.success) {
-                // FIX: Access the stocks array from the StocksByPlatformResponse object
-                // data.stocks is a StocksByPlatformResponse object with structure:
-                // { platformName: "...", stocks: ["AAPL", "GOOGL", ...] }
                 const stocksArray = data.stocks?.stocks || [];
                 setStocks(stocksArray);
 
-                // Optional: Log for debugging
                 console.log("Received stocks data:", data.stocks);
                 console.log("Extracted stocks array:", stocksArray);
             } else {
@@ -143,9 +137,8 @@ export function useStockData() {
     useEffect(() => {
         if (selectedPlatform) {
             fetchStocks(selectedPlatform);
-            setSelectedStock(""); // Reset stock selection when platform changes
+            setSelectedStock("");
         } else {
-            // Clear stocks when no platform is selected
             setStocks([]);
             setSelectedStock("");
         }

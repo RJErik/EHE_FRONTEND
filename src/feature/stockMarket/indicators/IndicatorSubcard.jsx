@@ -1,4 +1,3 @@
-// src/components/stockMarket/indicators/IndicatorSubcard.jsx
 import { Card, CardContent, CardHeader } from "../../../components/ui/card.jsx";
 import { Button } from "../../../components/ui/button.jsx";
 import { Settings, X } from "lucide-react";

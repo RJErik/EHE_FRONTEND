@@ -1,5 +1,3 @@
-// Simple event system to share stock/platform selection between components
-// Separated from component files to satisfy react-refresh only-export-components rule
 const stockSelectionEvents = {
   listeners: [],
   subscribe: (callback) => {

@@ -1,4 +1,3 @@
-// src/components/home/HeroSection.jsx
 import { useState } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { Avatar, AvatarFallback } from "../../components/ui/avatar.jsx";

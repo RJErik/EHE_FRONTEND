@@ -1,4 +1,3 @@
-// src/hooks/useTrading.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
@@ -21,14 +20,14 @@ export function useTrading() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
-                method: "POST",
+            let response = await fetch(`http://localhost:8080/api/user/portfolios/by-platform?platform=${platform}`, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ platform }),
             });
+
 
             // Handle 401 - Token expired
             if (response.status === 401) {
@@ -88,7 +87,7 @@ export function useTrading() {
         }
     }, [toast, refreshToken]);
 
-    // Fetch trading capacity for a portfolio and stock
+    // Fetch trading capacity
     const getTradingCapacity = useCallback(async (portfolioId, stockSymbol) => {
         if (!portfolioId || !stockSymbol) return null;
 
@@ -96,14 +95,16 @@ export function useTrading() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/trading-capacity", {
-                method: "POST",
-                credentials: "include",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ portfolioId, stockSymbol }),
-            });
+            let response = await fetch(
+                `http://localhost:8080/api/user/portfolios/${portfolioId}/stocks/${stockSymbol}/trading-capacity`,
+                {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
 
             // Handle 401 - Token expired
             if (response.status === 401) {
@@ -114,14 +115,16 @@ export function useTrading() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/trading-capacity", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ portfolioId, stockSymbol }),
-                });
+                response = await fetch(
+                    `http://localhost:8080/api/user/portfolios/${portfolioId}/stocks/${stockSymbol}/trading-capacity`,
+                    {
+                        method: "GET",
+                        credentials: "include",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
 
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
@@ -164,16 +167,16 @@ export function useTrading() {
     }, [toast, refreshToken]);
 
     // Execute a trade
-    const executeTrade = useCallback(async (portfolioId, stockSymbol, action, amount, quantityType) => {
-        if (!portfolioId || !stockSymbol || !action || !amount || !quantityType) return false;
+    const executeTrade = useCallback(async (portfolioId, stockSymbol, action, quantity, quantityType) => {
+        if (!portfolioId || !stockSymbol || !action || !quantity || !quantityType) return false;
 
         setIsExecutingTrade(true);
         setError(null);
 
         try {
-            console.log(`Executing trade: ${action} ${amount} ${stockSymbol} via ${quantityType}`);
+            console.log(`Executing trade: ${action} ${quantity} ${stockSymbol} via ${quantityType}`);
 
-            let response = await fetch("http://localhost:8080/api/user/trade", {
+            let response = await fetch("http://localhost:8080/api/user/trades", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -183,7 +186,7 @@ export function useTrading() {
                     portfolioId,
                     stockSymbol,
                     action,
-                    amount,
+                    quantity,
                     quantityType,
                 }),
             });
@@ -197,7 +200,7 @@ export function useTrading() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/trade", {
+                response = await fetch("http://localhost:8080/api/user/trades", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -207,7 +210,7 @@ export function useTrading() {
                         portfolioId,
                         stockSymbol,
                         action,
-                        amount,
+                        quantity,
                         quantityType,
                     }),
                 });

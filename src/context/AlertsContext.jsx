@@ -1,4 +1,3 @@
-// src/context/AlertsContext.jsx
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAlerts as useAlertHook } from '../hooks/useAlerts.js';
 
@@ -10,7 +9,6 @@ export function AlertProvider({ children }) {
     const alertData = useAlertHook();
     const [lastUpdate, setLastUpdate] = useState(Date.now());
 
-    // Use a ref for last search params to prevent unnecessary renders
     const lastSearchParamsRef = useRef({
         type: 'fetchAll',
         platform: '',
@@ -18,12 +16,10 @@ export function AlertProvider({ children }) {
         conditionType: ''
     });
 
-    // Force a re-render when alerts change
     useEffect(() => {
         setLastUpdate(Date.now());
     }, [alertData.alerts]);
 
-    // Create a method to refresh using the last search parameters
     const refreshLatestSearch = useCallback(() => {
         console.log('[AlertsContext] Refreshing with last search:', lastSearchParamsRef.current);
 
@@ -38,7 +34,6 @@ export function AlertProvider({ children }) {
         }
     }, [alertData]);
 
-    // Extended search function that stores the parameters
     const searchAlertsWithMemory = useCallback((platform, symbol, conditionType) => {
         lastSearchParamsRef.current = {
             type: 'search',
@@ -49,7 +44,6 @@ export function AlertProvider({ children }) {
         return alertData.searchAlerts(platform, symbol, conditionType);
     }, [alertData]);
 
-    // Extended fetchAlerts function that stores it was a general fetch
     const fetchAlertsWithMemory = useCallback(() => {
         lastSearchParamsRef.current = {
             type: 'fetchAll',
@@ -60,7 +54,6 @@ export function AlertProvider({ children }) {
         return alertData.fetchAlerts();
     }, [alertData]);
 
-    // Memoize the context value to prevent unnecessary renders
     const contextValue = {
         ...alertData,
         lastUpdate,

@@ -1,9 +1,3 @@
-// src/services/candleApiService.js
-/**
- * Candle API Service
- * Handles all REST API calls for candle data with JWT refresh support
- */
-
 const API_BASE_URL = 'http://localhost:8080/api/user';
 
 class CandleApiService {
@@ -11,9 +5,6 @@ class CandleApiService {
         this.refreshTokenFn = null;
     }
 
-    /**
-     * Set the refresh token function (called from hook initialization)
-     */
     setRefreshTokenFunction(fn) {
         this.refreshTokenFn = fn;
     }
@@ -60,7 +51,6 @@ class CandleApiService {
 
     /**
      * Get candles by sequence number range
-     * Used for: scrolling/panning, buffer extension
      */
     async getCandlesBySequence(platform, stockSymbol, timeframe, fromSequence, toSequence) {
         console.log('[CandleApiService] getCandlesBySequence:', {
@@ -71,16 +61,20 @@ class CandleApiService {
             toSequence
         });
 
-        const response = await this.authenticatedRequest(`${API_BASE_URL}/candles-by-sequence`, {
-            method: 'POST',
-            body: JSON.stringify({
-                platform,
-                stockSymbol,
-                timeframe,
-                fromSequence,
-                toSequence
-            })
+        const params = new URLSearchParams({
+            platform,
+            stockSymbol,
+            timeframe,
+            fromSequence: fromSequence.toString(),
+            toSequence: toSequence.toString()
         });
+
+        const response = await this.authenticatedRequest(
+            `${API_BASE_URL}/candles/by-sequence?${params.toString()}`,
+            {
+                method: 'GET'
+            }
+        );
 
         if (!response.success) {
             throw new Error(response.message || 'Failed to fetch candles by sequence');
@@ -91,7 +85,6 @@ class CandleApiService {
 
     /**
      * Get candles by date range
-     * Used for: timeframe switching (to find position), initial load around a timestamp
      */
     async getCandlesByDate(platform, stockSymbol, timeframe, fromDate, toDate) {
         console.log('[CandleApiService] getCandlesByDate:', {
@@ -102,16 +95,20 @@ class CandleApiService {
             toDate: toDate instanceof Date ? toDate.toISOString() : toDate
         });
 
-        const response = await this.authenticatedRequest(`${API_BASE_URL}/candles-by-date`, {
-            method: 'POST',
-            body: JSON.stringify({
-                platform,
-                stockSymbol,
-                timeframe,
-                fromDate: fromDate instanceof Date ? fromDate.toISOString() : fromDate,
-                toDate: toDate instanceof Date ? toDate.toISOString() : toDate
-            })
+        const params = new URLSearchParams({
+            platform,
+            stockSymbol,
+            timeframe,
+            fromDate: fromDate instanceof Date ? fromDate.toISOString() : fromDate,
+            toDate: toDate instanceof Date ? toDate.toISOString() : toDate
         });
+
+        const response = await this.authenticatedRequest(
+            `${API_BASE_URL}/candles/by-date?${params.toString()}`,
+            {
+                method: 'GET'
+            }
+        );
 
         if (!response.success) {
             throw new Error(response.message || 'Failed to fetch candles by date');
@@ -121,8 +118,7 @@ class CandleApiService {
     }
 
     /**
-     * Get latest N candles (convenience method)
-     * Fetches candles by date from (now - buffer) to now
+     * Get latest N candles
      */
     async getLatestCandles(platform, stockSymbol, timeframe, count = 200) {
         const timeframeMs = this.parseTimeframeToMs(timeframe);
@@ -134,7 +130,6 @@ class CandleApiService {
 
     /**
      * Get candles before a specific sequence number
-     * Used for: loading older data when scrolling left
      */
     async getCandlesBeforeSequence(platform, stockSymbol, timeframe, beforeSequence, count = 100) {
         const fromSequence = Math.max(1, beforeSequence - count);
@@ -150,7 +145,6 @@ class CandleApiService {
 
     /**
      * Get candles after a specific sequence number up to a limit
-     * Used for: loading newer data when scrolling right
      */
     async getCandlesAfterSequence(platform, stockSymbol, timeframe, afterSequence, count = 100, maxSequence = null) {
         const fromSequence = afterSequence + 1;
@@ -185,7 +179,7 @@ class CandleApiService {
             return parseInt(timeframe) * 7 * 24 * 60 * 60 * 1000;
         }
 
-        return 60 * 1000; // Default to 1 minute
+        return 60 * 1000;
     }
 }
 

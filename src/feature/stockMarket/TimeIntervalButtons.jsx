@@ -1,4 +1,3 @@
-// src/components/stockMarket/TimeIntervalButtons.jsx
 import { Button } from "../../components/ui/button.jsx";
 import { Loader2 } from "lucide-react";
 import PropTypes from "prop-types";
@@ -9,7 +8,6 @@ const TimeIntervalButtons = ({
                                  isLoading = false,
                                  disabled = false
                              }) => {
-    // Define intervals that match the backend's MarketCandle.Timeframe enum
     const intervals = [
         { label: "1m", value: "1m" },
         { label: "5m", value: "5m" },

@@ -1,4 +1,3 @@
-// src/components/alert/CreateAlert.jsx
 import { useState } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -41,12 +40,10 @@ const CreateAlert = () => {
             );
 
             if (success) {
-                // Reset fields after successful add
                 setSelectedStock("");
                 setSelectedConditionType("");
                 setThresholdValue("");
 
-                // Force refresh the alerts list
                 console.log("Alert created successfully - forcing refresh");
                 refreshLatestSearch();
             }

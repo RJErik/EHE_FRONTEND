@@ -1,4 +1,3 @@
-// src/hooks/useDeactivateAccount.js
 import { useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast.js";
 import { useLogout } from "./useLogout";
@@ -16,8 +15,8 @@ export function useDeactivateAccount() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/deactivate-account", {
-                method: "POST",
+            let response = await fetch("http://localhost:8080/api/user/account", {
+                method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
@@ -29,20 +28,18 @@ export function useDeactivateAccount() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/deactivate-account", {
-                    method: "POST",
+                response = await fetch("http://localhost:8080/api/user/account", {
+                    method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -50,7 +47,6 @@ export function useDeactivateAccount() {
 
             const data = await response.json();
 
-            // Show toast with the response message
             toast({
                 title: data.success ? "Account Deactivated" : "Error",
                 description: data.message,
@@ -59,10 +55,9 @@ export function useDeactivateAccount() {
             });
 
             if (data.success) {
-                // If deactivation was successful, log the user out after a delay
                 setTimeout(() => {
                     logout();
-                }, 3000); // Wait 3 seconds so the user can see the success message
+                }, 3000);
                 return true;
             } else {
                 return false;
@@ -72,7 +67,6 @@ export function useDeactivateAccount() {
             if (!err.message?.includes("Session expired")) {
                 setError("Failed to deactivate account. Please try again later.");
 
-                // Show error toast
                 toast({
                     title: "Error",
                     description: "Failed to deactivate account. Please try again later.",

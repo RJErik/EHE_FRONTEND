@@ -1,4 +1,3 @@
-// src/hooks/useAccountProfile.js
 import { useState, useCallback } from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
@@ -21,7 +20,7 @@ export function useAccountProfile() {
 
         try {
             console.log("Fetching user information...");
-            let response = await fetch("http://localhost:8080/api/user/user-info", {
+            let response = await fetch("http://localhost:8080/api/user/profile", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -34,12 +33,11 @@ export function useAccountProfile() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/user-info", {
+                response = await fetch("http://localhost:8080/api/user/profile", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -47,7 +45,6 @@ export function useAccountProfile() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }
@@ -83,7 +80,6 @@ export function useAccountProfile() {
                     variant: "destructive",
                 });
             }
-            // Keep the default placeholder data
         } finally {
             setIsLoading(false);
         }
@@ -98,7 +94,7 @@ export function useAccountProfile() {
 
         try {
             console.log("Requesting password reset...");
-            let response = await fetch("http://localhost:8080/api/user/request-password-reset", {
+            let response = await fetch("http://localhost:8080/api/user/password-reset-requests", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -111,12 +107,11 @@ export function useAccountProfile() {
                 try {
                     await refreshToken();
                 } catch (refreshError) {
-                    // Refresh failed - redirects to login automatically
                     throw new Error("Session expired. Please login again.");
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/request-password-reset", {
+                response = await fetch("http://localhost:8080/api/user/password-reset-requests", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -124,7 +119,6 @@ export function useAccountProfile() {
                     },
                 });
 
-                // If still 401 after refresh, session is truly expired
                 if (response.status === 401) {
                     throw new Error("Session expired. Please login again.");
                 }

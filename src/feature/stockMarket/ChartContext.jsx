@@ -1,4 +1,3 @@
-// src/components/stockMarket/ChartContext.jsx
 import { createContext, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { calculateIndicator } from "./indicators/indicatorCalculations.js";
 
@@ -13,12 +12,11 @@ export function ChartProvider({ children }) {
             startIndex: 0,
             displayCount: 100
         },
-        // Sequence-based tracking
         sequenceBounds: {
-            minLoadedSequence: null,  // Lowest sequence in buffer
-            maxLoadedSequence: null,  // Highest sequence in buffer
-            latestKnownSequence: null, // Latest from WebSocket (edge)
-            oldestAvailableSequence: 1 // Server's oldest (usually 1)
+            minLoadedSequence: null,    // Lowest sequence in buffer
+            maxLoadedSequence: null,    // Highest sequence in buffer
+            latestKnownSequence: null,  // Latest from WebSocket
+            oldestAvailableSequence: 1  // Server's oldest
         },
         metadata: {
             timeframe: null,
@@ -51,9 +49,9 @@ export function ChartProvider({ children }) {
 
     const MIN_DISPLAY_CANDLES = 20;
     const MAX_DISPLAY_CANDLES = 200;
-    const BUFFER_SIZE = 100; // Candles to keep on each side of view
-    const FETCH_THRESHOLD = 50; // Fetch when buffer drops below this
-    const FETCH_BATCH_SIZE = 100; // How many candles to fetch at once
+    const BUFFER_SIZE = 100;        // Candles to keep on each side of view
+    const FETCH_THRESHOLD = 50;     // Fetch when buffer drops below this
+    const FETCH_BATCH_SIZE = 100;   // How many candles to fetch at once
 
     // ==================== REFS ====================
 
@@ -139,13 +137,10 @@ export function ChartProvider({ children }) {
 
     // ==================== CORE ACTIONS ====================
 
-    /**
-     * Initialize chart with new data (stock/timeframe change)
-     */
     const initializeChart = useCallback((newCandles = [], metadata = {}, options = {}) => {
         const {
             latestKnownSequence = null,
-            anchorToSequence = null // If provided, position view to show this sequence at left
+            anchorToSequence = null
         } = options;
 
         console.log('[ChartContext] initializeChart', {
@@ -170,7 +165,6 @@ export function ChartProvider({ children }) {
         const displayCount = 100;
 
         if (anchorToSequence !== null && withIndicators.length > 0) {
-            // Find index of anchor sequence
             const anchorIdx = withIndicators.findIndex(c => c.sequence >= anchorToSequence);
             if (anchorIdx >= 0) {
                 startIndex = anchorIdx;
@@ -178,7 +172,6 @@ export function ChartProvider({ children }) {
                 startIndex = Math.max(0, withIndicators.length - displayCount);
             }
         } else {
-            // Default: show latest candles
             startIndex = Math.max(0, withIndicators.length - displayCount);
         }
 
@@ -225,7 +218,6 @@ export function ChartProvider({ children }) {
         });
 
         if (!newCandles || newCandles.length === 0) {
-            // Just update async state if this was a fetch that returned empty
             setAsyncState(prev => ({
                 ...prev,
                 loadingPast: direction === 'past' ? false : prev.loadingPast,
@@ -237,17 +229,15 @@ export function ChartProvider({ children }) {
         setChartData(prev => {
             const prevCandles = prev.candles;
 
-            // Merge by sequence number
             const bySequence = new Map();
 
-            // Add existing candles
             for (const c of prevCandles) {
                 if (c && typeof c.sequence === 'number') {
                     bySequence.set(c.sequence, c);
                 }
             }
 
-            // Merge new candles (overwrite if newer data)
+            // Merge new candles
             for (const n of newCandles) {
                 if (!n || typeof n.sequence !== 'number') continue;
 
@@ -255,7 +245,6 @@ export function ChartProvider({ children }) {
                 if (!existing) {
                     bySequence.set(n.sequence, { ...n, indicatorValues: {} });
                 } else {
-                    // Update OHLCV but preserve indicator values if they exist
                     bySequence.set(n.sequence, {
                         ...existing,
                         ...n,
@@ -269,7 +258,7 @@ export function ChartProvider({ children }) {
             // Apply indicators
             merged = applyIndicatorsToCandles(merged, indicators);
 
-            // Calculate how many candles were prepended (for view adjustment)
+            // Calculate how many candles were prepended, for view adjustment
             const prevMinSeq = prev.sequenceBounds.minLoadedSequence;
             const newMinSeq = merged.length > 0 ? merged[0].sequence : prevMinSeq;
             const prependedCount = prevMinSeq !== null && newMinSeq !== null
@@ -280,16 +269,13 @@ export function ChartProvider({ children }) {
             let newViewStart = prev.viewWindow.startIndex;
 
             if (direction === 'past' && prependedCount > 0) {
-                // Keep visual position when loading older data
                 newViewStart = prev.viewWindow.startIndex + prependedCount;
             } else if (direction === 'future' || direction === 'update') {
-                // Keep position unless following latest
                 if (uiState.isFollowingLatest) {
                     newViewStart = Math.max(0, merged.length - prev.viewWindow.displayCount);
                 }
             }
 
-            // Clamp view index
             newViewStart = Math.max(0, Math.min(newViewStart, merged.length - prev.viewWindow.displayCount));
 
             // Calculate new sequence bounds
@@ -300,7 +286,8 @@ export function ChartProvider({ children }) {
                 oldestAvailableSequence: prev.sequenceBounds.oldestAvailableSequence
             };
 
-            // Buffer trimming
+            // ==================== BUFFER TRIMMING ====================
+
             const targetBufferSize = prev.viewWindow.displayCount + (BUFFER_SIZE * 2);
 
             if (merged.length > targetBufferSize * 1.5) {
@@ -308,7 +295,7 @@ export function ChartProvider({ children }) {
                 const viewStart = newViewStart;
                 const viewEnd = viewStart + prev.viewWindow.displayCount;
 
-                // Calculate trim boundaries
+                // Calculate trim boundaries, with indicators
                 const leftKeep = Math.max(0, viewStart - BUFFER_SIZE - maxLookback);
                 const rightKeep = Math.min(merged.length, viewEnd + BUFFER_SIZE);
 
@@ -317,7 +304,9 @@ export function ChartProvider({ children }) {
                         before: merged.length,
                         after: rightKeep - leftKeep,
                         trimLeft: leftKeep,
-                        trimRight: merged.length - rightKeep
+                        trimRight: merged.length - rightKeep,
+                        maxLookback,
+                        targetBufferSize
                     });
 
                     merged = merged.slice(leftKeep, rightKeep);
@@ -409,7 +398,6 @@ export function ChartProvider({ children }) {
 
     /**
      * Check if we need more data based on view position
-     * Returns { needsPast, needsFuture, requestInfo }
      */
     const checkBufferNeeds = useCallback(() => {
         const { candles, viewWindow, sequenceBounds } = chartData;
@@ -421,14 +409,19 @@ export function ChartProvider({ children }) {
         const viewStart = viewWindow.startIndex;
         const viewEnd = Math.min(viewStart + viewWindow.displayCount - 1, candles.length - 1);
 
+        // Calculate indicator lookback requirement
+        const maxLookback = calculateMaxLookback(indicators);
+
         // Check past buffer
-        const leftBuffer = viewStart; // Candles available before view start
-        const needsPast = leftBuffer < FETCH_THRESHOLD &&
+        const leftBuffer = viewStart;
+        const minRequiredLeftBuffer = FETCH_THRESHOLD + maxLookback;
+
+        const needsPast = leftBuffer < minRequiredLeftBuffer &&
             sequenceBounds.minLoadedSequence > sequenceBounds.oldestAvailableSequence &&
             !asyncState.loadingPast;
 
         // Check future buffer
-        const rightBuffer = candles.length - 1 - viewEnd; // Candles available after view end
+        const rightBuffer = candles.length - 1 - viewEnd;
         const isAtEdge = sequenceBounds.maxLoadedSequence >= sequenceBounds.latestKnownSequence;
         const needsFuture = rightBuffer < FETCH_THRESHOLD &&
             !isAtEdge &&
@@ -442,15 +435,17 @@ export function ChartProvider({ children }) {
                 maxLoadedSequence: sequenceBounds.maxLoadedSequence,
                 latestKnownSequence: sequenceBounds.latestKnownSequence,
                 leftBuffer,
-                rightBuffer
+                rightBuffer,
+                maxLookback,
+                minRequiredLeftBuffer
             }
         };
-    }, [chartData, asyncState.loadingPast, asyncState.loadingFuture]);
+    }, [chartData, asyncState.loadingPast, asyncState.loadingFuture, indicators, calculateMaxLookback]);
 
     // ==================== EFFECTS ====================
 
     /**
-     * Check buffer needs when view changes (debounced)
+     * Check buffer needs when view changes
      */
     useEffect(() => {
         if (uiState.isDragging) {
@@ -469,7 +464,6 @@ export function ChartProvider({ children }) {
             clearTimeout(debounceTimerRef.current);
         }
 
-        // Debounce the check
         debounceTimerRef.current = setTimeout(() => {
             const { needsPast, needsFuture, requestInfo } = checkBufferNeeds();
 
@@ -480,7 +474,7 @@ export function ChartProvider({ children }) {
                     ...requestInfo
                 });
 
-                // Emit event for useCandleSubscription to handle
+                // Emit event for useCandleSubscription
                 const evt = new CustomEvent('chartBufferNeeded', {
                     detail: {
                         direction: needsPast ? 'past' : 'future',
@@ -535,7 +529,6 @@ export function ChartProvider({ children }) {
         const { candles, viewWindow, sequenceBounds } = chartData;
 
         if (candles.length > 0 && maxLookback > 0) {
-            const viewStartCandle = candles[viewWindow.startIndex];
             const candlesBefore = viewWindow.startIndex;
 
             if (candlesBefore < maxLookback) {
@@ -576,11 +569,10 @@ export function ChartProvider({ children }) {
         const viewEndIndex = Math.min(viewWindow.startIndex + viewWindow.displayCount - 1, candles.length - 1);
         const viewEndCandle = candles[viewEndIndex];
 
-        // Consider at edge if we can see the latest known candle
         return viewEndCandle && viewEndCandle.sequence >= sequenceBounds.latestKnownSequence;
     }, [chartData]);
 
-    // ==================== PUBLIC API ====================
+    // ======================= API =======================
 
     const addIndicator = useCallback((indicator) => {
         const newIndicator = {
@@ -601,14 +593,11 @@ export function ChartProvider({ children }) {
     }, []);
 
     const contextValue = {
-        // Core data
         displayCandles: chartData.candles,
         candleData: visibleCandles,
 
-        // Sequence bounds (for external use)
         sequenceBounds: chartData.sequenceBounds,
 
-        // View state
         viewStartIndex: chartData.viewWindow.startIndex,
         setViewStartIndex: handleViewScroll,
         displayedCandles: chartData.viewWindow.displayCount,
@@ -622,7 +611,6 @@ export function ChartProvider({ children }) {
             }));
         }, []),
 
-        // UI state
         isDragging: uiState.isDragging,
         setIsDragging: useCallback((value) => {
             setUiState(prev => ({ ...prev, isDragging: value }));
@@ -653,7 +641,6 @@ export function ChartProvider({ children }) {
             setUiState(prev => ({ ...prev, isDataGenerationEnabled: value }));
         }, []),
 
-        // Async state
         isWaitingForData: asyncState.isWaitingForData,
         setIsWaitingForData: useCallback((value) => {
             setAsyncState(prev => ({ ...prev, isWaitingForData: value }));
@@ -662,7 +649,6 @@ export function ChartProvider({ children }) {
         loadingPast: asyncState.loadingPast,
         loadingFuture: asyncState.loadingFuture,
 
-        // Metadata
         timeframeInMs: chartData.metadata.timeframeMs,
         setTimeframeInMs: useCallback((value) => {
             setChartData(prev => ({
@@ -671,13 +657,11 @@ export function ChartProvider({ children }) {
             }));
         }, []),
 
-        // Indicators
         indicators,
         addIndicator,
         removeIndicator,
         updateIndicator,
 
-        // Core actions
         initializeChart,
         mergeCandles,
         handleLiveCandleUpdate,
@@ -685,13 +669,10 @@ export function ChartProvider({ children }) {
         setBufferLoading,
         checkBufferNeeds,
 
-        // Computed
         isAtLatestEdge,
 
-        // Helper for indicator lookback
         calculateMaxLookback,
 
-        // Constants
         MIN_DISPLAY_CANDLES,
         MAX_DISPLAY_CANDLES,
         BUFFER_SIZE,
@@ -699,7 +680,6 @@ export function ChartProvider({ children }) {
         FETCH_BATCH_SIZE
     };
 
-    // Expose globally for debugging
     if (typeof window !== 'undefined') {
         window.__chartContextValue = contextValue;
     }

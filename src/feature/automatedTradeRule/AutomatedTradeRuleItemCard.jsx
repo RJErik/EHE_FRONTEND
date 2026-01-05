@@ -4,13 +4,12 @@ import { Button } from "../../components/ui/button.jsx";
 import { Separator } from "../../components/ui/separator.jsx";
 import { cn } from "../../lib/utils.js";
 
-const AutomaticTradeRuleItemCard = ({ rule, onRemove }) => {
+const AutomatedTradeRuleItemCard = ({ rule, onRemove }) => {
     const isPriceAbove = rule.conditionType === "PRICE_ABOVE";
     const isPriceBelow = rule.conditionType === "PRICE_BELOW";
     const isBuy = rule.actionType === "BUY";
     const isSell = rule.actionType === "SELL";
 
-    // Format quantity type for better readability
     const formatQuantityType = (type) => {
         switch (type) {
             case "QUANTITY":
@@ -67,4 +66,4 @@ const AutomaticTradeRuleItemCard = ({ rule, onRemove }) => {
     );
 };
 
-export default AutomaticTradeRuleItemCard;
+export default AutomatedTradeRuleItemCard;

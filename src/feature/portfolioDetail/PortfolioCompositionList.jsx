@@ -21,11 +21,10 @@ const PortfolioCompositionList = ({ portfolioData }) => {
     const chartData = [...portfolioData.stocks]
         .sort((a, b) => parseFloat(b.value) - parseFloat(a.value))
         .map(stock => ({
-            month: stock.symbol, // Using 'month' to match the expected format
-            desktop: parseFloat(stock.value), // Using 'desktop' to match the expected format
+            month: stock.symbol,
+            desktop: parseFloat(stock.value),
         }));
 
-    // Define chart configuration
     const chartConfig = {
         desktop: {
             label: "Value",

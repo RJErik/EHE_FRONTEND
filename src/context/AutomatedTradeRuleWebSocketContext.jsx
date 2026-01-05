@@ -1,4 +1,3 @@
-// src/context/AutomatedTradeRuleWebSocketContext.jsx
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useToast } from '../hooks/use-toast';
 import webSocketService from '../services/websocketService';
@@ -53,7 +52,7 @@ export function AutomatedTradeWebSocketProvider({ children }) {
 
             console.log('[AutomatedTradeWebSocket] Cleanup complete');
         };
-    }, []); // Empty dependency array is fine - we use refs for cleanup
+    }, []);
 
     // Function to subscribe to automated trades
     const subscribeToAutomatedTrades = async () => {
@@ -66,12 +65,10 @@ export function AutomatedTradeWebSocketProvider({ children }) {
             console.log('[AutomatedTradeWebSocket] Subscribing to automated trades');
 
             // Send subscription request
-            const response = await webSocketService.send(
+            await webSocketService.send(
                 '/app/automated-trades/subscribe',
                 {}
             );
-
-            // Set up a destination subscription for receiving messages
             webSocketService.subscribe('/user/queue/automated-trades', (data) => {
                 console.log('[AutomatedTradeWebSocket] Received message:', data);
 
@@ -79,7 +76,6 @@ export function AutomatedTradeWebSocketProvider({ children }) {
                 if (data.automatedTradeRuleId) {
                     console.log('[AutomatedTradeWebSocket] Received trade notification');
 
-                    // Show toast notification
                     toast({
                         title: data.success ? "Automated Trade Executed" : "Automated Trade Failed",
                         description: data.message,
@@ -90,17 +86,14 @@ export function AutomatedTradeWebSocketProvider({ children }) {
                     notifySubscribers(data);
                 }
 
-                // If this is the subscription confirmation - handle both string and object format
+                // This is a subscription confirmation
                 if (data.subscriptionId && !subscriptionIdRef.current) {
-                    // Extract the actual subscription ID from the response object
                     const actualSubscriptionId = data.subscriptionId.subscriptionId;
 
                     console.log('[AutomatedTradeWebSocket] Subscription confirmed:', actualSubscriptionId);
 
-                    // Store in ref for cleanup
                     subscriptionIdRef.current = actualSubscriptionId;
                     setIsSubscribed(true);
-                    return;
                 }
             });
 
@@ -115,33 +108,6 @@ export function AutomatedTradeWebSocketProvider({ children }) {
         }
     };
 
-    // Function to unsubscribe from automated trades
-    const unsubscribeFromAutomatedTrades = async () => {
-        if (!subscriptionIdRef.current) {
-            console.log('[AutomatedTradeWebSocket] Not currently subscribed');
-            return;
-        }
-
-        try {
-            console.log('[AutomatedTradeWebSocket] Manually unsubscribing from automated trades');
-
-            // Send unsubscription request with the new DTO structure
-            await webSocketService.send(
-                '/app/automated-trades/unsubscribe',
-                { subscriptionId: subscriptionIdRef.current }
-            );
-
-            // Unsubscribe from the destination
-            webSocketService.unsubscribe('/user/queue/automated-trades');
-
-            subscriptionIdRef.current = null;
-            setIsSubscribed(false);
-            console.log('[AutomatedTradeWebSocket] Unsubscribed successfully');
-        } catch (err) {
-            console.error('[AutomatedTradeWebSocket] Unsubscription error:', err);
-        }
-    };
-
     // Register a callback to be notified of automated trade events
     const registerAutomatedTradeCallback = useCallback((callback) => {
         if (typeof callback !== 'function') {
@@ -152,7 +118,6 @@ export function AutomatedTradeWebSocketProvider({ children }) {
         console.log('[AutomatedTradeWebSocket] Registering callback');
         subscribedCallbacks.current.push(callback);
 
-        // Return unregister function
         return () => {
             console.log('[AutomatedTradeWebSocket] Unregistering callback');
             subscribedCallbacks.current = subscribedCallbacks.current.filter(cb => cb !== callback);

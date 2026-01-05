@@ -1,42 +1,34 @@
 import { Card, CardContent } from "../../components/ui/card.jsx";
-import { useAutomaticTradeContext } from "../../context/AutomaticTradeRulesContext.jsx";
+import { useAutomatedTradeRuleContext } from "../../context/AutomatedTradeRulesContext.jsx";
 import { useAutomatedTradeWebSocket } from "../../context/AutomatedTradeRuleWebSocketContext.jsx";
 import { Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
-import AutomaticTradeRuleItemCard from "./AutomaticTradeRuleItemCard.jsx";
+import { useEffect, useRef } from "react";
+import AutomatedTradeRuleItemCard from "./AutomatedTradeRuleItemCard.jsx";
 
-const AutomaticTradeRuleList = () => {
-    const { automaticTradeRules, isLoading, error, removeAutomaticTradeRule, fetchAutomaticTradeRules, refreshLatestSearch, lastUpdate } = useAutomaticTradeContext();
+const AutomatedTradeRuleList = () => {
+    const { automaticTradeRules, isLoading, error, removeAutomaticTradeRule, refreshLatestSearch, lastUpdate } = useAutomatedTradeRuleContext();
     const { registerAutomatedTradeCallback } = useAutomatedTradeWebSocket();
 
-    // Use a ref to prevent multiple fetches on initial render
-    const initialFetchDoneRef = useRef(false);
+    const callbackRef = useRef(() => {
+        console.log('[AutomatedTradeRuleList] Received automated trade notification, refreshing list');
+    });
 
-    // Fetch automatic trade rules only on initial mount
     useEffect(() => {
-        if (!initialFetchDoneRef.current) {
-            console.log("AutomaticTradeRuleList mounted - fetching rules");
-            fetchAutomaticTradeRules();
-            initialFetchDoneRef.current = true;
-        }
-    }, [fetchAutomaticTradeRules]);
-
-    // Memoize the callback to prevent effect regeneration
-    const automatedTradeCallback = useCallback((tradeNotification) => {
-        console.log('[AutomaticTradeRuleList] Received automated trade notification, refreshing list');
-        refreshLatestSearch();
+        callbackRef.current = () => {
+            console.log('[AutomatedTradeRuleList] Received automated trade notification, refreshing list');
+            refreshLatestSearch();
+        };
     }, [refreshLatestSearch]);
 
-    // Register for automated trade notifications once
     useEffect(() => {
         console.log("Registering for automated trade notifications");
-        const unregister = registerAutomatedTradeCallback(automatedTradeCallback);
+        const unregister = registerAutomatedTradeCallback(() => callbackRef.current());
 
         return () => {
             console.log("Unregistering from automated trade notifications");
             unregister();
         };
-    }, [registerAutomatedTradeCallback, automatedTradeCallback]);
+    }, [registerAutomatedTradeCallback]);
 
     const handleRemove = async (id) => {
         await removeAutomaticTradeRule(id);
@@ -61,7 +53,7 @@ const AutomaticTradeRuleList = () => {
                 ) : (
                     <div className="space-y-3">
                         {automaticTradeRules.map((rule) => (
-                            <AutomaticTradeRuleItemCard
+                            <AutomatedTradeRuleItemCard
                                 key={`rule-${rule.id}-${lastUpdate}`}
                                 rule={rule}
                                 onRemove={handleRemove}
@@ -74,4 +66,4 @@ const AutomaticTradeRuleList = () => {
     );
 };
 
-export default AutomaticTradeRuleList;
+export default AutomatedTradeRuleList;

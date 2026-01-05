@@ -1,4 +1,3 @@
-// src/components/portfolio/CreatePortfolio.jsx
 import { useState } from "react";
 import { Button } from "../../components/ui/button.jsx";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
@@ -6,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Input } from "../../components/ui/input.jsx";
 import { usePortfolioContext } from "../../context/PortfoliosContext.jsx";
 import { useApiKeys } from "../../hooks/useApiKeys.js";
+import { useToast } from "../../hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 const CreatePortfolio = () => {
@@ -13,11 +13,21 @@ const CreatePortfolio = () => {
     const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
     const [isAdding, setIsAdding] = useState(false);
 
-    const { createPortfolio, refreshLatestSearch } = usePortfolioContext();
+    const { createPortfolio} = usePortfolioContext();
     const { apiKeys, isLoading: isLoadingApiKeys } = useApiKeys();
+    const { toast } = useToast();
 
     const handleAdd = async () => {
         if (!portfolioName || !selectedApiKeyId) {
+            return;
+        }
+
+        if (portfolioName.length > 100) {
+            toast({
+                title: "Validation Error",
+                description: "Portfolio name must be 100 characters or less",
+                variant: "destructive",
+            });
             return;
         }
 
@@ -25,13 +35,10 @@ const CreatePortfolio = () => {
         try {
             const success = await createPortfolio(portfolioName, parseInt(selectedApiKeyId, 10));
             if (success) {
-                // Reset form fields after successful add
                 setPortfolioName("");
                 setSelectedApiKeyId("");
 
-                // Force refresh using the last search
-                console.log("Add successful - forcing refresh");
-                refreshLatestSearch();
+                console.log("Add successful - portfolio added to state");
             }
         } finally {
             setIsAdding(false);
@@ -51,7 +58,13 @@ const CreatePortfolio = () => {
                         value={portfolioName}
                         onChange={(e) => setPortfolioName(e.target.value)}
                         disabled={isAdding}
+                        maxLength={100}
                     />
+                    {portfolioName.length > 0 && (
+                        <p className={`text-xs mt-1 ${portfolioName.length > 100 ? 'text-red-500' : 'text-gray-500'}`}>
+                            {portfolioName.length}/100 characters
+                        </p>
+                    )}
                 </div>
 
                 <div>
@@ -77,7 +90,7 @@ const CreatePortfolio = () => {
                 <Button
                     className="w-full"
                     onClick={handleAdd}
-                    disabled={!portfolioName || !selectedApiKeyId || isAdding}
+                    disabled={!portfolioName || !selectedApiKeyId || isAdding || portfolioName.length > 100}
                 >
                     {isAdding ? (
                         <>

@@ -1,4 +1,3 @@
-// src/components/LogoutDialog.jsx
 import {
     Dialog,
     DialogContent,

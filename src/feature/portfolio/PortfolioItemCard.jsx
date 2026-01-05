@@ -1,12 +1,10 @@
-// src/components/portfolio/PortfolioItemCard.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator.jsx";
 
-const PortfolioItemCard = ({ portfolio, onDelete, onUpdate }) => {
+const PortfolioItemCard = ({ portfolio, onDelete}) => {
     const handleDeleteClick = (e) => {
-        // Make sure the event doesn't bubble up
         e.stopPropagation();
         onDelete(e);
     };
@@ -31,7 +29,6 @@ const PortfolioItemCard = ({ portfolio, onDelete, onUpdate }) => {
                         size="icon"
                         onClick={handleDeleteClick}
                         title="Delete portfolio"
-                        // Adding an additional class to help with styling/identifying
                         className="portfolio-delete-btn"
                     >
                         <Trash2 className="h-4 w-4" />

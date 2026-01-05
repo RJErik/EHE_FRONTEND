@@ -1,4 +1,3 @@
-// src/components/stockMarket/indicators/MainIndicatorInfoPanel.jsx
 import { useContext } from "react";
 import { ChartContext } from "../ChartContext.jsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.jsx";
@@ -35,7 +34,7 @@ const MainIndicatorInfoPanel = ({ indicators }) => {
                     if (value === null || value === undefined) return null;
 
                     if (typeof value === 'object') {
-                        // For multi-value indicators (like BB, MACD)
+                        // For multi-value indicators
                         return (
                             <div key={indicator.id} className="flex items-center">
                                 <span className="font-medium text-foreground mr-1">{indicator.name}:</span>

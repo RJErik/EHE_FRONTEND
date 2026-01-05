@@ -34,7 +34,6 @@ const CreateWatchlistItem = () => {
                 // Reset stock selection after successful add
                 setSelectedStock("");
 
-                // Force refresh using the last search
                 console.log("Add successful - forcing refresh");
                 refreshLatestSearch();
             }

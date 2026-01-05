@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "../../components/ui/card.jsx";
-import { PieChart, Pie, Cell, Label, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell, Label } from "recharts";
 import {
     ChartContainer,
     ChartTooltip,
@@ -17,10 +17,8 @@ const PortfolioDivisionChart = ({ portfolioData }) => {
         );
     }
 
-    // Calculate total stocks value
     const stocksValue = portfolioData.stocks?.reduce((sum, stock) => sum + parseFloat(stock.value), 0) || 0;
 
-    // Get reserved cash value (handle either object format or direct value)
     let reservedCashValue = 0;
     if (portfolioData.reservedCash) {
         if (typeof portfolioData.reservedCash === 'object' && portfolioData.reservedCash.value !== undefined) {
@@ -30,10 +28,8 @@ const PortfolioDivisionChart = ({ portfolioData }) => {
         }
     }
 
-    // Total portfolio value
     const totalValue = stocksValue + reservedCashValue;
 
-    // Prepare data for the pie chart - stocks vs cash
     const chartData = [
         {
             browser: "Stocks",
@@ -45,9 +41,8 @@ const PortfolioDivisionChart = ({ portfolioData }) => {
             visitors: reservedCashValue,
             fill: "hsl(120, 70%, 50%)" // Green for cash
         }
-    ].filter(item => item.visitors > 0); // Only include non-zero values
+    ].filter(item => item.visitors > 0);
 
-    // Define chart configuration
     const chartConfig = {
         visitors: {
             label: "Value",

@@ -5,7 +5,7 @@ import defaultPlatformLogo from "../../assets/default-platform.png";
 const PortfolioDetailHeader = ({ portfolioData }) => {
     const { name, creationDate, platform, totalValue, stocks = [] } = portfolioData || {};
 
-    // Find dominant stock (highest value)
+    // Find dominant stock
     const dominantStock = stocks && stocks.length > 0
         ? [...stocks].sort((a, b) => parseFloat(b.value) - parseFloat(a.value))[0]
         : null;
@@ -22,7 +22,6 @@ const PortfolioDetailHeader = ({ portfolioData }) => {
 
         const platformLower = platformName.toLowerCase();
 
-        // Add more platform cases here if needed in the future
         switch (platformLower) {
             case 'binance':
                 return binanceLogo;

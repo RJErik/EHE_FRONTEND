@@ -21,7 +21,6 @@ const PortfolioDetail = ({portfolioId }) => {
         loadPortfolioDetails();
     }, [portfolioId, fetchPortfolioDetails]);
 
-    // If loading, show a loading indicator
     if (isLoading) {
         return (
             <div className="min-h-screen flex flex-col">
@@ -32,7 +31,6 @@ const PortfolioDetail = ({portfolioId }) => {
         );
     }
 
-    // If there was an error, show the error message
     if (error) {
         return (
             <div className="min-h-screen flex flex-col">
@@ -46,7 +44,6 @@ const PortfolioDetail = ({portfolioId }) => {
         );
     }
 
-    // If no data, show a message
     if (!portfolioData) {
         return (
             <div className="min-h-screen flex flex-col">

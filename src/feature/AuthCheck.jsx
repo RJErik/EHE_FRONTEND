@@ -1,4 +1,3 @@
-// src/components/AuthCheck.jsx
 import { useState, useEffect } from 'react';
 
 function AuthCheck({ children }) {
@@ -10,8 +9,7 @@ function AuthCheck({ children }) {
     useEffect(() => {
         const verifyAuth = async () => {
             try {
-                // Call the verify endpoint that checks JWT token using fetch
-                const response = await fetch('http://localhost:8080/api/session/verify-user', {
+                const response = await fetch('http://localhost:8080/api/session', {
                     method: 'GET',
                     credentials: 'include', // Include cookies in request
                     headers: {
@@ -26,7 +24,6 @@ function AuthCheck({ children }) {
                 setAuthState({ isLoading: false, isAuthenticated: true });
             } catch (error) {
                 console.error('Authentication failed:', error);
-                // Redirect to login app
                 window.location.href = 'http://localhost:5173';
             }
         };

@@ -7,7 +7,6 @@ import { Label } from "../../../components/ui/label.jsx";
 import { ScrollArea } from "@/components/ui/scroll-area.jsx"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select.jsx";
 
-// Define predefined colors with names
 const PREDEFINED_COLORS = [
     { hex: "#FF5733", name: "Coral Red" },
     { hex: "#33FF57", name: "Lime Green" },
@@ -26,13 +25,11 @@ const PREDEFINED_COLORS = [
     { hex: "#008000", name: "Forest Green" },
 ];
 
-// Function to get a random color
 const getRandomColor = () => {
     const randomIndex = Math.floor(Math.random() * PREDEFINED_COLORS.length);
     return PREDEFINED_COLORS[randomIndex];
 };
 
-// Enhanced indicator types with specific parameters and default values
 const INDICATOR_TYPES = [
     {
         id: "sma",
@@ -104,12 +101,10 @@ const INDICATOR_TYPES = [
     }
 ];
 
-// Find color object by hex value
 const getColorByHex = (hexValue) => {
     return PREDEFINED_COLORS.find(color => color.hex.toLowerCase() === hexValue.toLowerCase());
 };
 
-// Helper to get default settings for an indicator type
 const getDefaultSettingsForType = (typeId) => {
     const indicatorType = INDICATOR_TYPES.find(t => t.id === typeId);
     return indicatorType ? { ...indicatorType.defaultSettings } : {};
@@ -124,29 +119,19 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         thickness: 2
     });
 
-    // Track the original indicator type and settings
     const [originalType, setOriginalType] = useState(null);
     const [originalSettings, setOriginalSettings] = useState(null);
 
-    const [colorOption, setColorOption] = useState("default"); // "default", "predefined", or "custom"
+    const [colorOption, setColorOption] = useState("default");
 
-    // Initialize dialog when opening in edit mode
     useEffect(() => {
         if (isOpen && editMode && initialIndicator) {
-            // Set category based on the initial indicator
             setCategory(initialIndicator.category || "main");
-
-            // Set selected type
             setSelectedType(initialIndicator.type);
-
-            // Save the original type
             setOriginalType(initialIndicator.type);
 
-            // Get default settings for this indicator type
             const defaultSettings = getDefaultSettingsForType(initialIndicator.type);
 
-            // Merge default settings with the initial indicator's settings
-            // This ensures all required fields exist
             const indicatorSettings = {
                 ...defaultSettings,
                 ...(initialIndicator.settings || {}),
@@ -155,22 +140,15 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
 
             const colorObj = getColorByHex(indicatorSettings.color);
 
-            // Prepare settings with color name
             const settingsWithColorName = {
                 ...indicatorSettings,
                 colorName: colorObj ? colorObj.name : "Custom"
             };
 
-            // Initialize our settings
             setSettings(settingsWithColorName);
-
-            // Save the original settings
             setOriginalSettings(settingsWithColorName);
-
-            // Set color option based on the initial color
             setColorOption(colorObj ? "predefined" : "custom");
         } else if (isOpen && !editMode) {
-            // Reset when opening for new indicator
             setSelectedType(null);
             setSettings({
                 color: "",
@@ -183,7 +161,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         }
     }, [isOpen, editMode, initialIndicator]);
 
-    // When an indicator is selected (in add mode), initialize with its specific default settings
     useEffect(() => {
         if (!editMode && selectedType) {
             const indicatorType = INDICATOR_TYPES.find(t => t.id === selectedType);
@@ -200,23 +177,17 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         }
     }, [selectedType, editMode]);
 
-    // Handle indicator type switching in edit mode
     useEffect(() => {
         if (editMode && selectedType && originalType) {
             if (selectedType === originalType) {
-                // If switching back to the original indicator type, restore its original settings
                 setSettings(originalSettings);
 
-                // Set color option based on the original settings
                 const colorObj = getColorByHex(originalSettings.color);
                 setColorOption(colorObj ? "predefined" : "custom");
             }
             else if (selectedType !== originalType) {
-                // If switching to a different indicator type, get its default settings
-                // but preserve visual properties
                 const newTypeDefaults = getDefaultSettingsForType(selectedType);
 
-                // Create new settings with defaults for the new type but preserve visual settings
                 const newSettings = {
                     ...newTypeDefaults,
                     color: settings.color,
@@ -224,25 +195,21 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                     thickness: settings.thickness
                 };
 
-                // Preserve the 'source' setting if it exists in both
                 if (settings.source && Object.prototype.hasOwnProperty.call(newTypeDefaults, 'source')) {
                     newSettings.source = settings.source;
                 }
 
-                // Update settings
                 setSettings(newSettings);
             }
         }
     }, [selectedType, editMode, originalType, originalSettings, settings.color, settings.colorName, settings.thickness, settings.source]);
 
-    // Reset selected type when changing tabs only in add mode
     useEffect(() => {
         if (!editMode) {
             setSelectedType(null);
         }
     }, [category, editMode]);
 
-    // Filter indicators by the selected category tab
     const filteredIndicators = INDICATOR_TYPES.filter(indicator =>
         indicator.categories.includes(category)
     );
@@ -258,7 +225,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
             category,
             settings: {
                 ...settings,
-                // Remove helper fields that aren't actual settings
                 colorName: undefined
             }
         };
@@ -272,7 +238,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         onClose();
     };
 
-    // Handle color text input changes
     const handleColorTextChange = (e) => {
         const newHexColor = e.target.value;
         const colorObj = getColorByHex(newHexColor);
@@ -283,7 +248,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
             colorName: colorObj ? colorObj.name : "Custom"
         }));
 
-        // If the text input matches a predefined color, select that option
         if (colorObj) {
             setColorOption("predefined");
         } else {
@@ -291,13 +255,10 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         }
     };
 
-    // Handle color selection from dropdown
     const handleColorSelection = (value) => {
         if (value === "custom") {
             setColorOption("custom");
-            // Keep the current color
         } else {
-            // Find color object by ID (index)
             const selectedIndex = parseInt(value);
             const selectedColor = PREDEFINED_COLORS[selectedIndex];
 
@@ -310,11 +271,9 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         }
     };
 
-    // Get the current value for the color dropdown
     const getColorDropdownValue = () => {
         if (colorOption === "custom") return "custom";
 
-        // Find index of the current color in predefined colors
         const colorIndex = PREDEFINED_COLORS.findIndex(
             color => color.hex.toLowerCase() === settings.color.toLowerCase()
         );
@@ -322,7 +281,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
         return colorIndex !== -1 ? colorIndex.toString() : "custom";
     };
 
-    // Render different setting inputs based on the selected indicator type
     const renderIndicatorSpecificSettings = () => {
         if (!selectedType) return null;
 
@@ -412,7 +370,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                     </TabsList>
 
                     <div className="flex gap-4 h-[350px]">
-                        {/* Indicator Type List (25% width) */}
                         <div className="w-1/4 border rounded-md">
                             <ScrollArea className="h-full">
                                 <div className="p-4 space-y-1">
@@ -430,7 +387,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                             </ScrollArea>
                         </div>
 
-                        {/* Indicator Settings (75% width) */}
                         <div className="w-3/4 border rounded-md p-4 flex flex-col">
                             {selectedType ? (
                                 <>
@@ -440,10 +396,8 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                                         </h3>
 
                                         <div className="grid grid-cols-2 gap-4">
-                                            {/* Render indicator-specific settings */}
                                             {renderIndicatorSpecificSettings()}
 
-                                            {/* Common settings for all indicators */}
                                             {selectedType !== "atr" && (
                                                 <div className="space-y-2">
                                                     <Label>Source</Label>
@@ -469,13 +423,11 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                                             <div className="space-y-2">
                                                 <Label>Line Color</Label>
                                                 <div className="flex gap-2 items-center">
-                                                    {/* Color preview rectangle */}
                                                     <div
                                                         className="w-8 h-8 border rounded-md flex-shrink-0"
                                                         style={{ backgroundColor: settings.color }}
                                                     />
 
-                                                    {/* Color text input */}
                                                     <Input
                                                         type="text"
                                                         value={settings.color}
@@ -485,7 +437,6 @@ const IndicatorSelectionDialog = ({ isOpen, onClose, onAdd, editMode = false, in
                                                     />
                                                 </div>
 
-                                                {/* Color dropdown */}
                                                 <Select
                                                     value={getColorDropdownValue()}
                                                     onValueChange={handleColorSelection}

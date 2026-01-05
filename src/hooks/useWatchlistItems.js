@@ -1,5 +1,4 @@
-// src/hooks/useWatchlistItems.js
-import { useState, useEffect, useCallback } from "react";
+import {useState, useCallback} from "react";
 import { useToast } from "./use-toast";
 import { useJwtRefresh } from "./useJwtRefresh";
 
@@ -18,7 +17,7 @@ export function useWatchlistItems() {
 
         try {
             console.log("Fetching watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+            let response = await fetch("http://localhost:8080/api/user/watchlist-items", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -26,7 +25,6 @@ export function useWatchlistItems() {
                 },
             });
 
-            // Handle 401 - Token expired
             if (response.status === 401) {
                 try {
                     await refreshToken();
@@ -34,8 +32,7 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+                response = await fetch("http://localhost:8080/api/user/watchlist-items", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -56,13 +53,7 @@ export function useWatchlistItems() {
             console.log("WatchlistItems items received:", data);
 
             if (data.success) {
-                setWatchlistItems(data.watchlists || []);
-
-                // Explicitly fetch candles after items are updated
-                if (data.watchlists && data.watchlists.length > 0) {
-                    console.log("Fetching candles for updated watchlist...");
-                    await fetchWatchlistCandles();
-                }
+                setWatchlistItems(data.watchlistItems || []);
             } else {
                 toast({
                     title: "Error",
@@ -88,11 +79,14 @@ export function useWatchlistItems() {
 
     // Fetch latest candles for watchlist items
     const fetchWatchlistCandles = useCallback(async () => {
-        if (watchlistItems.length === 0) return;
+        if (watchlistItems.length === 0) {
+            console.log("No watchlist items to fetch candles for");
+            return;
+        }
 
         try {
             console.log("Fetching candles for watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlistItems/candles", {
+            let response = await fetch("http://localhost:8080/api/user/watchlist-items/candles", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -100,7 +94,6 @@ export function useWatchlistItems() {
                 },
             });
 
-            // Handle 401 - Token expired
             if (response.status === 401) {
                 try {
                     await refreshToken();
@@ -109,8 +102,7 @@ export function useWatchlistItems() {
                     return;
                 }
 
-                // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlists/candles", {
+                response = await fetch("http://localhost:8080/api/user/watchlist-items/candles", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -160,7 +152,7 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Adding ${symbol} from ${platform} to watchlist...`);
-            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+            let response = await fetch("http://localhost:8080/api/user/watchlist-items", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -169,7 +161,6 @@ export function useWatchlistItems() {
                 body: JSON.stringify({ platform, symbol }),
             });
 
-            // Handle 401 - Token expired
             if (response.status === 401) {
                 try {
                     await refreshToken();
@@ -177,8 +168,7 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+                response = await fetch("http://localhost:8080/api/user/watchlist-items", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -200,10 +190,8 @@ export function useWatchlistItems() {
             console.log("Add response:", data);
 
             if (data.success) {
-                setWatchlistItems(prev => [...prev, data.watchlist]);
+                setWatchlistItems(prev => [...prev, data.watchlistItem]);
 
-                // Fetch candles for the new item if needed
-                await fetchWatchlistCandles();
                 toast({
                     title: "Success",
                     description: data.message || `Added ${symbol} from ${platform} to watchlist`,
@@ -242,16 +230,14 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Removing item ${id} from watchlist...`);
-            let response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+            let response = await fetch(`http://localhost:8080/api/user/watchlist-items/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ id }),
             });
 
-            // Handle 401 - Token expired
             if (response.status === 401) {
                 try {
                     await refreshToken();
@@ -259,14 +245,12 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlistItems", {
+                response = await fetch(`http://localhost:8080/api/user/watchlist-items/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ id }),
                 });
 
                 if (response.status === 401) {
@@ -282,7 +266,6 @@ export function useWatchlistItems() {
             console.log("Remove response:", data);
 
             if (data.success) {
-                // First update local state for immediate UI feedback
                 setWatchlistItems(prev => prev.filter(item => item.id !== id));
                 setWatchlistCandles(prev => {
                     const updated = {...prev};
@@ -330,20 +313,26 @@ export function useWatchlistItems() {
             const apiPlatform = platform === "_any_" ? "" : platform;
             const apiSymbol = symbol === "_any_" ? "" : symbol;
 
+            // Build query parameters
+            const params = new URLSearchParams();
+            if (apiPlatform) {
+                params.append("platform", apiPlatform);
+            }
+            if (apiSymbol) {
+                params.append("symbol", apiSymbol);
+            }
+
+            const url = `http://localhost:8080/api/user/watchlist-items/search?${params.toString()}`;
+
             console.log(`Searching watchlist: platform=${apiPlatform}, symbol=${apiSymbol}`);
-            let response = await fetch("http://localhost:8080/api/user/watchlistItems/search", {
-                method: "POST",
+            let response = await fetch(url, {
+                method: "GET",
                 credentials: "include",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    platform: apiPlatform,
-                    symbol: apiSymbol
-                }),
             });
 
-            // Handle 401 - Token expired
             if (response.status === 401) {
                 try {
                     await refreshToken();
@@ -351,17 +340,12 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/watchlistItems/search", {
-                    method: "POST",
+                response = await fetch(url, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        platform: apiPlatform,
-                        symbol: apiSymbol
-                    }),
                 });
 
                 if (response.status === 401) {
@@ -377,13 +361,9 @@ export function useWatchlistItems() {
             console.log("Search results:", data);
 
             if (data.success) {
-                setWatchlistItems(data.watchlists || []);
+                setWatchlistItems(data.watchlistItems || []);
 
-                if (data.watchlists && data.watchlists.length > 0) {
-                    await fetchWatchlistCandles();
-                }
-
-                return data.watchlists || [];
+                return data.watchlistItems || [];
             } else {
                 toast({
                     title: "Error",
@@ -408,12 +388,6 @@ export function useWatchlistItems() {
             setIsLoading(false);
         }
     }, [toast, refreshToken]);
-
-    // Initial fetch
-    useEffect(() => {
-        console.log("Initial watchlist fetch...");
-        fetchWatchlistItems();
-    }, [fetchWatchlistItems]);
 
     return {
         watchlistItems,

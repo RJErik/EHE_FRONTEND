@@ -1,4 +1,3 @@
-// src/components/portfolio/SearchPortfolios.jsx
 import { useState } from "react";
 import { Input } from "../../components/ui/input.jsx";
 import { Button } from "../../components/ui/button.jsx";
@@ -18,7 +17,6 @@ const SearchPortfolios = () => {
 
     const {
         platforms,
-        selectedPlatform,
         setSelectedPlatform,
         isLoadingPlatforms
     } = useStockData();
@@ -27,11 +25,9 @@ const SearchPortfolios = () => {
         setIsSearching(true);
 
         try {
-            // Handle special case when all fields are empty
             if (searchPlatform === "_any_" && !minValue && !maxValue) {
                 await fetchPortfolios();
             } else {
-                // Convert inputs to appropriate formats for API
                 const platformParam = searchPlatform === "_any_" ? null : searchPlatform;
                 const minValueParam = minValue ? parseFloat(minValue) : null;
                 const maxValueParam = maxValue ? parseFloat(maxValue) : null;
@@ -54,7 +50,6 @@ const SearchPortfolios = () => {
         refreshLatestSearch();
     };
 
-    // Update the platform in stock data hook when search platform changes
     const handlePlatformChange = (value) => {
         setSearchPlatform(value);
         if (value !== "_any_") {

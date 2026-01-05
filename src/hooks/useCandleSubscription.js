@@ -6,8 +6,7 @@ import { useToast } from './use-toast';
 import { useJwtRefresh } from './useJwtRefresh';
 import candleApiService from '../services/candleApiService';
 
-const REQUEST_TIMEOUT = 15000; // 15 seconds
-const WS_SEQUENCE_TIMEOUT = 5000; // 5 seconds to wait for WebSocket sequence
+const WS_SEQUENCE_TIMEOUT = 5000;
 
 export function useCandleSubscription() {
     const [isSubscribing, setIsSubscribing] = useState(false);
@@ -21,19 +20,15 @@ export function useCandleSubscription() {
         timeframe: null
     });
 
-    // WebSocket context (for live updates only)
     const {
         isConnected,
-        isInitialized,
         subscribeToCandleUpdates,
         unsubscribeFromCandleUpdates,
         registerHandler,
-        unregisterHandler,
         activeSubscriptionId,
         latestCandleInfo
     } = useWebSocket();
 
-    // Chart context
     const chartContext = useContext(ChartContext);
     const {
         initializeChart,
@@ -50,7 +45,6 @@ export function useCandleSubscription() {
         FETCH_BATCH_SIZE
     } = chartContext;
 
-    // Refs for tracking state
     const pendingRequestsRef = useRef({
         past: { inFlight: false, abortController: null },
         future: { inFlight: false, abortController: null }
@@ -62,15 +56,11 @@ export function useCandleSubscription() {
         timeframe: null
     });
 
-    // Ref to store the latest sequence received from WebSocket during subscription
     const latestSequenceFromWSRef = useRef(null);
 
-    // Initialize the API service with refresh token function
     useEffect(() => {
         candleApiService.setRefreshTokenFunction(refreshToken);
     }, [refreshToken]);
-
-    // ==================== HELPERS ====================
 
     const parseTimeframeToMs = useCallback((timeframe) => {
         const tf = timeframe.toLowerCase();
@@ -81,9 +71,6 @@ export function useCandleSubscription() {
         return 60 * 1000;
     }, []);
 
-    /**
-     * Transform backend candle to frontend format
-     */
     const transformCandle = useCallback((backendCandle) => {
         return {
             sequence: backendCandle.sequence,
@@ -97,15 +84,10 @@ export function useCandleSubscription() {
         };
     }, []);
 
-    /**
-     * Transform array of backend candles
-     */
     const transformCandles = useCallback((backendCandles) => {
         if (!backendCandles || !Array.isArray(backendCandles)) return [];
         return backendCandles.map(transformCandle);
     }, [transformCandle]);
-
-    // ==================== DATA FETCHING ====================
 
     /**
      * Fetch initial/latest candles for a new subscription
@@ -127,7 +109,6 @@ export function useCandleSubscription() {
             let response;
 
             if (latestSequence) {
-                // PRIMARY METHOD: Fetch by sequence range ending at latest
                 const fromSeq = Math.max(1, latestSequence - totalNeeded + 1);
                 console.log('[useCandleSubscription] Fetching candles by sequence:', {
                     platformName,
@@ -146,7 +127,6 @@ export function useCandleSubscription() {
                     latestSequence
                 );
             } else {
-                // FALLBACK METHOD: Fetch latest candles by date
                 console.log('[useCandleSubscription] Fetching latest candles (date-based fallback):', {
                     platformName,
                     stockSymbol,
@@ -197,8 +177,6 @@ export function useCandleSubscription() {
         const maxLookback = calculateMaxLookback(indicators);
         const tfMs = parseTimeframeToMs(newTimeframe);
 
-        // Calculate date range around anchor
-        const bufferCandles = displayedCandles + BUFFER_SIZE + maxLookback;
         const startDate = new Date(anchorTimestamp - (maxLookback * tfMs));
         const endDate = new Date(Math.min(
             anchorTimestamp + (displayedCandles + BUFFER_SIZE) * tfMs,
@@ -216,7 +194,6 @@ export function useCandleSubscription() {
 
             const candles = transformCandles(response.candles);
 
-            // Find the sequence of the candle at or after the anchor timestamp
             let anchorSequence = null;
             for (const candle of candles) {
                 if (candle.timestamp >= anchorTimestamp) {
@@ -239,9 +216,6 @@ export function useCandleSubscription() {
         }
     }, [displayedCandles, BUFFER_SIZE, indicators, calculateMaxLookback, parseTimeframeToMs, transformCandles]);
 
-    /**
-     * Fetch older candles (scroll left / past buffer)
-     */
     const fetchOlderCandles = useCallback(async () => {
         const { platformName, stockSymbol, timeframe } = currentDetails;
 
@@ -307,9 +281,6 @@ export function useCandleSubscription() {
         }
     }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
 
-    /**
-     * Fetch newer candles (scroll right / future buffer)
-     */
     const fetchNewerCandles = useCallback(async () => {
         const { platformName, stockSymbol, timeframe } = currentDetails;
 
@@ -377,9 +348,6 @@ export function useCandleSubscription() {
         }
     }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
 
-    /**
-     * Fetch additional data for indicator lookback
-     */
     const fetchIndicatorData = useCallback(async (lookbackNeeded) => {
         const { platformName, stockSymbol, timeframe } = currentDetails;
 
@@ -418,8 +386,6 @@ export function useCandleSubscription() {
         }
     }, [currentDetails, sequenceBounds, transformCandles, mergeCandles]);
 
-    // ==================== WEBSOCKET MESSAGE HANDLER ====================
-
     const handleWebSocketMessage = useCallback((message) => {
         console.log('[useCandleSubscription] WebSocket message:', message.type);
 
@@ -429,14 +395,12 @@ export function useCandleSubscription() {
                 break;
 
             case 'INITIAL_CANDLE':
-                // WebSocket sends the initial/latest candle with sequence
                 console.log('[useCandleSubscription] Initial candle received:', {
                     sequence: message.sequence,
                     timestamp: message.timestamp
                 });
 
                 if (message.sequence) {
-                    // Store the sequence for use in fetchInitialCandles
                     latestSequenceFromWSRef.current = message.sequence;
                     updateLatestKnownSequence(message.sequence);
                 }
@@ -444,7 +408,6 @@ export function useCandleSubscription() {
 
             case 'NEW_CANDLE':
             case 'CANDLE_UPDATE':
-                // Handle live candle updates
                 if (message.candles && message.candles.length > 0) {
                     const transformed = message.candles.map(c => ({
                         sequence: c.sequence,
@@ -466,8 +429,6 @@ export function useCandleSubscription() {
         }
     }, [updateLatestKnownSequence, handleLiveCandleUpdate]);
 
-    // ==================== SUBSCRIPTION FUNCTIONS ====================
-
     /**
      * Wait for WebSocket to provide the latest sequence number
      */
@@ -487,12 +448,19 @@ export function useCandleSubscription() {
                     clearInterval(checkInterval);
                     resolve(null);
                 }
-            }, 100); // Check every 100ms
+            }, 100);
         });
     }, []);
 
     /**
      * Subscribe to candles for a stock
+     *
+     * Flow:
+     * 1. Unsubscribe from existing WebSocket subscription
+     * 2. Subscribe to WebSocket FIRST to get the latest sequence
+     * 3. Wait for WebSocket to send INITIAL_CANDLE with sequence
+     * 4. Fetch initial data via REST using the sequence
+     * 5. Initialize chart with fetched data
      */
     const subscribeToCandles = useCallback(async (platformName, stockSymbol, timeframe) => {
         if (!platformName || !stockSymbol || !timeframe) {
@@ -500,7 +468,6 @@ export function useCandleSubscription() {
             return Promise.reject(new Error("Missing required parameters"));
         }
 
-        // Check if already subscribed to same
         if (
             currentDetails.platformName === platformName &&
             currentDetails.stockSymbol === stockSymbol &&
@@ -511,7 +478,6 @@ export function useCandleSubscription() {
             return activeSubscriptionId;
         }
 
-        // Detect subscription change type
         const prev = previousSubscriptionRef.current;
         const isTimeframeChangeOnly =
             prev.platformName === platformName &&
@@ -530,30 +496,24 @@ export function useCandleSubscription() {
         setIsWaitingForData(true);
         setError(null);
 
-        // Reset the latest sequence ref
         latestSequenceFromWSRef.current = null;
 
         try {
-            // Step 1: Unsubscribe from existing WebSocket subscription
             if (activeSubscriptionId) {
                 await unsubscribeFromCandleUpdates();
                 await new Promise(resolve => setTimeout(resolve, 200));
             }
 
-            // Step 2: Subscribe to WebSocket FIRST to get the latest sequence
             console.log('[useCandleSubscription] Subscribing to WebSocket...');
             await subscribeToCandleUpdates(platformName, stockSymbol, timeframe);
 
-            // Step 3: Wait for WebSocket to send INITIAL_CANDLE with sequence
             console.log('[useCandleSubscription] Waiting for latest sequence from WebSocket...');
             const latestSequence = await waitForLatestSequence();
 
-            // Step 4: Fetch initial data via REST using the sequence
             let candles;
             let anchorSequence = null;
 
             if (isTimeframeChangeOnly) {
-                // Get anchor timestamp from current view
                 const currentCandles = chartContext.displayCandles || [];
                 const viewStart = chartContext.viewStartIndex || 0;
                 const anchorCandle = currentCandles[viewStart];
@@ -568,11 +528,9 @@ export function useCandleSubscription() {
                     candles = result.candles;
                     anchorSequence = result.anchorSequence;
                 } else {
-                    // Fallback to initial candles with sequence
                     candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
                 }
             } else {
-                // Normal subscription - use sequence from WebSocket
                 candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
             }
 
@@ -580,7 +538,6 @@ export function useCandleSubscription() {
                 throw new Error('No candle data available');
             }
 
-            // Step 5: Initialize chart with fetched data
             const latestSeq = latestSequence || candles[candles.length - 1]?.sequence;
 
             initializeChart(candles, {
@@ -593,7 +550,6 @@ export function useCandleSubscription() {
                 anchorToSequence: anchorSequence
             });
 
-            // Update state
             setCurrentDetails({ platformName, stockSymbol, timeframe });
             previousSubscriptionRef.current = { platformName, stockSymbol, timeframe };
 
@@ -631,9 +587,6 @@ export function useCandleSubscription() {
         chartContext
     ]);
 
-    /**
-     * Unsubscribe from candles
-     */
     const unsubscribeFromCandles = useCallback(async () => {
         console.log('[useCandleSubscription] Unsubscribing');
 
@@ -649,19 +602,14 @@ export function useCandleSubscription() {
             timeframe: null
         };
 
-        // Reset latest sequence ref
         latestSequenceFromWSRef.current = null;
 
-        // Cancel any pending requests
         pendingRequestsRef.current.past.inFlight = false;
         pendingRequestsRef.current.future.inFlight = false;
 
         return unsubscribeFromCandleUpdates();
     }, [unsubscribeFromCandleUpdates]);
 
-    // ==================== EVENT LISTENERS ====================
-
-    // Handle buffer needs from ChartContext
     useEffect(() => {
         const handleBufferNeeded = (event) => {
             const { direction } = event.detail || {};
@@ -677,7 +625,6 @@ export function useCandleSubscription() {
         return () => window.removeEventListener('chartBufferNeeded', handleBufferNeeded);
     }, [fetchOlderCandles, fetchNewerCandles]);
 
-    // Handle indicator data needs
     useEffect(() => {
         const handleIndicatorDataNeeded = (event) => {
             const { lookbackNeeded } = event.detail || {};
@@ -691,7 +638,6 @@ export function useCandleSubscription() {
         return () => window.removeEventListener('indicatorDataNeeded', handleIndicatorDataNeeded);
     }, [fetchIndicatorData]);
 
-    // Handle restart chart request
     useEffect(() => {
         const handleRestartRequest = async () => {
             const { platformName, stockSymbol, timeframe } = currentDetails;
@@ -703,14 +649,12 @@ export function useCandleSubscription() {
 
             console.log('[useCandleSubscription] Restarting chart');
 
-            // Reset previous subscription to force fresh load
             previousSubscriptionRef.current = {
                 platformName: null,
                 stockSymbol: null,
                 timeframe: null
             };
 
-            // Unsubscribe then resubscribe
             await unsubscribeFromCandles();
             await new Promise(resolve => setTimeout(resolve, 300));
             await subscribeToCandles(platformName, stockSymbol, timeframe);
@@ -720,20 +664,17 @@ export function useCandleSubscription() {
         return () => window.removeEventListener('restartChartRequested', handleRestartRequest);
     }, [currentDetails, unsubscribeFromCandles, subscribeToCandles]);
 
-    // Register WebSocket message handler
     useEffect(() => {
         const unregister = registerHandler(handleWebSocketMessage);
         return () => unregister();
     }, [registerHandler, handleWebSocketMessage]);
 
-    // Update latest known sequence when it changes from WebSocket
     useEffect(() => {
         if (latestCandleInfo?.sequence) {
             updateLatestKnownSequence(latestCandleInfo.sequence);
         }
     }, [latestCandleInfo, updateLatestKnownSequence]);
 
-    // Cleanup on unmount
     useEffect(() => {
         return () => {
             console.log('[useCandleSubscription] Cleaning up');
@@ -742,8 +683,6 @@ export function useCandleSubscription() {
             latestSequenceFromWSRef.current = null;
         };
     }, []);
-
-    // ==================== RETURN ====================
 
     return {
         isConnected,

@@ -1,4 +1,3 @@
-// src/components/stockMarket/IndicatorCharts.jsx
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { ScrollArea } from "../../components/ui/scroll-area.jsx";
 import IndicatorSubcard from "./indicators/IndicatorSubcard.jsx";

@@ -1,4 +1,3 @@
-// src/components/stockMarket/StockSelectors.jsx
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { useStockData } from "../../hooks/useStockData.js";
@@ -10,13 +9,10 @@ import { useCandleSubscription } from "../../hooks/useCandleSubscription.js";
 import { ChartContext } from "./ChartContext.jsx";
 import { stockSelectionEvents } from "./stockSelectionEvents.js";
 
-// stockSelectionEvents moved to separate module to satisfy react-refresh rule
-
-const StockSelectors = () => {
+const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
     const {
         platforms,
         stocks,
-        selectedPlatform,
         setSelectedPlatform: setStockDataPlatform,
         selectedStock,
         setSelectedStock: setStockDataStock,
@@ -25,12 +21,17 @@ const StockSelectors = () => {
         error: stockDataError
     } = useStockData();
 
-    const [selectedTimeframe, setSelectedTimeframe] = useState("1D"); // UI selection; synced from context below
+    const [selectedTimeframe, setSelectedTimeframe] = useState("1D");
 
-    // Use both setter and current value from ChartContext
     const { setTimeframeInMs, timeframeInMs } = useContext(ChartContext);
 
-    // Notify other components when platform or stock changes
+    // Sync internal stock data hook with parent platform state
+    useEffect(() => {
+        if (selectedPlatform) {
+            setStockDataPlatform(selectedPlatform);
+        }
+    }, [selectedPlatform, setStockDataPlatform]);
+
     useEffect(() => {
         if (selectedPlatform && selectedStock) {
             console.log("[StockSelectors] Broadcasting selection:", selectedPlatform, selectedStock);
@@ -46,30 +47,26 @@ const StockSelectors = () => {
 
     const { toast } = useToast();
 
-    // Used to track if we've already attempted subscription with current selections
     const subscriptionRef = useRef({
         platform: null,
         stock: null,
         timeframe: null
     });
 
-    // Function to convert timeframe string to milliseconds
     const timeframeToMilliseconds = (timeframe) => {
-        if (!timeframe) return 60000; // Default to 1 minute
+        if (!timeframe) return 60000;
 
         switch (timeframe) {
-            case "1M": return 60000; // 1 minute
-            case "5M": return 5 * 60000; // 5 minutes
-            case "15M": return 15 * 60000; // 15 minutes
-            case "1H": return 60 * 60000; // 1 hour
-            case "4H": return 4 * 60 * 60000; // 4 hours
-            case "1D": return 24 * 60 * 60000; // 1 day
-            default: return 60000; // Default to 1 minute
+            case "1M": return 60000;
+            case "5M": return 5 * 60000;
+            case "15M": return 15 * 60000;
+            case "1H": return 60 * 60000;
+            case "4H": return 4 * 60 * 60000;
+            case "1D": return 24 * 60 * 60000;
+            default: return 60000;
         }
     };
 
-    // Helper to convert milliseconds back to timeframe label for UI
-    // Do NOT coerce 60000 to 1D; 60000 is 1M.
     const millisecondsToTimeframe = (ms) => {
         switch (ms) {
             case 1 * 60 * 1000: return "1m";
@@ -78,11 +75,10 @@ const StockSelectors = () => {
             case 60 * 60 * 1000: return "1h";
             case 4 * 60 * 60 * 1000: return "4h";
             case 24 * 60 * 60 * 1000: return "1d";
-            default: return selectedTimeframe; // Keep current selection if unknown
+            default: return selectedTimeframe;
         }
     };
 
-    // Keep UI selection in sync with global context value
     useEffect(() => {
         if (typeof timeframeInMs === 'number' && timeframeInMs > 0) {
             const mapped = millisecondsToTimeframe(timeframeInMs);
@@ -90,20 +86,20 @@ const StockSelectors = () => {
                 setSelectedTimeframe(mapped);
             }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [timeframeInMs]);
 
-    // Handle timeframe change
     const handleTimeframeChange = (timeframe) => {
         if (!timeframe || timeframe === selectedTimeframe) return;
         setSelectedTimeframe(timeframe);
         setTimeframeInMs(timeframeToMilliseconds(timeframe));
     };
 
-    // Combine errors from different sources
+    const handlePlatformChange = (platform) => {
+        onPlatformChange(platform);
+    };
+
     const error = stockDataError || subscriptionError;
 
-    // Show error toast if there's an error
     useEffect(() => {
         if (error) {
             toast({
@@ -115,7 +111,6 @@ const StockSelectors = () => {
         }
     }, [error, toast]);
 
-    // Memoized subscription function to avoid recreating on each render
     const handleSubscription = useCallback(() => {
         if (
             selectedPlatform &&
@@ -134,7 +129,6 @@ const StockSelectors = () => {
                 timeframe: selectedTimeframe
             });
 
-            // Update ref to current selections
             subscriptionRef.current = {
                 platform: selectedPlatform,
                 stock: selectedStock,
@@ -148,7 +142,6 @@ const StockSelectors = () => {
         }
     }, [selectedPlatform, selectedStock, selectedTimeframe, isSubscribing, subscribeToCandles]);
 
-    // Subscribe to candles when all selections are made
     useEffect(() => {
         handleSubscription();
     }, [handleSubscription]);
@@ -159,8 +152,8 @@ const StockSelectors = () => {
                 <div className="w-full sm:w-auto flex-1">
                     <p className="text-sm text-muted-foreground mb-1">Platform</p>
                     <Select
-                        value={selectedPlatform}
-                        onValueChange={setStockDataPlatform}
+                        value={selectedPlatform || ""}
+                        onValueChange={handlePlatformChange}
                         disabled={isLoadingPlatforms || isSubscribing}
                     >
                         <SelectTrigger className="w-full">
@@ -184,7 +177,7 @@ const StockSelectors = () => {
                 <div className="w-full sm:w-auto flex-1">
                     <p className="text-sm text-muted-foreground mb-1">Stock</p>
                     <Select
-                        value={selectedStock}
+                        value={selectedStock || ""}
                         onValueChange={setStockDataStock}
                         disabled={isLoadingStocks || !selectedPlatform || isSubscribing}
                     >
@@ -213,7 +206,6 @@ const StockSelectors = () => {
                 </div>
             </div>
 
-            {/* Time interval buttons */}
             <TimeIntervalButtons
                 value={selectedTimeframe}
                 onChange={handleTimeframeChange}
