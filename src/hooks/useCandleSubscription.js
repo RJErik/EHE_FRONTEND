@@ -20,13 +20,20 @@ export function useCandleSubscription() {
         timeframe: null
     });
 
+    const currentDetailsRef = useRef({
+        platformName: null,
+        stockSymbol: null,
+        timeframe: null
+    });
+
     const {
         isConnected,
         subscribeToCandleUpdates,
         unsubscribeFromCandleUpdates,
         registerHandler,
         activeSubscriptionId,
-        latestCandleInfo
+        latestCandleInfo,
+        currentSubscription
     } = useWebSocket();
 
     const chartContext = useContext(ChartContext);
@@ -57,6 +64,12 @@ export function useCandleSubscription() {
     });
 
     const latestSequenceFromWSRef = useRef(null);
+
+    const subscriptionInProgressRef = useRef(false);
+
+    useEffect(() => {
+        currentDetailsRef.current = currentDetails;
+    }, [currentDetails]);
 
     useEffect(() => {
         candleApiService.setRefreshTokenFunction(refreshToken);
@@ -217,7 +230,7 @@ export function useCandleSubscription() {
     }, [displayedCandles, BUFFER_SIZE, indicators, calculateMaxLookback, parseTimeframeToMs, transformCandles]);
 
     const fetchOlderCandles = useCallback(async () => {
-        const { platformName, stockSymbol, timeframe } = currentDetails;
+        const { platformName, stockSymbol, timeframe } = currentDetailsRef.current;
 
         if (!platformName || !stockSymbol || !timeframe) {
             console.warn('[useCandleSubscription] No active subscription for fetchOlderCandles');
@@ -279,10 +292,10 @@ export function useCandleSubscription() {
         } finally {
             pendingRequestsRef.current.past.inFlight = false;
         }
-    }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
+    }, [sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
 
     const fetchNewerCandles = useCallback(async () => {
-        const { platformName, stockSymbol, timeframe } = currentDetails;
+        const { platformName, stockSymbol, timeframe } = currentDetailsRef.current;
 
         if (!platformName || !stockSymbol || !timeframe) {
             console.warn('[useCandleSubscription] No active subscription for fetchNewerCandles');
@@ -346,10 +359,10 @@ export function useCandleSubscription() {
         } finally {
             pendingRequestsRef.current.future.inFlight = false;
         }
-    }, [currentDetails, sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
+    }, [sequenceBounds, FETCH_BATCH_SIZE, transformCandles, mergeCandles, setBufferLoading, toast]);
 
     const fetchIndicatorData = useCallback(async (lookbackNeeded) => {
-        const { platformName, stockSymbol, timeframe } = currentDetails;
+        const { platformName, stockSymbol, timeframe } = currentDetailsRef.current;
 
         if (!platformName || !stockSymbol || !timeframe) {
             return;
@@ -384,7 +397,7 @@ export function useCandleSubscription() {
         } catch (err) {
             console.error('[useCandleSubscription] Error fetching indicator data:', err);
         }
-    }, [currentDetails, sequenceBounds, transformCandles, mergeCandles]);
+    }, [sequenceBounds, transformCandles, mergeCandles]);
 
     const handleWebSocketMessage = useCallback((message) => {
         console.log('[useCandleSubscription] WebSocket message:', message.type);
@@ -468,14 +481,20 @@ export function useCandleSubscription() {
             return Promise.reject(new Error("Missing required parameters"));
         }
 
+        const current = currentDetailsRef.current;
         if (
-            currentDetails.platformName === platformName &&
-            currentDetails.stockSymbol === stockSymbol &&
-            currentDetails.timeframe === timeframe &&
+            current.platformName === platformName &&
+            current.stockSymbol === stockSymbol &&
+            current.timeframe === timeframe &&
             activeSubscriptionId
         ) {
             console.log('[useCandleSubscription] Already subscribed to this');
             return activeSubscriptionId;
+        }
+
+        if (subscriptionInProgressRef.current) {
+            console.log('[useCandleSubscription] Subscription already in progress');
+            return Promise.reject(new Error("Subscription in progress"));
         }
 
         const prev = previousSubscriptionRef.current;
@@ -495,6 +514,7 @@ export function useCandleSubscription() {
         setIsSubscribing(true);
         setIsWaitingForData(true);
         setError(null);
+        subscriptionInProgressRef.current = true;
 
         latestSequenceFromWSRef.current = null;
 
@@ -550,8 +570,10 @@ export function useCandleSubscription() {
                 anchorToSequence: anchorSequence
             });
 
-            setCurrentDetails({ platformName, stockSymbol, timeframe });
-            previousSubscriptionRef.current = { platformName, stockSymbol, timeframe };
+            const newDetails = { platformName, stockSymbol, timeframe };
+            setCurrentDetails(newDetails);
+            currentDetailsRef.current = newDetails;
+            previousSubscriptionRef.current = newDetails;
 
             console.log('[useCandleSubscription] Subscription complete');
             return "success";
@@ -571,9 +593,9 @@ export function useCandleSubscription() {
             throw err;
         } finally {
             setIsSubscribing(false);
+            subscriptionInProgressRef.current = false;
         }
     }, [
-        currentDetails,
         activeSubscriptionId,
         unsubscribeFromCandleUpdates,
         subscribeToCandleUpdates,
@@ -590,17 +612,15 @@ export function useCandleSubscription() {
     const unsubscribeFromCandles = useCallback(async () => {
         console.log('[useCandleSubscription] Unsubscribing');
 
-        setCurrentDetails({
-            platformName: null,
-            stockSymbol: null,
-            timeframe: null
-        });
-
-        previousSubscriptionRef.current = {
+        const emptyDetails = {
             platformName: null,
             stockSymbol: null,
             timeframe: null
         };
+
+        setCurrentDetails(emptyDetails);
+        currentDetailsRef.current = emptyDetails;
+        previousSubscriptionRef.current = emptyDetails;
 
         latestSequenceFromWSRef.current = null;
 
@@ -640,14 +660,43 @@ export function useCandleSubscription() {
 
     useEffect(() => {
         const handleRestartRequest = async () => {
-            const { platformName, stockSymbol, timeframe } = currentDetails;
+            let { platformName, stockSymbol, timeframe } = currentDetailsRef.current;
 
             if (!platformName || !stockSymbol || !timeframe) {
-                console.warn('[useCandleSubscription] Cannot restart - no active subscription');
+                if (currentSubscription?.platformName) {
+                    console.log('[useCandleSubscription] Using context subscription for restart:', currentSubscription);
+                    platformName = currentSubscription.platformName;
+                    stockSymbol = currentSubscription.stockSymbol;
+                    timeframe = currentSubscription.timeframe;
+                }
+            }
+
+            if (!platformName || !stockSymbol || !timeframe) {
+                console.warn('[useCandleSubscription] Cannot restart - no active subscription found', {
+                    localDetails: currentDetailsRef.current,
+                    contextSubscription: currentSubscription,
+                    activeSubscriptionId
+                });
+
+                toast({
+                    title: "Cannot Restart",
+                    description: "No active subscription. Please select a stock first.",
+                    variant: "warning",
+                    duration: 3000
+                });
                 return;
             }
 
-            console.log('[useCandleSubscription] Restarting chart');
+            if (subscriptionInProgressRef.current) {
+                console.log('[useCandleSubscription] Restart blocked - subscription in progress');
+                return;
+            }
+
+            console.log('[useCandleSubscription] Restarting chart:', {
+                platformName,
+                stockSymbol,
+                timeframe
+            });
 
             previousSubscriptionRef.current = {
                 platformName: null,
@@ -655,14 +704,26 @@ export function useCandleSubscription() {
                 timeframe: null
             };
 
-            await unsubscribeFromCandles();
-            await new Promise(resolve => setTimeout(resolve, 300));
-            await subscribeToCandles(platformName, stockSymbol, timeframe);
+            try {
+                await unsubscribeFromCandles();
+                await new Promise(resolve => setTimeout(resolve, 300));
+                await subscribeToCandles(platformName, stockSymbol, timeframe);
+
+                console.log('[useCandleSubscription] Restart completed successfully');
+            } catch (err) {
+                console.error('[useCandleSubscription] Restart failed:', err);
+                toast({
+                    title: "Restart Failed",
+                    description: err.message || "Failed to restart chart",
+                    variant: "destructive",
+                    duration: 5000
+                });
+            }
         };
 
         window.addEventListener('restartChartRequested', handleRestartRequest);
         return () => window.removeEventListener('restartChartRequested', handleRestartRequest);
-    }, [currentDetails, unsubscribeFromCandles, subscribeToCandles]);
+    }, [unsubscribeFromCandles, subscribeToCandles, currentSubscription, activeSubscriptionId, toast]);
 
     useEffect(() => {
         const unregister = registerHandler(handleWebSocketMessage);
@@ -681,6 +742,7 @@ export function useCandleSubscription() {
             pendingRequestsRef.current.past.inFlight = false;
             pendingRequestsRef.current.future.inFlight = false;
             latestSequenceFromWSRef.current = null;
+            subscriptionInProgressRef.current = false;
         };
     }, []);
 

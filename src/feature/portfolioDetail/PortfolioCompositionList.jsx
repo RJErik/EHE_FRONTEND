@@ -3,7 +3,6 @@ import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import {
     ChartContainer,
     ChartTooltip,
-    ChartTooltipContent,
 } from "../../components/ui/chart.jsx";
 
 const PortfolioCompositionList = ({ portfolioData }) => {
@@ -21,15 +20,40 @@ const PortfolioCompositionList = ({ portfolioData }) => {
     const chartData = [...portfolioData.stocks]
         .sort((a, b) => parseFloat(b.value) - parseFloat(a.value))
         .map(stock => ({
-            month: stock.symbol,
-            desktop: parseFloat(stock.value),
+            stock: stock.symbol,
+            value: parseFloat(stock.value),
         }));
 
     const chartConfig = {
-        desktop: {
+        value: {
             label: "Value",
             color: "hsl(var(--chart-1))",
         },
+    };
+
+    // Custom tooltip to match ChartTooltipContent style but show "stock: value$"
+    const CustomTooltipContent = ({ active, payload }) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div className="rounded-lg border bg-background px-2.5 py-1.5 text-xs shadow-xl">
+                    <div className="flex items-center gap-2">
+                        <div
+                            className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                            style={{ backgroundColor: "var(--color-value)" }}
+                        />
+                        <span className="text-muted-foreground">{data.stock}:</span>
+                        <span className="font-mono font-medium text-foreground">
+                            {data.value.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            })}$
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+        return null;
     };
 
     return (
@@ -43,24 +67,21 @@ const PortfolioCompositionList = ({ portfolioData }) => {
                         accessibilityLayer
                         data={chartData}
                         layout="vertical"
-                        margin={{
-                            left: -20,
-                        }}
                     >
-                        <XAxis type="number" dataKey="desktop" hide />
+                        <XAxis type="number" dataKey="value" hide />
                         <YAxis
-                            dataKey="month"
+                            dataKey="stock"
                             type="category"
                             tickLine={false}
-                            tickMargin={10}
+                            tickMargin={5}
                             axisLine={false}
-                            width={60}
+                            tickFormatter={(value) => value.slice(0, 10)}
                         />
                         <ChartTooltip
                             cursor={false}
-                            content={<ChartTooltipContent hideLabel />}
+                            content={<CustomTooltipContent />}
                         />
-                        <Bar dataKey="desktop" fill="var(--color-desktop)" radius={5} />
+                        <Bar dataKey="value" fill="var(--color-value)" radius={5} />
                     </BarChart>
                 </ChartContainer>
             </CardContent>

@@ -40,7 +40,7 @@ const Home = () => {
         .map((stock) => ({
             stock: stock.symbol,
             platform: stock.platform,
-            change: Math.abs(parseFloat(stock.changePercentage)),
+            change: parseFloat(stock.changePercentage),
         }))
         .sort((a, b) => a.change - b.change); // Sort ascending by absolute value for worst stocks
 

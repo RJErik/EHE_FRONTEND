@@ -19,22 +19,22 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
 
     // Prepare data for the pie chart
     const chartData = portfolioData.stocks.map((stock, index) => ({
-        browser: stock.symbol,
-        visitors: parseFloat(stock.value),
+        stock: stock.symbol,
+        value: parseFloat(stock.value),
         fill: `hsl(${(index * 40) % 360}, 70%, 50%)`
     }));
 
-    const totalStocksValue = chartData.reduce((sum, item) => sum + item.visitors, 0);
+    const totalStocksValue = chartData.reduce((sum, item) => sum + item.value, 0);
 
     const chartConfig = {
-        visitors: {
+        value: {
             label: "Value",
         },
         ...Object.fromEntries(
             chartData.map((item, index) => [
-                item.browser,
+                item.stock,
                 {
-                    label: item.browser,
+                    label: item.stock,
                     color: `hsl(${(index * 40) % 360}, 70%, 50%)`,
                 }
             ])
@@ -58,8 +58,8 @@ const PortfolioCompositionChart = ({ portfolioData }) => {
                         />
                         <Pie
                             data={chartData}
-                            dataKey="visitors"
-                            nameKey="browser"
+                            dataKey="value"
+                            nameKey="stock"
                             innerRadius={60}
                             outerRadius={80}
                             strokeWidth={5}

@@ -29,24 +29,20 @@ export function renderCandleChart({
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
+        // Calculate candle width based on number of data points
         const candleWidth = Math.max(
             Math.min((width / data.length) * 0.8, 20),
             1
         );
 
-        const timestamps = data.map(d => new Date(d.timestamp));
-        const timeExtent = d3.extent(timestamps);
+        // === KEY CHANGE: Use index-based scale instead of time-based ===
+        // This collapses gaps where there's no data (weekends, holidays)
+        const xScale = d3.scaleLinear()
+            .domain([0, data.length - 1])
+            .range([candleWidth / 2, width - candleWidth / 2]);
 
-        let avgInterval = calculateAverageTimeInterval(timestamps);
-
-        const paddedDomain = [
-            new Date(timeExtent[0].getTime() - avgInterval/2),
-            new Date(timeExtent[1].getTime() + avgInterval/2)
-        ];
-
-        const xScale = d3.scaleTime()
-            .domain(paddedDomain)
-            .range([0, width]);
+        // Helper function to get x position for a data point
+        const getX = (d, i) => xScale(i);
 
         const yScale = createYScale(isLogarithmic, data, height);
 
@@ -57,8 +53,13 @@ export function renderCandleChart({
             })])
             .range([height, height * 0.8]);
 
-        drawAxesAndGrid(svg, xScale, yScale, width, height);
+        // Draw axes and grid with index-based scale
+        drawAxesAndGrid(svg, data, xScale, yScale, width, height);
+
+        // Draw volume bars using index
         drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height);
+
+        // Draw candles using index
         drawCandles(svg, data, xScale, yScale, candleWidth);
 
         if (mainIndicators && mainIndicators.length > 0) {
@@ -83,7 +84,7 @@ export function renderCandleChart({
             if (isDragging) return;
 
             updateCrosshairPosition(
-                d, mouseY, crosshair, verticalLine, horizontalLine,
+                d, mouseY, index, crosshair, verticalLine, horizontalLine,
                 priceLabel, dateLabel, xScale, yScale, width, height
             );
         };
@@ -116,7 +117,7 @@ export function renderCandleChart({
             if (hoveredCandle) {
                 crosshair.style("display", null);
 
-                const candleX = xScale(new Date(hoveredCandle.timestamp));
+                const candleX = xScale(hoveredIndex);
                 verticalLine.attr("x1", candleX).attr("x2", candleX);
 
                 const dateFormat = new Intl.DateTimeFormat('en-US', {
@@ -221,13 +222,9 @@ function drawIndicators(svg, data, indicators, xScale, yScale) {
 
                 valueKeys.forEach(key => {
                     try {
+                        // Use index-based x positioning
                         const line = d3.line()
-                            .x((_, i) => {
-                                if (i < data.length) {
-                                    return xScale(new Date(data[i].timestamp));
-                                }
-                                return 0;
-                            })
+                            .x((_, i) => xScale(i))
                             .y((_, i) => {
                                 if (i >= data.length) return null;
                                 const candle = data[i];
@@ -282,13 +279,9 @@ function drawIndicators(svg, data, indicators, xScale, yScale) {
                 });
             } else {
                 try {
+                    // Use index-based x positioning
                     const line = d3.line()
-                        .x((_, i) => {
-                            if (i < data.length) {
-                                return xScale(new Date(data[i].timestamp));
-                            }
-                            return 0;
-                        })
+                        .x((_, i) => xScale(i))
                         .y((_, i) => {
                             if (i >= data.length) return null;
                             const candle = data[i];
@@ -326,26 +319,6 @@ function drawIndicators(svg, data, indicators, xScale, yScale) {
     });
 }
 
-function calculateAverageTimeInterval(timestamps) {
-    if (!timestamps || timestamps.length <= 1) {
-        return 24 * 60 * 60 * 1000;
-    }
-
-    try {
-        const sortedTimestamps = [...timestamps].sort((a, b) => a - b);
-        let totalInterval = 0;
-
-        for (let i = 1; i < sortedTimestamps.length; i++) {
-            totalInterval += sortedTimestamps[i] - sortedTimestamps[i-1];
-        }
-
-        return totalInterval / (sortedTimestamps.length - 1);
-    } catch (err) {
-        console.warn("Error calculating time interval:", err);
-        return 24 * 60 * 60 * 1000;
-    }
-}
-
 function createYScale(isLogarithmic, data, height) {
     try {
         const validLows = data.filter(d => d && typeof d.low === 'number').map(d => d.low);
@@ -375,20 +348,42 @@ function createYScale(isLogarithmic, data, height) {
     }
 }
 
-function drawAxesAndGrid(svg, xScale, yScale, width, height) {
+/**
+ * Draw axes and grid - now using index-based x-axis with date labels
+ */
+function drawAxesAndGrid(svg, data, xScale, yScale, width, height) {
     try {
+        // Determine appropriate tick count based on data length and width
+        const maxTicks = Math.min(Math.floor(width / 80), data.length, 10);
+
+        // Create custom x-axis that shows dates at data point indices
+        const xAxis = d3.axisBottom(xScale)
+            .ticks(maxTicks)
+            .tickFormat(i => {
+                const index = Math.round(i);
+                if (index >= 0 && index < data.length) {
+                    const date = new Date(data[index].timestamp);
+                    return formatAxisDate(date, data);
+                }
+                return '';
+            });
+
         svg.append("g")
             .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(xScale));
+            .call(xAxis)
+            .selectAll("text")
+            .style("text-anchor", "middle");
 
         svg.append("g")
             .call(d3.axisLeft(yScale));
 
+        // Grid lines
         svg.append("g")
             .attr("class", "grid")
             .attr("transform", `translate(0,${height})`)
             .call(
                 d3.axisBottom(xScale)
+                    .ticks(maxTicks)
                     .tickSize(-height)
                     .tickFormat("")
             )
@@ -407,6 +402,40 @@ function drawAxesAndGrid(svg, xScale, yScale, width, height) {
     }
 }
 
+/**
+ * Format date for axis labels based on data timeframe
+ */
+function formatAxisDate(date, data) {
+    if (!date || !data || data.length < 2) {
+        return d3.timeFormat("%b %d")(date);
+    }
+
+    // Estimate timeframe from data
+    const firstTimestamp = data[0].timestamp;
+    const lastTimestamp = data[data.length - 1].timestamp;
+    const avgInterval = (lastTimestamp - firstTimestamp) / (data.length - 1);
+
+    const ONE_HOUR = 60 * 60 * 1000;
+    const ONE_DAY = 24 * ONE_HOUR;
+
+    if (avgInterval < ONE_HOUR) {
+        // Intraday (minutes)
+        return d3.timeFormat("%H:%M")(date);
+    } else if (avgInterval < ONE_DAY) {
+        // Hourly
+        return d3.timeFormat("%b %d %H:%M")(date);
+    } else if (avgInterval < 7 * ONE_DAY) {
+        // Daily
+        return d3.timeFormat("%b %d")(date);
+    } else {
+        // Weekly or longer
+        return d3.timeFormat("%b %d '%y")(date);
+    }
+}
+
+/**
+ * Draw volume bars using index-based positioning
+ */
 function drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height) {
     try {
         svg.selectAll(".volume-bar")
@@ -414,7 +443,7 @@ function drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height) {
             .enter()
             .append("rect")
             .attr("class", "volume-bar")
-            .attr("x", d => xScale(new Date(d.timestamp)) - candleWidth/2)
+            .attr("x", (d, i) => xScale(i) - candleWidth/2)
             .attr("y", d => volumeScale(d.volume || 0))
             .attr("width", candleWidth)
             .attr("height", d => height - volumeScale(d.volume || 0))
@@ -424,6 +453,9 @@ function drawVolumeBars(svg, data, xScale, volumeScale, candleWidth, height) {
     }
 }
 
+/**
+ * Draw candles using index-based positioning
+ */
 function drawCandles(svg, data, xScale, yScale, candleWidth) {
     try {
         const candles = svg.selectAll(".candle")
@@ -431,23 +463,26 @@ function drawCandles(svg, data, xScale, yScale, candleWidth) {
             .enter()
             .append("g")
             .attr("class", "candle")
-            .attr("data-timestamp", d => d.timestamp);
+            .attr("data-timestamp", d => d.timestamp)
+            .attr("data-index", (d, i) => i);
 
+        // Wick (high-low line)
         candles.append("line")
             .attr("class", "wick")
-            .attr("x1", d => xScale(new Date(d.timestamp)))
-            .attr("x2", d => xScale(new Date(d.timestamp)))
+            .attr("x1", (d, i) => xScale(i))
+            .attr("x2", (d, i) => xScale(i))
             .attr("y1", d => yScale(d.high))
             .attr("y2", d => yScale(d.low))
             .attr("stroke", d => d.close >= d.open ? "green" : "red")
             .attr("stroke-width", 1);
 
+        // Candle body
         candles.append("rect")
             .attr("class", "candle-body")
-            .attr("x", d => xScale(new Date(d.timestamp)) - candleWidth/2)
+            .attr("x", (d, i) => xScale(i) - candleWidth/2)
             .attr("y", d => yScale(Math.max(d.open, d.close)))
             .attr("width", candleWidth)
-            .attr("height", d => Math.abs(yScale(d.open) - yScale(d.close)))
+            .attr("height", d => Math.max(1, Math.abs(yScale(d.open) - yScale(d.close))))
             .attr("fill", d => d.close >= d.open ? "green" : "red");
 
         return candles;
@@ -525,14 +560,18 @@ function createCrosshair(svg, width, height) {
     }
 }
 
+/**
+ * Update crosshair position - now using index for x position
+ */
 function updateCrosshairPosition(
-    d, mouseY, crosshair, verticalLine, horizontalLine,
+    d, mouseY, index, crosshair, verticalLine, horizontalLine,
     priceLabel, dateLabel, xScale, yScale, width, height
 ) {
     try {
         if (!d || !crosshair) return;
 
-        const candleX = xScale(new Date(d.timestamp));
+        // Use index for x position
+        const candleX = xScale(index);
 
         crosshair.style("display", null);
 
@@ -591,6 +630,9 @@ function updateCrosshairPosition(
     }
 }
 
+/**
+ * Create hover zones using index-based positioning
+ */
 function createHoverZones(
     svg, data, xScale, width, height, isDragging,
     setActiveTimestamp, setCurrentMouseY, updateCrosshair, setHoveredIndex
@@ -598,22 +640,22 @@ function createHoverZones(
     try {
         if (!data || !data.length) return;
 
-        const positions = data.map(d => xScale(new Date(d.timestamp)));
         const hoverZones = svg.append("g").attr("class", "hover-zones");
 
         data.forEach((d, i) => {
+            // Calculate zone boundaries based on index
             let left, right;
 
             if (i === 0) {
                 left = 0;
             } else {
-                left = (positions[i] + positions[i-1]) / 2;
+                left = (xScale(i) + xScale(i - 1)) / 2;
             }
 
             if (i === data.length - 1) {
                 right = width;
             } else {
-                right = (positions[i] + positions[i+1]) / 2;
+                right = (xScale(i) + xScale(i + 1)) / 2;
             }
 
             hoverZones.append("rect")

@@ -32,19 +32,19 @@ const PortfolioDivisionChart = ({ portfolioData }) => {
 
     const chartData = [
         {
-            browser: "Stocks",
-            visitors: stocksValue,
+            category: "Stocks",
+            value: stocksValue,
             fill: "hsl(210, 70%, 50%)" // Blue for stocks
         },
         {
-            browser: "Reserved Cash",
-            visitors: reservedCashValue,
+            category: "Reserved Cash",
+            value: reservedCashValue,
             fill: "hsl(120, 70%, 50%)" // Green for cash
         }
-    ].filter(item => item.visitors > 0);
+    ].filter(item => item.value > 0);
 
     const chartConfig = {
-        visitors: {
+        value: {
             label: "Value",
         },
         Stocks: {
@@ -84,8 +84,8 @@ const PortfolioDivisionChart = ({ portfolioData }) => {
                         />
                         <Pie
                             data={chartData}
-                            dataKey="visitors"
-                            nameKey="browser"
+                            dataKey="value"
+                            nameKey="category"
                             innerRadius={60}
                             outerRadius={80}
                             strokeWidth={5}

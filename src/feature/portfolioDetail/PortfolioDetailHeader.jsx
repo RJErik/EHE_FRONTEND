@@ -1,5 +1,6 @@
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import binanceLogo from "../../assets/binance.png";
+import alpacaLogo from "../../assets/alpaca.png";
 import defaultPlatformLogo from "../../assets/default-platform.png";
 
 const PortfolioDetailHeader = ({ portfolioData }) => {
@@ -25,6 +26,8 @@ const PortfolioDetailHeader = ({ portfolioData }) => {
         switch (platformLower) {
             case 'binance':
                 return binanceLogo;
+            case 'alpaca':
+                return alpacaLogo;
             default:
                 return defaultPlatformLogo;
         }
