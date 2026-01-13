@@ -275,7 +275,6 @@ function createHoverZone(
             setHoveredIndex(boundedIndex);
             setCurrentMouseY(mouseY);
 
-            // NEW: Update activeTimestamp to synchronize with candle chart
             // For array data, there's no timestamp in the indicator data directly
             // so we need to rely on the hoveredIndex for synchronization
             setActiveTimestamp(boundedIndex);

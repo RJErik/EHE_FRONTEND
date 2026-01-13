@@ -25,10 +25,8 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
 
     const { setTimeframeInMs, timeframeInMs } = useContext(ChartContext);
 
-    // Track which platform the current stocks belong to
     const [stocksLoadedForPlatform, setStocksLoadedForPlatform] = useState(null);
 
-    // Track if we're in a platform transition
     const platformTransitionRef = useRef(false);
 
     // Sync internal stock data hook with parent platform state
@@ -45,7 +43,6 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
             setStocksLoadedForPlatform(selectedPlatform);
             platformTransitionRef.current = false;
 
-            // ✅ Clear selected stock if it's not in the new list
             if (selectedStock && stocks.length > 0 && !stocks.includes(selectedStock)) {
                 console.log("[StockSelectors] Clearing invalid stock selection:", selectedStock);
                 setStockDataStock(null);
@@ -53,14 +50,14 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
         }
     }, [isLoadingStocks, selectedPlatform, stocks, selectedStock, setStockDataStock]);
 
-    // ✅ FIXED: Only broadcast when stocks are confirmed loaded for current platform
+    // Only broadcast when stocks are confirmed loaded for current platform
     useEffect(() => {
         const isStocksCurrentForPlatform = stocksLoadedForPlatform === selectedPlatform;
         const isValidSelection = selectedPlatform &&
             selectedStock &&
             stocks.length > 0 &&
             stocks.includes(selectedStock) &&
-            isStocksCurrentForPlatform &&  // ✅ Critical check
+            isStocksCurrentForPlatform &&
             !isLoadingStocks &&
             !platformTransitionRef.current;
 

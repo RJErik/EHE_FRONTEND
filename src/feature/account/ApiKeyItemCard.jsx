@@ -1,7 +1,6 @@
 import { Card, CardContent } from "../../components/ui/card.jsx";
 import { Button } from "../../components/ui/button.jsx";
 import { Pencil, Trash2 } from "lucide-react";
-import { Separator } from "@/components/ui/separator.jsx";
 
 const ApiKeyItemCard = ({ apiKey, onUpdate, onDelete }) => {
     return (

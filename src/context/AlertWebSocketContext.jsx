@@ -1,4 +1,3 @@
-// src/context/AlertWebSocketContext.jsx
 import {createContext, useCallback, useContext, useEffect, useRef, useState} from 'react';
 import webSocketService from '../services/websocketService';
 import {useToast} from '../hooks/use-toast';

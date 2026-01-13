@@ -18,12 +18,7 @@ const ApiKeyList = () => {
     const [selectedApiKey, setSelectedApiKey] = useState(null);
 
     const { apiKeys, isLoading: isLoadingApiKeys, addApiKey, updateApiKey, deleteApiKey } = useApiKeys();
-    const { platforms, isLoadingPlatforms, fetchPlatforms } = useStockData();
-
-    // Make sure we have the platforms loaded
-    // useEffect(() => {
-    //     fetchPlatforms();
-    // }, [fetchPlatforms]);
+    const { platforms} = useStockData();
 
     const handleAddClick = () => {
         setAddDialogOpen(true);

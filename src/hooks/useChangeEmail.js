@@ -1,6 +1,4 @@
-// src/hooks/useChangeEmail.js
 import { useState, useEffect, useCallback } from "react";
-import { useToast } from "@/hooks/use-toast.js";
 import { useJwtRefresh } from "./useJwtRefresh";
 
 export function useChangeEmail() {

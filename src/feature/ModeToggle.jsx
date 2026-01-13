@@ -1,4 +1,3 @@
-// components/ModeToggle.jsx
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button.jsx";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.jsx";

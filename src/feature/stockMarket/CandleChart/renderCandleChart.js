@@ -41,8 +41,6 @@ export function renderCandleChart({
             .domain([0, data.length - 1])
             .range([candleWidth / 2, width - candleWidth / 2]);
 
-        // Helper function to get x position for a data point
-        const getX = (d, i) => xScale(i);
 
         const yScale = createYScale(isLogarithmic, data, height);
 
