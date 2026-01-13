@@ -18,6 +18,10 @@ A program futásához elengedhetetlenek az alábbi fájlók megadása a Spring B
 
  
 
+A fájlókban a kommentekben lévő beállításoknak kell szerepelnie. 
+
+ 
+
 Ezeknek az elérési útjait be kell állítani, az adatbázissal, frontend, annak különböző elérési útjaival együtt, a jelenlegi beállítások megfelelőek, a frontendet tekintve. Valamint azt, hogyha a szeretnék, hogy a sütit Secure-ok legyenek (éles környezetben). Ezen felül még belehet állítani az igazoló token-ek, jwt token-ek életartalmát. 
 
  
