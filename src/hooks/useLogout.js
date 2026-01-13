@@ -10,7 +10,7 @@ export function useLogout() {
 
         try {
             // Try to call the API but don't wait for the response
-            fetch("http://localhost:8080/api/session", {
+            fetch("/api/session", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -19,11 +19,11 @@ export function useLogout() {
             }).catch(err => {
                 console.error("Logout API error:", err);
             }).finally(() => {
-                window.location.href = "http://localhost:5173/";
+                window.location.href = "https://www.eventhorizonexchange.com";
             });
         } catch (err) {
             console.error("Error during logout:", err);
-            window.location.href = "http://localhost:5173/";
+            window.location.href = "https://www.eventhorizonexchange.com";
         } finally {
             setIsLoading(false);
         }

@@ -17,7 +17,7 @@ export function useWatchlistItems() {
 
         try {
             console.log("Fetching watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlist-items", {
+            let response = await fetch("/api/user/watchlist-items", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -32,7 +32,7 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                response = await fetch("http://localhost:8080/api/user/watchlist-items", {
+                response = await fetch("/api/user/watchlist-items", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -86,7 +86,7 @@ export function useWatchlistItems() {
 
         try {
             console.log("Fetching candles for watchlist items...");
-            let response = await fetch("http://localhost:8080/api/user/watchlist-items/candles", {
+            let response = await fetch("/api/user/watchlist-items/candles", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -102,7 +102,7 @@ export function useWatchlistItems() {
                     return;
                 }
 
-                response = await fetch("http://localhost:8080/api/user/watchlist-items/candles", {
+                response = await fetch("/api/user/watchlist-items/candles", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -152,7 +152,7 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Adding ${symbol} from ${platform} to watchlist...`);
-            let response = await fetch("http://localhost:8080/api/user/watchlist-items", {
+            let response = await fetch("/api/user/watchlist-items", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -168,7 +168,7 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                response = await fetch("http://localhost:8080/api/user/watchlist-items", {
+                response = await fetch("/api/user/watchlist-items", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -230,7 +230,7 @@ export function useWatchlistItems() {
 
         try {
             console.log(`Removing item ${id} from watchlist...`);
-            let response = await fetch(`http://localhost:8080/api/user/watchlist-items/${id}`, {
+            let response = await fetch(`/api/user/watchlist-items/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -245,7 +245,7 @@ export function useWatchlistItems() {
                     throw new Error("Session expired. Please login again.");
                 }
 
-                response = await fetch(`http://localhost:8080/api/user/watchlist-items/${id}`, {
+                response = await fetch(`/api/user/watchlist-items/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -322,7 +322,7 @@ export function useWatchlistItems() {
                 params.append("symbol", apiSymbol);
             }
 
-            const url = `http://localhost:8080/api/user/watchlist-items/search?${params.toString()}`;
+            const url = `/api/user/watchlist-items/search?${params.toString()}`;
 
             console.log(`Searching watchlist: platform=${apiPlatform}, symbol=${apiSymbol}`);
             let response = await fetch(url, {

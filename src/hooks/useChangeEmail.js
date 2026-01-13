@@ -23,7 +23,7 @@ export function useChangeEmail() {
         localStorage.setItem('lastEmailChangeRequested', newEmail);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/email-change-requests", {
+            let response = await fetch("/api/user/email-change-requests", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -41,7 +41,7 @@ export function useChangeEmail() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/email-change-requests", {
+                response = await fetch("/api/user/email-change-requests", {
                     method: "POST",
                     credentials: "include",
                     headers: {

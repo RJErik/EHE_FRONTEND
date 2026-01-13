@@ -13,7 +13,7 @@ export function useHomeInfoChart() {
         setError(null);
         try {
             console.log("Fetching worst stock data.");
-            let response = await fetch("http://localhost:8080/api/home/worst-stocks", {
+            let response = await fetch("/api/home/worst-stocks", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -30,7 +30,7 @@ export function useHomeInfoChart() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/home/worst-stocks", {
+                response = await fetch("/api/home/worst-stocks", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -81,7 +81,7 @@ export function useHomeInfoChart() {
         setError(null);
         try {
             console.log("Fetching best stock data.");
-            let response = await fetch("http://localhost:8080/api/home/best-stocks", {
+            let response = await fetch("/api/home/best-stocks", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -98,7 +98,7 @@ export function useHomeInfoChart() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/home/best-stocks", {
+                response = await fetch("/api/home/best-stocks", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -149,7 +149,7 @@ export function useHomeInfoChart() {
         setError(null);
         try {
             console.log("Fetching latest transactions data.");
-            let response = await fetch("http://localhost:8080/api/home/latest-transactions", {
+            let response = await fetch("/api/home/latest-transactions", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -166,7 +166,7 @@ export function useHomeInfoChart() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/home/latest-transactions", {
+                response = await fetch("/api/home/latest-transactions", {
                     method: "GET",
                     credentials: "include",
                     headers: {

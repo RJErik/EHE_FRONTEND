@@ -20,7 +20,7 @@ export function useTrading() {
         setError(null);
 
         try {
-            let response = await fetch(`http://localhost:8080/api/user/portfolios/by-platform?platform=${platform}`, {
+            let response = await fetch(`/api/user/portfolios/by-platform?platform=${platform}`, {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -39,7 +39,7 @@ export function useTrading() {
 
                 // Retry the original request
                 // CHANGE: Fixed retry request - was incorrectly using POST method, now correctly uses GET with query param
-                response = await fetch(`http://localhost:8080/api/user/portfolios/by-platform?platform=${platform}`, {
+                response = await fetch(`/api/user/portfolios/by-platform?platform=${platform}`, {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -96,7 +96,7 @@ export function useTrading() {
 
         try {
             let response = await fetch(
-                `http://localhost:8080/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
+                `/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
                 {
                     method: "GET",
                     credentials: "include",
@@ -116,7 +116,7 @@ export function useTrading() {
 
                 // Retry the original request
                 response = await fetch(
-                    `http://localhost:8080/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
+                    `/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
                     {
                         method: "GET",
                         credentials: "include",
@@ -176,7 +176,7 @@ export function useTrading() {
         try {
             console.log(`Executing trade: ${action} ${quantity} ${stockSymbol} via ${quantityType}`);
 
-            let response = await fetch("http://localhost:8080/api/user/trades", {
+            let response = await fetch("/api/user/trades", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -200,7 +200,7 @@ export function useTrading() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/trades", {
+                response = await fetch("/api/user/trades", {
                     method: "POST",
                     credentials: "include",
                     headers: {

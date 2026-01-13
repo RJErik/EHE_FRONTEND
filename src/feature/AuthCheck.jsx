@@ -9,7 +9,7 @@ function AuthCheck({ children }) {
     useEffect(() => {
         const verifyAuth = async () => {
             try {
-                const response = await fetch('http://localhost:8080/api/session', {
+                const response = await fetch('/api/session', {
                     method: 'GET',
                     credentials: 'include', // Include cookies in request
                     headers: {
@@ -24,7 +24,7 @@ function AuthCheck({ children }) {
                 setAuthState({ isLoading: false, isAuthenticated: true });
             } catch (error) {
                 console.error('Authentication failed:', error);
-                window.location.href = 'http://localhost:5173';
+                window.location.href = 'https://www.eventhorizonexchange.com';
             }
         };
 

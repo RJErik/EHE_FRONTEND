@@ -17,7 +17,7 @@ export function useStockData() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/platforms", {
+            let response = await fetch("/api/user/platforms", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -34,7 +34,7 @@ export function useStockData() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/platforms", {
+                response = await fetch("/api/user/platforms", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -75,7 +75,7 @@ export function useStockData() {
         setStocks([]);
 
         try {
-            let response = await fetch(`http://localhost:8080/api/user/platforms/${platform}/stocks`, {
+            let response = await fetch(`/api/user/platforms/${platform}/stocks`, {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -92,7 +92,7 @@ export function useStockData() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/platforms/${platform}/stocks`, {
+                response = await fetch(`/api/user/platforms/${platform}/stocks`, {
                     method: "GET",
                     credentials: "include",
                     headers: {

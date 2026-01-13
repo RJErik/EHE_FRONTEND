@@ -16,7 +16,7 @@ export function useAutomatedTradeRules() {
 
         try {
             console.log("Fetching automatic trade rules...");
-            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch("/api/user/automated-trade-rules", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -33,7 +33,7 @@ export function useAutomatedTradeRules() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                response = await fetch("/api/user/automated-trade-rules", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -94,7 +94,7 @@ export function useAutomatedTradeRules() {
 
         try {
             console.log(`Adding automatic trade rule for ${symbol} from ${platform}...`);
-            let response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+            let response = await fetch("/api/user/automated-trade-rules", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -121,7 +121,7 @@ export function useAutomatedTradeRules() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/automated-trade-rules", {
+                response = await fetch("/api/user/automated-trade-rules", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -190,7 +190,7 @@ export function useAutomatedTradeRules() {
 
         try {
             console.log(`Removing automatic trade rule ${id}...`);
-            let response = await fetch(`http://localhost:8080/api/user/automated-trade-rules/${id}`, {
+            let response = await fetch(`/api/user/automated-trade-rules/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -207,7 +207,7 @@ export function useAutomatedTradeRules() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/automated-trade-rules/${id}`, {
+                response = await fetch(`/api/user/automated-trade-rules/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -305,7 +305,7 @@ export function useAutomatedTradeRules() {
                 params.append("maxThresholdValue", maxThresholdValue);
             }
 
-            const url = `http://localhost:8080/api/user/automated-trade-rules/search?${params.toString()}`;
+            const url = `/api/user/automated-trade-rules/search?${params.toString()}`;
 
             let response = await fetch(url, {
                 method: "GET",

@@ -15,7 +15,7 @@ export function useApiKeys() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/api-keys", {
+            let response = await fetch("/api/user/api-keys", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -32,7 +32,7 @@ export function useApiKeys() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/api-keys", {
+                response = await fetch("/api/user/api-keys", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -78,7 +78,7 @@ export function useApiKeys() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/api-keys", {
+            let response = await fetch("/api/user/api-keys", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -96,7 +96,7 @@ export function useApiKeys() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/api-keys", {
+                response = await fetch("/api/user/api-keys", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -170,7 +170,7 @@ export function useApiKeys() {
                 requestBody.secretKey = secretKey;
             }
 
-            let response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
+            let response = await fetch(`/api/user/api-keys/${apiKeyId}`, {
                 method: "PUT",
                 credentials: "include",
                 headers: {
@@ -188,7 +188,7 @@ export function useApiKeys() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
+                response = await fetch(`/api/user/api-keys/${apiKeyId}`, {
                     method: "PUT",
                     credentials: "include",
                     headers: {
@@ -255,7 +255,7 @@ export function useApiKeys() {
         setError(null);
 
         try {
-            let response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
+            let response = await fetch(`/api/user/api-keys/${apiKeyId}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -272,7 +272,7 @@ export function useApiKeys() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/api-keys/${apiKeyId}`, {
+                response = await fetch(`/api/user/api-keys/${apiKeyId}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {

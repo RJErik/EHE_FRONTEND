@@ -16,7 +16,7 @@ export function useAlerts() {
 
         try {
             console.log("Fetching alerts...");
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            let response = await fetch("/api/user/alerts", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -33,7 +33,7 @@ export function useAlerts() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch("/api/user/alerts", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -94,7 +94,7 @@ export function useAlerts() {
 
         try {
             console.log(`Adding alert for ${symbol} from ${platform}...`);
-            let response = await fetch("http://localhost:8080/api/user/alerts", {
+            let response = await fetch("/api/user/alerts", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -117,7 +117,7 @@ export function useAlerts() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/alerts", {
+                response = await fetch("/api/user/alerts", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -182,7 +182,7 @@ export function useAlerts() {
 
         try {
             console.log(`Removing alert ${id}...`);
-            let response = await fetch(`http://localhost:8080/api/user/alerts/${id}`, {
+            let response = await fetch(`/api/user/alerts/${id}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -199,7 +199,7 @@ export function useAlerts() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/alerts/${id}`, {
+                response = await fetch(`/api/user/alerts/${id}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -272,7 +272,7 @@ export function useAlerts() {
                 params.append("conditionType", conditionType);
             }
 
-            const url = `http://localhost:8080/api/user/alerts/search?${params.toString()}`;
+            const url = `/api/user/alerts/search?${params.toString()}`;
 
             let response = await fetch(url, {
                 method: "GET",

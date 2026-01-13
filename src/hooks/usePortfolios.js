@@ -16,7 +16,7 @@ export function usePortfolios() {
 
         try {
             console.log("Fetching portfolios...");
-            let response = await fetch("http://localhost:8080/api/user/portfolios", {
+            let response = await fetch("/api/user/portfolios", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -33,7 +33,7 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/portfolios", {
+                response = await fetch("/api/user/portfolios", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -94,7 +94,7 @@ export function usePortfolios() {
 
         try {
             console.log(`Fetching portfolio details for ID: ${portfolioId}...`);
-            let response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}/details`, {
+            let response = await fetch(`/api/user/portfolios/${portfolioId}/details`, {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -111,7 +111,7 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}/details`, {
+                response = await fetch(`/api/user/portfolios/${portfolioId}/details`, {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -174,7 +174,7 @@ export function usePortfolios() {
 
         try {
             console.log(`Creating portfolio ${portfolioName} with API key ID ${apiKeyId}...`);
-            let response = await fetch("http://localhost:8080/api/user/portfolios", {
+            let response = await fetch("/api/user/portfolios", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -192,7 +192,7 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/portfolios", {
+                response = await fetch("/api/user/portfolios", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -257,7 +257,7 @@ export function usePortfolios() {
 
         try {
             console.log(`Deleting portfolio ${portfolioId}...`);
-            let response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}`, {
+            let response = await fetch(`/api/user/portfolios/${portfolioId}`, {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -274,7 +274,7 @@ export function usePortfolios() {
                 }
 
                 // Retry the original request
-                response = await fetch(`http://localhost:8080/api/user/portfolios/${portfolioId}`, {
+                response = await fetch(`/api/user/portfolios/${portfolioId}`, {
                     method: "DELETE",
                     credentials: "include",
                     headers: {
@@ -348,7 +348,7 @@ export function usePortfolios() {
                 params.append("maxValue", maxValue);
             }
 
-            const url = `http://localhost:8080/api/user/portfolios/search?${params.toString()}`;
+            const url = `/api/user/portfolios/search?${params.toString()}`;
 
             let response = await fetch(url, {
                 method: "GET",

@@ -15,7 +15,7 @@ export function useDeactivateAccount() {
         setError(null);
 
         try {
-            let response = await fetch("http://localhost:8080/api/user/account", {
+            let response = await fetch("/api/user/account", {
                 method: "DELETE",
                 credentials: "include",
                 headers: {
@@ -32,7 +32,7 @@ export function useDeactivateAccount() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/account", {
+                response = await fetch("/api/user/account", {
                     method: "DELETE",
                     credentials: "include",
                     headers: {

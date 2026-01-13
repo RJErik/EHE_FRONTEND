@@ -19,7 +19,7 @@ export function useJwtRefresh() {
 
         refreshPromiseRef = (async () => {
             try {
-                const response = await fetch("http://localhost:8080/api/session/token", {
+                const response = await fetch("/api/session/token", {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -48,7 +48,7 @@ export function useJwtRefresh() {
                     variant: "destructive",
                 });
 
-                navigate("/login");
+                window.location.href = 'https://www.eventhorizonexchange.com/login';
 
                 throw err;
             } finally {

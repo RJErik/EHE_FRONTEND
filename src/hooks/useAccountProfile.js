@@ -20,7 +20,7 @@ export function useAccountProfile() {
 
         try {
             console.log("Fetching user information...");
-            let response = await fetch("http://localhost:8080/api/user/profile", {
+            let response = await fetch("/api/user/profile", {
                 method: "GET",
                 credentials: "include",
                 headers: {
@@ -37,7 +37,7 @@ export function useAccountProfile() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/profile", {
+                response = await fetch("/api/user/profile", {
                     method: "GET",
                     credentials: "include",
                     headers: {
@@ -94,7 +94,7 @@ export function useAccountProfile() {
 
         try {
             console.log("Requesting password reset...");
-            let response = await fetch("http://localhost:8080/api/user/password-reset-requests", {
+            let response = await fetch("/api/user/password-reset-requests", {
                 method: "POST",
                 credentials: "include",
                 headers: {
@@ -111,7 +111,7 @@ export function useAccountProfile() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/password-reset-requests", {
+                response = await fetch("/api/user/password-reset-requests", {
                     method: "POST",
                     credentials: "include",
                     headers: {
