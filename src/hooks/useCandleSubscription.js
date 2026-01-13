@@ -536,21 +536,45 @@ export function useCandleSubscription() {
             if (isTimeframeChangeOnly) {
                 const currentCandles = chartContext.displayCandles || [];
                 const viewStart = chartContext.viewStartIndex || 0;
-                const anchorCandle = currentCandles[viewStart];
+                const isAtEdge = chartContext.isAtLatestEdge;
 
-                if (anchorCandle) {
-                    const result = await fetchCandlesForTimeframeSwitch(
-                        platformName,
-                        stockSymbol,
-                        timeframe,
-                        anchorCandle.timestamp
-                    );
-                    candles = result.candles;
-                    anchorSequence = result.anchorSequence;
-                } else {
+                console.log('[useCandleSubscription] Timeframe switch check:', {
+                    isAtEdge,
+                    viewStart,
+                    totalCandles: currentCandles.length,
+                    from: prev.timeframe,
+                    to: timeframe
+                });
+
+                if (isAtEdge || currentCandles.length === 0) {
+                    // At the edge or no data - load latest candles
+                    console.log('[useCandleSubscription] Loading latest candles (at edge)');
                     candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
+                } else {
+                    // Historical view - anchor to preserve position
+                    const anchorCandle = currentCandles[viewStart];
+
+                    if (anchorCandle) {
+                        console.log('[useCandleSubscription] Anchoring to historical position:', {
+                            timestamp: new Date(anchorCandle.timestamp).toISOString(),
+                            sequence: anchorCandle.sequence
+                        });
+
+                        const result = await fetchCandlesForTimeframeSwitch(
+                            platformName,
+                            stockSymbol,
+                            timeframe,
+                            anchorCandle.timestamp
+                        );
+                        candles = result.candles;
+                        anchorSequence = result.anchorSequence;
+                    } else {
+                        console.log('[useCandleSubscription] No anchor candle found, loading latest');
+                        candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
+                    }
                 }
             } else {
+                // New subscription (different stock/platform)
                 candles = await fetchInitialCandles(platformName, stockSymbol, timeframe, latestSequence);
             }
 

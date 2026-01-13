@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader } from "../../components/ui/card.jsx";
 import { Slider } from "../../components/ui/slider.jsx";
 import { Input } from "../../components/ui/input.jsx";
@@ -10,15 +10,44 @@ import { stockSelectionEvents } from "./stockSelectionEvents.js";
 import { Alert, AlertDescription } from "../../components/ui/alert.jsx";
 import { Badge } from "../../components/ui/badge.jsx";
 import { Label } from "../../components/ui/label.jsx";
+import { usePortfolioContext } from "@/context/PortfoliosContext.jsx";
 
 const TradePanel = ({ selectedPortfolioId }) => {
+    const [selectedPlatform, setSelectedPlatform] = useState("");
     const [selectedStock, setSelectedStock] = useState("");
+    const { fetchPortfolioDetails } = usePortfolioContext();
+
+    const previousSelectionRef = useRef({ platform: null, stock: null });
 
     useEffect(() => {
         console.log("[TradePanel] Setting up subscription");
         const unsubscribe = stockSelectionEvents.subscribe((platform, stock) => {
             console.log("[TradePanel] Received selection update:", platform, stock);
+
+            const prev = previousSelectionRef.current;
+
+            if (!platform || !stock) {
+                setSelectedPlatform("");
+                setSelectedStock("");
+                previousSelectionRef.current = { platform: null, stock: null };
+                return;
+            }
+
+            const isPlatformOnlyChange = platform !== prev.platform &&
+                stock === prev.stock &&
+                prev.platform !== null;
+
+            if (isPlatformOnlyChange) {
+                console.log("[TradePanel] Detected platform change with stale stock, clearing selection");
+                setSelectedPlatform("");
+                setSelectedStock("");
+                previousSelectionRef.current = { platform: null, stock: null };
+                return;
+            }
+
+            setSelectedPlatform(platform);
             setSelectedStock(stock);
+            previousSelectionRef.current = { platform, stock };
         });
 
         return () => {
@@ -46,7 +75,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         !!selectedStock &&
         quantity > 0;
 
-    // Helper function to extract base currency from trading pair
     const getBaseCurrency = (symbol) => {
         if (!symbol) return "";
         const quoteCurrencies = ["USDT", "USD", "BTC", "ETH", "BNB"];
@@ -60,27 +88,26 @@ const TradePanel = ({ selectedPortfolioId }) => {
         return symbol;
     };
 
-    // Fetch trading capacity when portfolio and stock are selected
     useEffect(() => {
-        if (selectedPortfolioId && selectedStock) {
-            console.log("Fetching trading capacity for:", selectedPortfolioId, selectedStock);
-            getTradingCapacity(selectedPortfolioId, selectedStock)
-                .then(capacity => {
-                    if (capacity) {
-                        updateMaxValue(capacity);
-                    }
-                });
-        }
-    }, [selectedPortfolioId, selectedStock]);
+        const fetchData = async () => {
+            if (selectedPortfolioId && selectedStock && selectedPlatform) {
+                console.log("[TradePanel] Fetching trading capacity for:", selectedPortfolioId, selectedPlatform, selectedStock);
+                await fetchPortfolioDetails(selectedPortfolioId);
+                const capacity = await getTradingCapacity(selectedPortfolioId, selectedStock);
+                if (capacity) {
+                    updateMaxValue(capacity);
+                }
+            }
+        };
+        fetchData();
+    }, [selectedPortfolioId, selectedStock, selectedPlatform, fetchPortfolioDetails, getTradingCapacity]);
 
-    // Update max value whenever trading capacity, buy/sell mode, or quantity type changes
     useEffect(() => {
         if (tradingCapacity) {
             updateMaxValue(tradingCapacity);
         }
     }, [tradingCapacity, isBuyMode, selectedQuantityType]);
 
-    // Update max value based on buy/sell mode and quantity type
     const updateMaxValue = (capacity) => {
         if (!capacity) return;
 
@@ -103,25 +130,21 @@ const TradePanel = ({ selectedPortfolioId }) => {
         setInputValue("0");
     };
 
-    // Handle buy/sell toggle
     const handleModeToggle = (mode) => {
         setIsBuyMode(mode === 'buy');
         setSelectedQuantityType(mode === 'buy' ? 'QUOTE_ORDER_QTY' : 'QUANTITY');
     };
 
-    // Handle quantity type change
     const handleQuantityTypeChange = (value) => {
         setSelectedQuantityType(value);
     };
 
-    // Handle quantity changes from slider
     const handleQuantitySlider = (values) => {
         const newQuantity = values[0];
         setQuantity(newQuantity);
         setInputValue(newQuantity.toString());
     };
 
-    // Handle quantity changes from input
     const handleQuantityInput = (e) => {
         const value = e.target.value;
 
@@ -138,7 +161,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         setInputValue(value);
     };
 
-    // Handle input focus
     const handleInputFocus = () => {
         setIsInputFocused(true);
         if (inputValue === "0") {
@@ -146,7 +168,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         }
     };
 
-    // Handle input blur
     const handleInputBlur = () => {
         setIsInputFocused(false);
         if (inputValue === "") {
@@ -159,7 +180,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         }
     };
 
-    // Get the appropriate slider label
     const getSliderLabel = () => {
         if (isBuyMode) {
             if (selectedQuantityType === "QUANTITY") {
@@ -176,7 +196,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         }
     };
 
-    // Format the max value display
     const getFormattedMaxValue = () => {
         if (selectedQuantityType === "QUANTITY") {
             return maxValue.toFixed(8);
@@ -185,7 +204,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         }
     };
 
-    // Execute trade
     const handleTrade = async () => {
         if (!isTradingEnabled) return;
 
@@ -204,7 +222,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
         }
     };
 
-    // Calculate display values based on mode and quantity type
     const calculateTradeValues = () => {
         if (!tradingCapacity || quantity <= 0) {
             return { displayValue: 0, stockQuantity: 0 };
@@ -306,7 +323,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                 ) : (
                     tradingCapacity && (
                         <>
-                            {/* Display trading information */}
                             <div className="grid grid-cols-2 gap-2 text-sm">
                                 <div>
                                     <Label>Holdings</Label>
@@ -318,7 +334,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                                 </div>
                             </div>
 
-                            {/* Buy/Sell toggle */}
                             <div className="flex border rounded-md overflow-hidden mt-4">
                                 <button
                                     type="button"
@@ -342,7 +357,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                                 </button>
                             </div>
 
-                            {/* Quantity Type selection */}
                             <div className="mt-4">
                                 <Label htmlFor="quantity-type-select">Order Type</Label>
                                 <Select
@@ -364,7 +378,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                                 </Select>
                             </div>
 
-                            {/* Quantity selection */}
                             <div className="mt-4">
                                 <div className="flex justify-between mb-1">
                                     <Label>
@@ -395,7 +408,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                                 />
                             </div>
 
-                            {/* Trade information */}
                             <div className="mt-2 text-right">
                                 {selectedQuantityType === "QUOTE_ORDER_QTY" ? (
                                     <div>
@@ -414,7 +426,6 @@ const TradePanel = ({ selectedPortfolioId }) => {
                                 )}
                             </div>
 
-                            {/* Trade button */}
                             <div className="mt-4">
                                 {isBuyMode ? (
                                     <Button

@@ -38,13 +38,13 @@ export function useTrading() {
                 }
 
                 // Retry the original request
-                response = await fetch("http://localhost:8080/api/user/portfolios/by-platform", {
-                    method: "POST",
+                // CHANGE: Fixed retry request - was incorrectly using POST method, now correctly uses GET with query param
+                response = await fetch(`http://localhost:8080/api/user/portfolios/by-platform?platform=${platform}`, {
+                    method: "GET",
                     credentials: "include",
                     headers: {
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({ platform }),
                 });
 
                 if (response.status === 401) {
@@ -96,7 +96,7 @@ export function useTrading() {
 
         try {
             let response = await fetch(
-                `http://localhost:8080/api/user/portfolios/${portfolioId}/stocks/${stockSymbol}/trading-capacity`,
+                `http://localhost:8080/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
                 {
                     method: "GET",
                     credentials: "include",
@@ -116,7 +116,7 @@ export function useTrading() {
 
                 // Retry the original request
                 response = await fetch(
-                    `http://localhost:8080/api/user/portfolios/${portfolioId}/stocks/${stockSymbol}/trading-capacity`,
+                    `http://localhost:8080/api/user/portfolios/${portfolioId}/trading-capacity?stockSymbol=${encodeURIComponent(stockSymbol)}`,
                     {
                         method: "GET",
                         credentials: "include",

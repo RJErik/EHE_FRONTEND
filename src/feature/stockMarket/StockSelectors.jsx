@@ -25,6 +25,12 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
 
     const { setTimeframeInMs, timeframeInMs } = useContext(ChartContext);
 
+    // Track which platform the current stocks belong to
+    const [stocksLoadedForPlatform, setStocksLoadedForPlatform] = useState(null);
+
+    // Track if we're in a platform transition
+    const platformTransitionRef = useRef(false);
+
     // Sync internal stock data hook with parent platform state
     useEffect(() => {
         if (selectedPlatform) {
@@ -32,12 +38,37 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
         }
     }, [selectedPlatform, setStockDataPlatform]);
 
+    // Track when stocks have finished loading for a platform
     useEffect(() => {
-        if (selectedPlatform && selectedStock) {
+        if (!isLoadingStocks && selectedPlatform) {
+            console.log("[StockSelectors] Stocks loaded for platform:", selectedPlatform, "stocks:", stocks);
+            setStocksLoadedForPlatform(selectedPlatform);
+            platformTransitionRef.current = false;
+
+            // ✅ Clear selected stock if it's not in the new list
+            if (selectedStock && stocks.length > 0 && !stocks.includes(selectedStock)) {
+                console.log("[StockSelectors] Clearing invalid stock selection:", selectedStock);
+                setStockDataStock(null);
+            }
+        }
+    }, [isLoadingStocks, selectedPlatform, stocks, selectedStock, setStockDataStock]);
+
+    // ✅ FIXED: Only broadcast when stocks are confirmed loaded for current platform
+    useEffect(() => {
+        const isStocksCurrentForPlatform = stocksLoadedForPlatform === selectedPlatform;
+        const isValidSelection = selectedPlatform &&
+            selectedStock &&
+            stocks.length > 0 &&
+            stocks.includes(selectedStock) &&
+            isStocksCurrentForPlatform &&  // ✅ Critical check
+            !isLoadingStocks &&
+            !platformTransitionRef.current;
+
+        if (isValidSelection) {
             console.log("[StockSelectors] Broadcasting selection:", selectedPlatform, selectedStock);
             stockSelectionEvents.notify(selectedPlatform, selectedStock);
         }
-    }, [selectedPlatform, selectedStock]);
+    }, [selectedPlatform, selectedStock, stocks, stocksLoadedForPlatform, isLoadingStocks]);
 
     const {
         isSubscribing,
@@ -57,12 +88,12 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
         if (!timeframe) return 60000;
 
         switch (timeframe) {
-            case "1M": return 60000;
-            case "5M": return 5 * 60000;
-            case "15M": return 15 * 60000;
-            case "1H": return 60 * 60000;
-            case "4H": return 4 * 60 * 60000;
-            case "1D": return 24 * 60 * 60000;
+            case "1m": return 60000;
+            case "5m": return 5 * 60000;
+            case "15m": return 15 * 60000;
+            case "1h": return 60 * 60000;
+            case "4h": return 4 * 60 * 60000;
+            case "1d": return 24 * 60 * 60000;
             default: return 60000;
         }
     };
@@ -94,7 +125,21 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
         setTimeframeInMs(timeframeToMilliseconds(timeframe));
     };
 
+    // Mark transition and clear stock when platform changes
     const handlePlatformChange = (platform) => {
+        if (platform === selectedPlatform) return;
+
+        console.log("[StockSelectors] Platform changing from", selectedPlatform, "to", platform);
+        platformTransitionRef.current = true;
+
+        subscriptionRef.current = {
+            platform: null,
+            stock: null,
+            timeframe: null
+        };
+
+        setStockDataStock(null);
+
         onPlatformChange(platform);
     };
 
@@ -111,36 +156,77 @@ const StockSelectors = ({ selectedPlatform, onPlatformChange }) => {
         }
     }, [error, toast]);
 
+    // Validation before subscribing
     const handleSubscription = useCallback(() => {
-        if (
-            selectedPlatform &&
-            selectedStock &&
-            selectedTimeframe &&
-            !isSubscribing &&
-            (
-                selectedPlatform !== subscriptionRef.current.platform ||
-                selectedStock !== subscriptionRef.current.stock ||
-                selectedTimeframe !== subscriptionRef.current.timeframe
-            )
-        ) {
-            console.log("[StockSelectors] Subscribing to candles with:", {
-                platform: selectedPlatform,
-                stock: selectedStock,
-                timeframe: selectedTimeframe
-            });
-
-            subscriptionRef.current = {
-                platform: selectedPlatform,
-                stock: selectedStock,
-                timeframe: selectedTimeframe
-            };
-
-            subscribeToCandles(selectedPlatform, selectedStock, selectedTimeframe)
-                .catch(err => {
-                    console.error("[StockSelectors] Subscription error:", err);
-                });
+        if (!selectedPlatform || !selectedStock || !selectedTimeframe) {
+            return;
         }
-    }, [selectedPlatform, selectedStock, selectedTimeframe, isSubscribing, subscribeToCandles]);
+
+        if (isSubscribing) {
+            return;
+        }
+
+        if (isLoadingStocks) {
+            console.log("[StockSelectors] Waiting for stocks to load...");
+            return;
+        }
+
+        if (stocksLoadedForPlatform !== selectedPlatform) {
+            console.log("[StockSelectors] Stocks not yet loaded for platform:", selectedPlatform,
+                "currently loaded for:", stocksLoadedForPlatform);
+            return;
+        }
+
+        if (!stocks.includes(selectedStock)) {
+            console.log("[StockSelectors] Stock", selectedStock, "not found in", stocks);
+            return;
+        }
+
+        if (platformTransitionRef.current) {
+            console.log("[StockSelectors] Platform transition in progress, skipping subscription");
+            return;
+        }
+
+        if (
+            selectedPlatform === subscriptionRef.current.platform &&
+            selectedStock === subscriptionRef.current.stock &&
+            selectedTimeframe === subscriptionRef.current.timeframe
+        ) {
+            return;
+        }
+
+        console.log("[StockSelectors] Subscribing to candles with:", {
+            platform: selectedPlatform,
+            stock: selectedStock,
+            timeframe: selectedTimeframe,
+            validatedAgainstStocks: stocks
+        });
+
+        subscriptionRef.current = {
+            platform: selectedPlatform,
+            stock: selectedStock,
+            timeframe: selectedTimeframe
+        };
+
+        subscribeToCandles(selectedPlatform, selectedStock, selectedTimeframe)
+            .catch(err => {
+                console.error("[StockSelectors] Subscription error:", err);
+                subscriptionRef.current = {
+                    platform: null,
+                    stock: null,
+                    timeframe: null
+                };
+            });
+    }, [
+        selectedPlatform,
+        selectedStock,
+        selectedTimeframe,
+        isSubscribing,
+        subscribeToCandles,
+        stocks,
+        isLoadingStocks,
+        stocksLoadedForPlatform
+    ]);
 
     useEffect(() => {
         handleSubscription();

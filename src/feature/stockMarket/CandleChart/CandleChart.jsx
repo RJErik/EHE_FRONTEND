@@ -32,7 +32,7 @@ const CandleChart = () => {
     const dragStartXRef = useRef(null);
     const dragStartViewIndexRef = useRef(null);
     const [isMouseOverChart, setIsMouseOverChart] = useState(false);
-    const [setMouseX] = useState(null);
+    const [, setMouseX] = useState(null);
 
     const {
         candleData: data,
